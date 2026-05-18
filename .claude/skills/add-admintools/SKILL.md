@@ -50,26 +50,22 @@ git show origin/admin:src/auth-switch.ts        > src/auth-switch.ts
 
 ### /model
 
+Only the Telegram-command handler. The supporting helpers
+(`model-switch.ts`, `model-discovery.ts`, `model-providers/*`) ship
+in trunk because trunk's playground Models tab API imports them
+directly.
+
 ```bash
-git show origin/admin:src/admin-handlers/model.ts        > src/admin-handlers/model.ts
-git show origin/admin:src/model-switch.ts                > src/model-switch.ts
-git show origin/admin:src/model-discovery.ts             > src/model-discovery.ts
-git show origin/admin:src/model-discovery.test.ts        > src/model-discovery.test.ts
-mkdir -p src/model-providers
-git show origin/admin:src/model-providers/types.ts          > src/model-providers/types.ts
-git show origin/admin:src/model-providers/index.ts          > src/model-providers/index.ts
-git show origin/admin:src/model-providers/anthropic.ts      > src/model-providers/anthropic.ts
-git show origin/admin:src/model-providers/anthropic.test.ts > src/model-providers/anthropic.test.ts
-git show origin/admin:src/model-providers/openai.ts         > src/model-providers/openai.ts
-git show origin/admin:src/model-providers/openai.test.ts    > src/model-providers/openai.test.ts
+git show origin/admin:src/admin-handlers/model.ts > src/admin-handlers/model.ts
 ```
 
 ### /provider
 
+Only the Telegram-command handler and its interactive switch
+script. `provider-switch.ts` (and its test) live in trunk.
+
 ```bash
 git show origin/admin:src/admin-handlers/provider.ts > src/admin-handlers/provider.ts
-git show origin/admin:src/provider-switch.ts         > src/provider-switch.ts
-git show origin/admin:src/provider-switch.test.ts    > src/provider-switch.test.ts
 git show origin/admin:scripts/switch-provider.ts     > scripts/switch-provider.ts
 ```
 
