@@ -97,11 +97,14 @@ function loadModelDropdowns(el, folder) {
 
       // Filter providers by class-controls — owner sees everything;
       // students see only what the instructor authorized.
-      const cc = window.__pg && window.__pg.classControls;
+      const ac = window.__pg && window.__pg.activeClass;
       const isOwner = window.__pg && window.__pg.user && window.__pg.user.role === 'owner';
-      const allowedProviders = isOwner || !cc ? null : new Set(cc.providersAvailable || []);
+      // v2 shape: providers is a map of { allow, provideDefault, allowByo }.
+      const providerAllowed = isOwner || !ac
+        ? null
+        : (p) => !!(ac.providers && ac.providers[p] && ac.providers[p].allow);
       const providers = [...new Set(visible.map((m) => m.provider))].filter(
-        (p) => !allowedProviders || allowedProviders.has(p),
+        (p) => !providerAllowed || providerAllowed(p),
       );
       provSel.innerHTML = '';
       for (const p of providers) provSel.add(new Option(p, p));
@@ -356,6 +359,7 @@ function wireChatForm(el, folder) {
       const provSel = el.querySelector('#provider-sel');
       const modelSel = el.querySelector('#model-sel');
       const trace = el.querySelector('#trace-log');
+      startNewTurn(trace);
       const traceLi = appendDirectTraceCall(trace, provSel.value, modelSel.value, directHistory.length);
       // Client-side timing — direct-chat.ts doesn't return latencyMs (it's a
       // synchronous HTTP round-trip) so we measure wall-clock from the fetch
@@ -394,6 +398,9 @@ function wireChatForm(el, folder) {
       }
       return;
     }
+
+    // Agent mode — start a new turn group in the trace pane.
+    startNewTurn(el.querySelector('#trace-log'));
 
     // Read pending files to base64. Done at send time, not at attach time,
     // to avoid double-buffering for files the user might immediately remove.
@@ -468,7 +475,74 @@ function wireTraceClear(el) {
   el.querySelector('#trace-clear-btn').addEventListener('click', () => {
     const trace = el.querySelector('#trace-log');
     trace.innerHTML = '<li class="trace-empty">Trace cleared.</li>';
+    trace._currentTurnUl = null;
   });
+}
+
+/**
+ * Finalize the previous turn: sum data-* attrs from child <li>s and fill in
+ * the footer. Called by startNewTurn when a new user message is submitted.
+ */
+function finalizeTurn(turnEl) {
+  if (!turnEl) return;
+  const foot = turnEl.querySelector('.trace-turn-foot');
+  if (!foot) return;
+  let tokensIn = 0, tokensOut = 0, tokensCached = 0, tokensReasoning = 0, cost = 0;
+  for (const li of turnEl.querySelectorAll('[data-tokens-in], [data-tokens-out], [data-cost]')) {
+    tokensIn       += parseFloat(li.dataset.tokensIn       || '0') || 0;
+    tokensOut      += parseFloat(li.dataset.tokensOut      || '0') || 0;
+    tokensCached   += parseFloat(li.dataset.tokensCached   || '0') || 0;
+    tokensReasoning += parseFloat(li.dataset.tokensReasoning || '0') || 0;
+    cost           += parseFloat(li.dataset.cost           || '0') || 0;
+  }
+  if (tokensIn === 0 && tokensOut === 0 && cost === 0) {
+    foot.textContent = '(no usage)';
+    return;
+  }
+  const parts = [];
+  if (tokensIn > 0) parts.push(`${tokensIn} in`);
+  if (tokensCached > 0) parts.push(`${tokensCached} cached`);
+  if (tokensOut > 0) parts.push(`${tokensOut} out`);
+  if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
+  foot.textContent = `turn total: ${parts.join(' · ')}`;
+}
+
+/**
+ * Start a new turn group in the trace pane. Finalizes the previous turn if
+ * one exists, then appends a new .trace-turn container. Returns the inner
+ * <ul> that events should be appended to.
+ */
+function startNewTurn(trace) {
+  if (!trace) return null;
+  // Remove the empty-state placeholder if present.
+  const placeholder = trace.querySelector('.trace-empty');
+  if (placeholder) placeholder.remove();
+
+  // Finalize the previous turn.
+  if (trace._currentTurnUl) {
+    finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+  }
+
+  const turnLi = document.createElement('li');
+  turnLi.className = 'trace-turn';
+
+  const head = document.createElement('div');
+  head.className = 'trace-turn-head';
+  head.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  turnLi.appendChild(head);
+
+  const ul = document.createElement('ul');
+  ul.className = 'trace-turn-events';
+  turnLi.appendChild(ul);
+
+  const foot = document.createElement('div');
+  foot.className = 'trace-turn-foot';
+  turnLi.appendChild(foot);
+
+  trace.appendChild(turnLi);
+  trace._currentTurnUl = ul;
+  trace.scrollTop = trace.scrollHeight;
+  return ul;
 }
 
 function appendUserBubble(log, text) {
@@ -563,7 +637,8 @@ function appendTraceEvent(trace, data) {
     li.appendChild(kindEl);
   }
 
-  trace.appendChild(li);
+  const target = trace._currentTurnUl || trace;
+  target.appendChild(li);
   trace.scrollTop = trace.scrollHeight;
 }
 
@@ -710,7 +785,13 @@ function appendModelCallTrace(trace, data) {
     </div>
     <div class="trace-event-body">${escapeHtml(summary)}</div>
   `;
-  trace.appendChild(li);
+  li.dataset.tokensIn = tokensIn;
+  li.dataset.tokensOut = tokensOut;
+  li.dataset.tokensCached = cached;
+  li.dataset.tokensReasoning = reasoning;
+  if (cost != null) li.dataset.cost = cost;
+  const target = trace._currentTurnUl || trace;
+  target.appendChild(li);
   trace.scrollTop = trace.scrollHeight;
 }
 
@@ -735,7 +816,11 @@ function appendAgentTraceCall(trace, data) {
     </div>
     <div class="trace-event-body">${escapeHtml(body)}</div>
   `;
-  trace.appendChild(li);
+  if (tokensIn != null) li.dataset.tokensIn = tokensIn;
+  if (tokensOut != null) li.dataset.tokensOut = tokensOut;
+  if (cost != null) li.dataset.cost = cost;
+  const target = trace._currentTurnUl || trace;
+  target.appendChild(li);
   trace.scrollTop = trace.scrollHeight;
 }
 
@@ -770,8 +855,6 @@ function computeAgentCallCost(provider, model, tokensIn, tokensOut, tokensCached
 
 function appendDirectTraceCall(trace, provider, model, turnNumber) {
   if (!trace) return null;
-  const placeholder = trace.querySelector('.trace-empty');
-  if (placeholder) placeholder.remove();
   const li = document.createElement('li');
   li.className = 'trace-event trace-direct-call';
   li.innerHTML = `
@@ -781,7 +864,8 @@ function appendDirectTraceCall(trace, provider, model, turnNumber) {
     </div>
     <div class="trace-event-body trace-pending">turn ${turnNumber} · pending…</div>
   `;
-  trace.appendChild(li);
+  const target = trace._currentTurnUl || trace;
+  target.appendChild(li);
   trace.scrollTop = trace.scrollHeight;
   return li;
 }
@@ -802,4 +886,10 @@ function finalizeDirectTraceCall(li, data) {
   const outBreakdown = reasoning > 0 ? `${data.tokensOut} out (${reasoning} reasoning)` : `${data.tokensOut} out`;
   const latency = typeof data.latencyMs === 'number' ? ` · ${(data.latencyMs / 1000).toFixed(1)}s` : '';
   body.textContent = `${data.tokensIn} in${cachedNote} · ${outBreakdown}${latency} · ${cost}`;
+  // Stash numeric data for finalizeTurn to sum.
+  li.dataset.tokensIn = data.tokensIn || 0;
+  li.dataset.tokensOut = data.tokensOut || 0;
+  li.dataset.tokensCached = data.tokensCached || 0;
+  li.dataset.tokensReasoning = reasoning;
+  li.dataset.cost = data.costUsd || 0;
 }

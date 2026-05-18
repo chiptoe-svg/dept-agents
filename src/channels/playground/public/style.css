@@ -449,14 +449,43 @@ html, body {
 }
 .trace-details > .trace-summary {
   cursor: pointer;
-  list-style: revert; /* show the native disclosure triangle */
+  list-style: none;
   user-select: none;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
 }
+.trace-summary::-webkit-details-marker { display: none; }
+.trace-summary::before {
+  content: '\25B6';
+  font-size: 0.75em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+details[open] > .trace-summary::before { transform: rotate(90deg); }
 .trace-details > .trace-summary:hover { background: #f0f4ff; }
 .trace-details[open] > .trace-summary { background: #eef3ff; }
+
+/* Turn grouping */
+.trace-turn { list-style: none; margin-top: 12px; }
+.trace-turn + .trace-turn { border-top: 1px solid var(--border); }
+.trace-turn-events { list-style: none; padding: 0; margin: 0; }
+.trace-turn-head {
+  font-variant: small-caps;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 4px 8px;
+  letter-spacing: 0.5px;
+}
+.trace-turn-foot {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: italic;
+  padding: 4px 8px;
+  text-align: right;
+}
 .trace-preview {
   color: #777;
   font-family: ui-monospace, monospace;
