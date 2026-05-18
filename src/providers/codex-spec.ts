@@ -9,7 +9,7 @@ import { registerProvider } from './auth-registry.js';
 // doesn't matter — the user never lands on it (paste-back).
 registerProvider({
   id: 'codex',
-  displayName: 'OpenAI API',
+  displayName: 'OpenAI',
   proxyRoutePrefix: '/openai/',
   credentialFileShape: 'mixed',
   oauth: {
