@@ -406,6 +406,30 @@ Slot into Phase 2 or a small interleave when convenient.
   Future cadence: re-merge `main` forward into `origin/classroom`
   periodically (same pattern as `origin/channels`, `origin/providers`,
   `origin/gws-mcp`) to prevent drift accumulating again.
+  - Backported the `auth_mode: 'apikey'` fix to `main` as commit
+    `b99d47c` (empirically verified against `~/.codex/auth.json` —
+    Codex CLI writes `'apikey'`, not `'api_key'` or `'apiKey'`).
+- **Long-lived branch sync — automation in place.** Surfaced
+  2026-05-17 after fixing classroom: the same drift problem applies
+  to every long-lived category branch. Audit at the time:
+  `providers` was 737 commits behind main, `admin` 273, `gws-mcp`
+  210. Nobody was running the periodic sync the rule-5 pattern
+  assumes. Fix: `.github/workflows/sync-long-lived-branches.yml`
+  runs daily at 12:17 UTC, attempts `git merge origin/main` on each
+  of `classroom`, `providers`, `admin`, `gws-mcp`. Conflict-free →
+  push. Conflicts → open a GitHub issue with the resolve recipe
+  (auto-deduplicated by title, auto-closed on next clean run).
+  - **Path-(a) treatment still needed for 3 branches before
+    automation can take over them cleanly:**
+    - `providers` (737 behind) — sync when next updating
+      `/add-opencode` or any future provider install skill.
+    - `admin` (273 behind) — sync when next updating
+      `/add-admintools`.
+    - `gws-mcp` (210 behind) — sync when next updating
+      `/add-gws-tool`.
+    Until each path-(a) sync lands, the nightly job will keep
+    filing fresh conflict issues for that branch — that's working
+    as intended; the issue is the prompt to do the path-(a) work.
 - **`/ultrareview` policy.** Per the `feedback_ultrareview_before_merge`
   memory: run `/ultrareview` *before* merging feature work, not
   after. Going forward, build phase items on feature branches and
