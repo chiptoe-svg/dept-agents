@@ -345,12 +345,12 @@ function makeContainerConfig(opts: {
     // at creation time. TAs / instructors / non-classroom groups use the
     // generic empty default (manual curation via Skills tab afterwards).
     skills: opts.isStudent ? inheritedSkills() : [],
-    // Student agents run the codex provider (class-pool funded via
-    // CLASS_OPENAI_API_KEY). Without this, container.json's `provider`
-    // defaults to "claude" and every student message ends up calling
-    // Anthropic — wrong direction for a Codex class.
+    // All class-skeleton-provisioned groups (students AND TAs) run codex.
+    // Class-pool architecture is Codex/OpenAI funded via CLASS_OPENAI_API_KEY;
+    // running the Claude SDK for TAs would route their messages through
+    // Anthropic. Hard-code 'codex' unconditionally.
     // TODO: make configurable when classes diverge (CLI flag or class-config).
-    provider: opts.isStudent ? 'codex' : undefined,
+    provider: 'codex',
     groupName: opts.folder,
     assistantName: opts.folder,
   };
