@@ -24,10 +24,14 @@
       max-width: 420px;
     }
     .login-card .login-brand {
-      font-weight: 700;
-      font-size: 15px;
-      color: var(--brand-navy);
+      display: flex;
+      justify-content: center;
       margin-bottom: 24px;
+    }
+    .login-card .login-brand img {
+      height: 80px;
+      width: auto;
+      max-width: 100%;
     }
     .login-card h1 {
       margin: 0 0 8px;
@@ -127,7 +131,7 @@
 </head>
 <body class="login-page">
   <main class="login-card">
-    <div class="login-brand">Agent Playground</div>
+    <div class="login-brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom"></div>
     <h1>Sign in</h1>
     <p>Enter your school email and today's class passcode.</p>
     <form id="enroll-form" autocomplete="off">
