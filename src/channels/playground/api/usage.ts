@@ -18,7 +18,7 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 
-import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
+import { getAgentGroup, getAgentGroupByFolder } from '../../../db/agent-groups.js';
 import { getActiveSessions } from '../../../db/sessions.js';
 import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
 import { sessionsBaseDir } from '../../../session-manager.js';
@@ -207,11 +207,9 @@ export function handleGetStudentsUsage(
     const sessions = getActiveSessions().filter((s) => s.agent_group_id === id);
     if (sessions.length === 0) continue;
     // The session table doesn't expose folder; pull from agent_groups via
-    // a follow-up query. Use getAgentGroupByFolder isn't suitable; use
-    // an id lookup instead — re-using the host's DB helper.
-    // (Inline import to dodge a circular dep with usage.ts startup.)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getAgentGroup } = require('../../../db/agent-groups.js') as typeof import('../../../db/agent-groups.js');
+    // an id lookup. (getAgentGroupByFolder isn't suitable here — we already
+    // have the id.) Static-import is safe; db/agent-groups.ts has no edge
+    // that loops back into usage.ts.
     const group = getAgentGroup(id);
     if (!group || !group.folder.startsWith('student_')) continue;
     const usage = aggregateAgentUsage(id);
