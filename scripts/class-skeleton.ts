@@ -375,7 +375,10 @@ function provisionGroup(args: CliArgs, classConfig: Record<string, unknown>, tar
   } else {
     group = {
       id: shortId('ag'),
-      name: target.folder,
+      // Use the student's real name (from class-config.json's `students[].name`)
+      // not the folder slug. The folder is the role/identifier; the name is what
+      // shows up in the instructor Roster card.
+      name: target.name,
       folder: target.folder,
       // Default students to the codex agent provider (matches this fork's
       // class-pool architecture — CLASS_OPENAI_API_KEY funds inference).
