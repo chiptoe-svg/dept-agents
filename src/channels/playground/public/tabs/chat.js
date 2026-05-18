@@ -639,6 +639,8 @@ function appendTraceEvent(trace, data) {
 
   const target = trace._currentTurnUl || trace;
   target.appendChild(li);
+  // Eager-finalize so the turn-total footer updates live as events arrive.
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
   trace.scrollTop = trace.scrollHeight;
 }
 
@@ -792,6 +794,8 @@ function appendModelCallTrace(trace, data) {
   if (cost != null) li.dataset.cost = cost;
   const target = trace._currentTurnUl || trace;
   target.appendChild(li);
+  // Eager-finalize so the turn-total footer updates live as events arrive.
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
   trace.scrollTop = trace.scrollHeight;
 }
 
@@ -821,6 +825,8 @@ function appendAgentTraceCall(trace, data) {
   if (cost != null) li.dataset.cost = cost;
   const target = trace._currentTurnUl || trace;
   target.appendChild(li);
+  // Eager-finalize so the turn-total footer updates live as events arrive.
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
   trace.scrollTop = trace.scrollHeight;
 }
 
@@ -866,6 +872,8 @@ function appendDirectTraceCall(trace, provider, model, turnNumber) {
   `;
   const target = trace._currentTurnUl || trace;
   target.appendChild(li);
+  // Eager-finalize so the turn-total footer updates live as events arrive.
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
   trace.scrollTop = trace.scrollHeight;
   return li;
 }
@@ -892,4 +900,8 @@ function finalizeDirectTraceCall(li, data) {
   li.dataset.tokensCached = data.tokensCached || 0;
   li.dataset.tokensReasoning = reasoning;
   li.dataset.cost = data.costUsd || 0;
+  // Eager-finalize the enclosing turn so the totals footer updates immediately
+  // on call completion (rather than waiting for the next user submit).
+  const turnEl = li.closest('.trace-turn');
+  if (turnEl) finalizeTurn(turnEl);
 }
