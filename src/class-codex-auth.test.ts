@@ -61,7 +61,7 @@ function stubAgentGroup(id: string, folder: string) {
 describe('classCodexAuthResolver', () => {
   it('returns the class auth path for a student_NN folder when the file exists', () => {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"api_key"}');
+    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"apikey"}');
     stubAgentGroup('ag_student_42', 'student_42');
 
     const r = classCodexAuthResolver({ agentGroupId: 'ag_student_42', hostHome: '/home/test' });
@@ -70,7 +70,7 @@ describe('classCodexAuthResolver', () => {
 
   it('returns the class auth path for ta_ and instructor_ prefixes too', () => {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"api_key"}');
+    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"apikey"}');
 
     stubAgentGroup('ag_ta_1', 'ta_1');
     expect(classCodexAuthResolver({ agentGroupId: 'ag_ta_1', hostHome: '/home/test' })).not.toBeNull();
@@ -81,7 +81,7 @@ describe('classCodexAuthResolver', () => {
 
   it('returns null for non-class agent groups (no folder prefix match)', () => {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"api_key"}');
+    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"apikey"}');
     stubAgentGroup('ag_telegram_main', 'telegram_main');
 
     expect(classCodexAuthResolver({ agentGroupId: 'ag_telegram_main', hostHome: '/home/test' })).toBeNull();
@@ -97,7 +97,7 @@ describe('classCodexAuthResolver', () => {
 
   it('returns null when the agent group does not exist in the DB', () => {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"api_key"}');
+    fs.writeFileSync(CLASS_AUTH_PATH, '{"auth_mode":"apikey"}');
     (getAgentGroup as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
 
     expect(classCodexAuthResolver({ agentGroupId: 'ag_ghost', hostHome: '/home/test' })).toBeNull();

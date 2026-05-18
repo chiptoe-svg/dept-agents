@@ -6,7 +6,7 @@
  * ChatGPT subscription. This module:
  *
  *   1. At host startup, reads `CLASS_OPENAI_API_KEY` from `.env`.
- *   2. If set, writes `data/class-codex-auth.json` with the api_key-mode
+ *   2. If set, writes `data/class-codex-auth.json` with the apikey-mode
  *      shape so the codex CLI inside each class container uses it as
  *      its OpenAI Bearer.
  *   3. Registers a Codex auth resolver (higher priority than the
@@ -45,7 +45,7 @@ function isClassFolder(folder: string): boolean {
 
 function writeClassAuthJson(apiKey: string): void {
   const auth = {
-    auth_mode: 'api_key',
+    auth_mode: 'apikey',
     OPENAI_API_KEY: apiKey,
     tokens: null,
     last_refresh: null,
