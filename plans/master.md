@@ -390,28 +390,22 @@ Slot into Phase 2 or a small interleave when convenient.
 - **Branch hygiene.** Merges to `main` and to `origin/classroom` use
   `--no-ff` so each phase stays revertable as a single merge commit.
   Feature branches deleted (local + remote) once merged.
-- **Modernize the `origin/classroom` long-lived branch.** Surfaced
-  during Phase X.7 (per-student provider auth) work on 2026-05-17:
-  `origin/classroom` is 606 commits behind `main` with 9+ conflicts
-  in files both branches independently evolved (`class-codex-auth`,
-  `class-login-tokens`, `classroom-roster`, etc.). The merge isn't
-  in any single phase's scope. **Workaround in use:** new
-  classroom-skill work branches off current `main` with feature-style
-  names (`classroom-x7-provider-auth`, etc.) and the install skill
-  fetches from there — same install pattern as `add-gws-tool`. Two
-  paths to a clean state, pick one when this becomes important:
-  (a) Sit down for a 1-2 hr "main wins" merge into `origin/classroom`,
-      audit for any classroom-side improvements that need to be
-      preserved, then go back to slash-style per-skill branches off
-      it.
-  (b) Retire `origin/classroom` entirely. Future classroom skills all
-      live on per-feature dash-style branches off `main`. The legacy
-      branch becomes a historical reference. Phase 14 trunk files
-      (`student-google-auth.ts`, `google-auth.ts` routes, Home/Models
-      patches) — which were noted as an asymmetry in the X.7 design
-      spec — move to one or more new branches at the same time.
-  Until decided, the workaround keeps every new classroom skill
-  unblocked. Decision can wait until after Phase X.7 ships.
+- ~~**Modernize the `origin/classroom` long-lived branch.**~~
+  **RESOLVED 2026-05-17 via path (a).** Merged `origin/main` into
+  `origin/classroom` as commit `bfa1175`. Main-wins on 9 conflicts.
+  12 classroom-skill-source-of-truth files restored (main had deleted
+  them via Phase 11.3 "strip class feature from main"). Three files
+  needed API surface updates against current trunk: `class-drive.ts`
+  migrated `googleapis` → `@googleapis/drive`; `student-auth-server.ts`
+  inlined the 3 classroom-specific config consts that Phase 11.3
+  stripped from trunk; `student-auth-server.test.ts` mock fix. One
+  classroom-side fix preserved: `auth_mode: 'apikey'` in
+  `class-codex-auth.ts` (commit `44562b5`) — flagged as possible
+  backport-to-main since trunk currently has `'api_key'` which may
+  also be wrong. Build clean, 816/816 tests on merged tip.
+  Future cadence: re-merge `main` forward into `origin/classroom`
+  periodically (same pattern as `origin/channels`, `origin/providers`,
+  `origin/gws-mcp`) to prevent drift accumulating again.
 - **`/ultrareview` policy.** Per the `feedback_ultrareview_before_merge`
   memory: run `/ultrareview` *before* merging feature work, not
   after. Going forward, build phase items on feature branches and
