@@ -101,6 +101,58 @@ link path is preserved for owner/admin convenience. Google sign-in
 moves to an opt-in "Connect" card on student Home (deferred until
 Phase 14 GCP setup unblocks).
 
+## Phase 1.7 — classroom polish + provisioning fixes (shipped 2026-05-18)
+
+Slate of fixes + cosmetic improvements that came out of live testing
+during X.7 verification + the enrollment-passcode rollout. Mostly
+small, with one architectural cleanup (class-skeleton was silently
+provisioning students with the wrong agent provider — a bug that would
+make every student message touch Anthropic instead of OpenAI).
+
+| Slice | Commit(s) |
+|---|---|
+| **Brand identity.** Raccoon-unicycle icon retired across login + topbar. Replaced with the NanoClaw Classroom wordmark (`/classroom-nano.png`). | `cb01716` |
+| **Login page redesign.** Self-contained `<style>` (no external stylesheet dependency since `/style.css` was 401'ing pre-auth), email + passcode form, paste-back flow with a clickable "Open sign-in page" button (popup-blocker fallback). | `787ae67`, `08c3492`, `3e36ad5` (X.7 branch), `e92a928` (style.css) |
+| **Class-skeleton bugs.** Students were provisioned with `agent_provider=null` (defaulting to claude) — fix: hard-code `'codex'` for all class members. Same for `container.json.provider`. Also `agent_groups.name` was being set to the folder slug (`student_03`) instead of the real student name from `class-config.json` — fix wires through `target.name`. Model default changed to `gpt-5.4-mini` for cost. Bulk-applied to the 12 existing students. | `6aac696`, `1c0b796`, `e5ba324`, `fc9b429` |
+| **Trunk hot-fix.** `handleGetStudentsUsage` used CommonJS `require()` in an ESM module → 500 on every roster fetch. Hoisted to static import. | `5eb10bd` |
+| **Roster card overhaul.** Walks `class-config.json`'s `students[]` + `tas[]` instead of session directories — now shows every roster member, not just those with active sessions. Columns: Name / TA badge / This-month $ / Total $ / Activated ✅. "Activated" = `classroom_roster.enrolled_at != null` (set by `/login/enroll`). Strict definition; students who chatted via the older Telegram + email-PIN flow re-activate by signing in via the new passcode flow. | `3a210ae`, `4869147`, `27c0efd`, `983a90a`, `6ed2459` |
+| **Trace panel rework.** Each user submit starts a new turn group with timestamp header + live-updating totals footer (turn-aggregate of in/out/cached/cost). Disclosure triangles on tool entries now visibly indicate clickable expansion. | `e92a928`, `787ae67` |
+| **Caroline Yaman provisioned as `ta_01`** via class-skeleton (`cyaman@clemson.edu`). First TA on the roster. | (provisioned at this commit's run time) |
+| **`apikey` backport** from classroom-x7-provider-auth → main. Codex CLI's `auth.json` schema uses `'apikey'`, not `'api_key'`. | `b99d47c` |
+| **Trunk admintools rehydration.** `b938228` had extracted too much: `models.ts` imports survived but their helpers (`model-discovery`, `model-switch`, `model-providers/*`) moved to admintools-only. A fresh `git clone` of main wouldn't build. Hoisted the helpers back to trunk; admintools now only ships the Telegram-command surface. | `e3c8613` |
+| **`origin/classroom` modernization (path-a).** 616 commits of drift wiped with a "main wins" merge + 12 classroom-skill-managed files restored + API-surface refactors for current trunk (googleapis → @googleapis/drive; inline classroom-specific config consts that Phase 11.3 stripped from trunk). | `bfa1175` on `origin/classroom` + `1819c3b` on `main` |
+| **CI: nightly long-lived-branch sync.** `.github/workflows/sync-long-lived-branches.yml` runs daily; conflict-free fast-forwards push, conflicts open issues with the path-(a) recipe. | `4ae748e` |
+
+**Live verification.** Student OAuth confirmed end-to-end —
+`data/student-provider-creds/class_student_01/codex.json` written with
+`active: 'oauth'`, `oauth.account: 'tonkin@clemson.edu'`, refresh-token
+intact. Per-request credential proxy hook resolves to the student's
+OAuth token. The "use my own credentials" path students will follow
+is the same one this test exercised.
+
+**Open follow-ups (not blocking the phase).**
+- *Trace disclosure for model_call / agent_call.* Today's trace UI
+  added disclosure for tool calls (which carry rich payload) and
+  direct calls (full prompt+response client-side). model_call and
+  agent_call still show one-line summaries; making them disclosable
+  requires the agent-runner's provider modules to emit prompt+response
+  in the ProviderEvent. Plan: [`trace-call-disclosure.md`](./trace-call-disclosure.md).
+- *Phase 14 GCP step.* Still operator-blocked. 5-min GCP Console
+  click-through (redirect URI + test users + scopes). Gates the
+  Google "Connect" card on student Home.
+- *Deprecate `/add-classroom-auth`.* Old Codex-only magic-link
+  auth.json upload, superseded by `/add-classroom-provider-auth`. Mark
+  its `SKILL.md` description with a deprecation pointer (5 min).
+- *Three long-lived branches still drift* (providers 737, admin 273,
+  gws-mcp 210 commits behind main). Sync action runs nightly; first
+  fire will file 3 conflict issues. Apply path-(a) treatment when
+  each one next needs an update.
+- *Trunk vs. X.7-install state asymmetry.* During today's churn, main's
+  `home.js` accumulated the X.7 install state (the "Providers card"
+  section, `renderProvidersCard` impl, etc.). Strictly violates the
+  "X.7 stays skill-installable" rule but in practice trunk-with-X.7
+  is the deployed reality. Document or revert in a follow-up commit.
+
 ## Phase 1 — shared-classroom MVP
 
 **Goal.** A class can deploy with: one Google Workspace OAuth
