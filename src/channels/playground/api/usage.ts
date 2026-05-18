@@ -172,13 +172,18 @@ export function handleGetUsage(folder: string, providers?: string[]): ApiResult<
  */
 export function handleGetStudentsUsage(
   providers?: string[],
-): ApiResult<{ students: (UsageResponse & { agentGroupId: string; enrolled: boolean })[] }> {
+): ApiResult<{ students: (UsageResponse & { agentGroupId: string; enrolled: boolean; role: 'student' | 'ta' })[] }> {
   // Source of truth for "who's in the class" is class-config.json's
-  // students[] array. That gives us every student, including those who
-  // haven't signed in yet (zero-usage rows). Enrolled status comes from
-  // classroom_roster.enrolled_at (set on first sign-in via /login/enroll).
+  // students[] + tas[] arrays. Walks both — instructor-side we don't
+  // bother showing instructors (instructor knows who they are).
+  // Enrolled status comes from classroom_roster.enrolled_at (set on first
+  // sign-in via /login/enroll) OR from non-zero historical usage (for
+  // students who chatted via older flows before enrolled_at existed).
   const classCfg = readClassConfig();
-  const rosterStudents = classCfg?.students ?? [];
+  const rosterStudents: { name: string; folder: string; role: 'student' | 'ta' }[] = [
+    ...(classCfg?.students ?? []).map((s) => ({ ...s, role: 'student' as const })),
+    ...(classCfg?.tas ?? []).map((s) => ({ ...s, role: 'ta' as const })),
+  ];
 
   const allow = providers && providers.length > 0 ? new Set(providers) : null;
   function filterBucket(b: UsageBucket): UsageBucket {
@@ -216,6 +221,7 @@ export function handleGetStudentsUsage(
         thisMonth: emptyBucket(),
         total: emptyBucket(),
         enrolled,
+        role: cfgStudent.role,
       });
       continue;
     }
@@ -228,6 +234,7 @@ export function handleGetStudentsUsage(
       thisMonth: filterBucket(usage.thisMonth),
       total: filterBucket(usage.total),
       enrolled,
+      role: cfgStudent.role,
     });
   }
   students.sort((a, b) => a.agentGroup.folder.localeCompare(b.agentGroup.folder));

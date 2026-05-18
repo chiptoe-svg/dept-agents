@@ -166,6 +166,7 @@ async function renderStudentsRosterCard(body) {
         (s) => `
           <tr>
             <td>${escapeHtml(s.agentGroup.name || '?')}</td>
+            <td class="centered">${s.role === 'ta' ? '<span class="role-ta" title="Teaching Assistant">TA</span>' : ''}</td>
             <td class="num">${fmtUsd(s.thisMonth.costUsd)}</td>
             <td class="num">${fmtUsd(s.total.costUsd)}</td>
             <td class="centered">${s.enrolled ? '<span class="roster-enrolled" title="Has signed in">✅</span>' : '<span class="roster-not-enrolled" title="Not yet signed in">⚪</span>'}</td>
@@ -175,10 +176,10 @@ async function renderStudentsRosterCard(body) {
     const enrolledCount = data.students.filter((s) => s.enrolled).length;
     body.innerHTML = `
       <table class="roster-table">
-        <thead><tr><th>Name</th><th class="num">This month</th><th class="num">Total $</th><th class="centered">Activated</th></tr></thead>
+        <thead><tr><th>Name</th><th class="centered">TA</th><th class="num">This month</th><th class="num">Total $</th><th class="centered">Activated</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p class="muted small">${enrolledCount} of ${data.students.length} students have activated their account. Cost computed from token counts × per-model rate.</p>
+      <p class="muted small">${enrolledCount} of ${data.students.length} have activated their account. Cost computed from token counts × per-model rate.</p>
     `;
   } catch (err) {
     body.innerHTML = `<p class="muted">Couldn't load roster: ${escapeHtml(String(err))}</p>`;
