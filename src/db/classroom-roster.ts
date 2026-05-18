@@ -16,6 +16,13 @@ export interface ClassroomRosterEntry {
   user_id: string; // e.g. 'class:student_03'
   agent_group_id: string | null;
   added_at: number; // ms since epoch
+  // Set by markEnrolled() on the student's first successful sign-in via
+  // /login/enroll. Null until that happens. Optional because most query
+  // helpers SELECT only the four base columns; only lookupRosterByUserId
+  // pulls the enrollment columns. Used by the Roster card to show
+  // ✅ vs ⚪ for "has signed in yet?".
+  enrolled_at?: string | null;
+  enrollment_session_id?: string | null;
 }
 
 function normalizeEmail(email: string): string {
@@ -72,11 +79,26 @@ export function removeRosterEntry(email: string): boolean {
  */
 export function lookupRosterByUserId(userId: string): ClassroomRosterEntry | null {
   const row = getDb()
-    .prepare('SELECT email, user_id, agent_group_id, added_at FROM classroom_roster WHERE user_id = ?')
+    .prepare(
+      'SELECT email, user_id, agent_group_id, added_at, enrolled_at, enrollment_session_id FROM classroom_roster WHERE user_id = ?',
+    )
     .get(userId) as ClassroomRosterEntry | undefined;
   return row ?? null;
 }
 
+/**
+ * Look up a roster entry by its bound agent_group_id. Used by the
+ * classroom provider resolver to map a container's agentGroupId back
+ * to the student's canonical user_id. Returns null when no row binds
+ * this agent_group_id (solo-install path — caller treats as "not in
+ * classroom" and falls through to host .env creds).
+ */
+export function lookupRosterByAgentGroupId(agentGroupId: string): ClassroomRosterEntry | null {
+  const row = getDb()
+    .prepare('SELECT email, user_id, agent_group_id, added_at FROM classroom_roster WHERE agent_group_id = ? LIMIT 1')
+    .get(agentGroupId) as ClassroomRosterEntry | undefined;
+  return row ?? null;
+}
 
 // ── class-enrollment-passcode:roster-helpers START ────────────────────────
 
@@ -117,12 +139,11 @@ export function resetEnrollment(email: string): boolean {
 
 /** Returns true if the roster row for this email has been claimed. */
 export function isEnrolled(email: string): boolean {
-  const row = getDb()
-    .prepare('SELECT enrolled_at FROM classroom_roster WHERE email = ?')
-    .get(normalizeEmail(email)) as { enrolled_at: string | null } | undefined;
+  const row = getDb().prepare('SELECT enrolled_at FROM classroom_roster WHERE email = ?').get(normalizeEmail(email)) as
+    | { enrolled_at: string | null }
+    | undefined;
   if (!row) return false;
   return row.enrolled_at !== null;
 }
-
 
 // ── class-enrollment-passcode:roster-helpers END ──────────────────────────
