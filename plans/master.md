@@ -130,6 +130,30 @@ intact. Per-request credential proxy hook resolves to the student's
 OAuth token. The "use my own credentials" path students will follow
 is the same one this test exercised.
 
+**Architecture decision to revisit (not blocking).**
+
+Today's churn surfaced that this fork's trunk has accumulated a lot
+of classroom-specific code (X.7 Providers card, Phase 14 Google
+integration, enrollment passcode, Roster card, email+passcode login,
+class-skeleton, classroom_roster) — some by design, some by today's
+commit-pattern accidents. CLAUDE.md rule 5 says "trunk should be
+infrastructure every install needs, not features any subset uses,"
+but in practice this fork only ever deploys as a classroom-product.
+
+Three options when ready to clean up: (A) strict rule-5 split, pull
+classroom out of trunk back to branches; (B) declare this fork's
+trunk = classroom-ready Codex-pool, retire `origin/classroom*` branches,
+make skills layer ONLY truly-optional things; (C) hybrid — slim
+classroom path stays in trunk, X.7/Phase14-style advanced layers stay
+skill-installable for upstream-portability.
+
+Decision deferred. For now: trunk-with-classroom-stuff is the deployed
+reality; living with it. Revisit when one of:
+- Upstream `qwibitai/nanoclaw` wants to merge something from this fork
+- A second classroom install diverges enough to need real separation
+- The "X.7 install skill but X.7 also in trunk" duplication causes a real
+  sync bug
+
 **Open follow-ups (not blocking the phase).**
 - *Trace disclosure for model_call / agent_call.* Today's trace UI
   added disclosure for tool calls (which carry rich payload) and
