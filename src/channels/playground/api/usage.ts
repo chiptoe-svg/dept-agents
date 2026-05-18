@@ -206,7 +206,7 @@ export function handleGetStudentsUsage(
     costUsd: 0,
   });
 
-  const students: (UsageResponse & { agentGroupId: string; enrolled: boolean })[] = [];
+  const students: (UsageResponse & { agentGroupId: string; enrolled: boolean; role: 'student' | 'ta' })[] = [];
   for (const cfgStudent of rosterStudents) {
     const group = getAgentGroupByFolder(cfgStudent.folder);
     const rosterRow = lookupRosterByUserId(`class:${cfgStudent.folder}`);
