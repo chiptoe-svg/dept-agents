@@ -485,6 +485,7 @@ details[open] > .trace-summary::before { transform: rotate(90deg); }
   font-style: italic;
   padding: 4px 8px;
   text-align: right;
+  white-space: pre-line;
 }
 .trace-preview {
   color: #777;

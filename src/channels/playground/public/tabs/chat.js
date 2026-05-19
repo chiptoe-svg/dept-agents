@@ -487,29 +487,46 @@ function finalizeTurn(turnEl) {
   if (!turnEl) return;
   const foot = turnEl.querySelector('.trace-turn-foot');
   if (!foot) return;
-  // model_call entries are PER-CALL deltas; agent_call (when present) is the
-  // turn CUMULATIVE total (codex's tokenUsage.total). Summing both
-  // double-counts the deltas — they're already included in the total.
-  // Preferred source of truth: agent_call if present, else sum of model_calls.
+  // Codex's `tokenUsage.total` (which we surface as agent_call) is the
+  // THREAD CUMULATIVE total — every call codex has ever made on this
+  // thread since it started, not the current turn's cost. Per-turn cost
+  // is the sum of model_call deltas within this turn.
+  //
+  // For claude (single API call per user turn), no per-call model_call
+  // events fire — the agent_call IS the turn. Detect that case and fall
+  // back to agent_call's tokens.
+  const modelCalls = turnEl.querySelectorAll('.trace-model-call');
   const agentCall = turnEl.querySelector('.trace-agent-call');
   let tokensIn = 0, tokensOut = 0, tokensCached = 0, tokensReasoning = 0, cost = 0;
-  if (agentCall) {
-    tokensIn  = parseFloat(agentCall.dataset.tokensIn  || '0') || 0;
-    tokensOut = parseFloat(agentCall.dataset.tokensOut || '0') || 0;
-    cost      = parseFloat(agentCall.dataset.cost      || '0') || 0;
-    // agent_call doesn't carry cached/reasoning today (codex result event
-    // only forwards input+output); pull those from sibling model_calls.
-    for (const li of turnEl.querySelectorAll('.trace-model-call')) {
-      tokensCached    += parseFloat(li.dataset.tokensCached    || '0') || 0;
-      tokensReasoning += parseFloat(li.dataset.tokensReasoning || '0') || 0;
-    }
-  } else {
-    for (const li of turnEl.querySelectorAll('[data-tokens-in], [data-tokens-out], [data-cost]')) {
+  let threadCumulative = null;
+  if (modelCalls.length > 0) {
+    // Codex-style turn — sum the per-call deltas.
+    for (const li of modelCalls) {
       tokensIn       += parseFloat(li.dataset.tokensIn       || '0') || 0;
       tokensOut      += parseFloat(li.dataset.tokensOut      || '0') || 0;
       tokensCached   += parseFloat(li.dataset.tokensCached   || '0') || 0;
       tokensReasoning += parseFloat(li.dataset.tokensReasoning || '0') || 0;
       cost           += parseFloat(li.dataset.cost           || '0') || 0;
+    }
+    // Surface the thread-cumulative number too, so heavy threads have
+    // visible context for instructors planning class budgets.
+    if (agentCall) {
+      const tIn  = parseFloat(agentCall.dataset.tokensIn  || '0') || 0;
+      const tOut = parseFloat(agentCall.dataset.tokensOut || '0') || 0;
+      const tCost = parseFloat(agentCall.dataset.cost     || '0') || 0;
+      if (tIn > 0 || tOut > 0 || tCost > 0) {
+        threadCumulative = { tIn, tOut, tCost };
+      }
+    }
+  } else if (agentCall) {
+    // Claude-style turn — agent_call IS the turn (single API call).
+    tokensIn  = parseFloat(agentCall.dataset.tokensIn  || '0') || 0;
+    tokensOut = parseFloat(agentCall.dataset.tokensOut || '0') || 0;
+    cost      = parseFloat(agentCall.dataset.cost      || '0') || 0;
+  } else {
+    // Neither — non-LLM events only (tool calls without a model summary).
+    for (const li of turnEl.querySelectorAll('[data-cost]')) {
+      cost += parseFloat(li.dataset.cost || '0') || 0;
     }
   }
   if (tokensIn === 0 && tokensOut === 0 && cost === 0) {
@@ -519,9 +536,24 @@ function finalizeTurn(turnEl) {
   const parts = [];
   if (tokensIn > 0) parts.push(`${tokensIn} in`);
   if (tokensCached > 0) parts.push(`${tokensCached} cached`);
+  if (tokensReasoning > 0) parts.push(`${tokensReasoning} reasoning`);
   if (tokensOut > 0) parts.push(`${tokensOut} out`);
   if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
-  foot.textContent = `turn total: ${parts.join(' · ')}`;
+  let footText = `turn total: ${parts.join(' · ')}`;
+  if (threadCumulative) {
+    const tcParts = [];
+    if (threadCumulative.tIn > 0) tcParts.push(`${threadCumulative.tIn} in`);
+    if (threadCumulative.tOut > 0) tcParts.push(`${threadCumulative.tOut} out`);
+    if (threadCumulative.tCost > 0) {
+      tcParts.push(
+        threadCumulative.tCost < 0.001
+          ? `$${threadCumulative.tCost.toFixed(5)}`
+          : `$${threadCumulative.tCost.toFixed(4)}`,
+      );
+    }
+    if (tcParts.length > 0) footText += `\nthread cumulative: ${tcParts.join(' · ')}`;
+  }
+  foot.textContent = footText;
 }
 
 /**
