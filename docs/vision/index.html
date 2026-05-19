@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoClaw Classroom — Vision & Roadmap</title>
+<meta name="description" content="NanoClaw Classroom is a small platform for teaching with AI agents. This document covers what's built, what's coming, and how it integrates with classroom instruction.">
+<link rel="icon" type="image/png" href="../../src/channels/playground/public/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --brand-blue: #4a90e2;
+    --brand-blue-hover: #357abd;
+    --brand-teal: #2bb7ce;
+    --brand-teal-soft: #e8f6f8;
+    --brand-teal-deep: #1e8a9d;
+    --brand-navy: #2a2545;
+    --brand-orange: #d97757;
+    --bg: #f5f3ee;
+    --bg-warm: #efece3;
+    --surface: #ffffff;
+    --surface-alt: #f9f7f1;
+    --border: #d8d2c5;
+    --border-strong: #b9b09c;
+    --text: #1d1a2e;
+    --text-muted: #6b6479;
+    --text-faint: #998fa3;
+    --danger: #c8482a;
+    --shipped: #4a8a3c;
+    --shipped-soft: rgba(74, 138, 60, 0.10);
+    --planned: #b88a2c;
+    --planned-soft: rgba(184, 138, 44, 0.13);
+    --future: #836798;
+    --future-soft: rgba(131, 103, 152, 0.12);
+    --code-bg: #faf7ee;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 12% 18%, rgba(43, 183, 206, 0.04) 0, transparent 38%),
+      radial-gradient(circle at 88% 82%, rgba(74, 144, 226, 0.04) 0, transparent 42%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  main { position: relative; z-index: 1; }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  /* ─── Type ──────────────────────────────────────────────────────── */
+  .display, h1, h2, h3 {
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    color: var(--brand-navy);
+    font-variation-settings: "SOFT" 30, "WONK" 0, "opsz" 80;
+  }
+  h1 { font-size: clamp(54px, 7vw, 92px); margin: 0 0 0.1em; font-weight: 400; }
+  h2 {
+    font-size: clamp(34px, 4vw, 50px);
+    margin: 1.3em 0 0.5em;
+    font-weight: 500;
+    font-variation-settings: "SOFT" 30, "opsz" 60;
+  }
+  h3 {
+    font-size: 22px;
+    margin: 1.6em 0 0.4em;
+    letter-spacing: -0.005em;
+    font-variation-settings: "SOFT" 30, "opsz" 30;
+  }
+  h4 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin: 1.4em 0 0.5em;
+  }
+  p { margin: 0 0 1em; max-width: 70ch; }
+  .lede {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 21px;
+    line-height: 1.5;
+    font-weight: 350;
+    color: var(--text);
+    max-width: 32em;
+    font-variation-settings: "opsz" 40, "SOFT" 30;
+  }
+  strong { font-weight: 600; color: var(--brand-navy); }
+  em { font-style: italic; }
+  code, .mono {
+    font-family: "IBM Plex Mono", "Monaco", monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    color: var(--brand-teal-deep);
+  }
+  a { color: var(--brand-blue); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+  /* ─── Hero ──────────────────────────────────────────────────────── */
+  .hero {
+    padding: 84px 0 36px;
+    border-bottom: 1px solid var(--border);
+    background:
+      radial-gradient(ellipse at top right, rgba(43, 183, 206, 0.10) 0, transparent 55%),
+      radial-gradient(ellipse at bottom left, rgba(217, 119, 87, 0.06) 0, transparent 50%);
+  }
+  .hero-meta {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 32px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+  .hero-meta .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--brand-teal);
+  }
+  .hero-tag {
+    display: inline-block;
+    font-family: "Fraunces", Georgia, serif;
+    font-style: italic;
+    font-weight: 350;
+    font-size: 22px;
+    color: var(--brand-teal-deep);
+    margin-top: 8px;
+    margin-bottom: 28px;
+  }
+  .hero p.lede { margin-top: 22px; }
+  .toc {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px 24px;
+    margin-top: 56px;
+    padding-top: 28px;
+    border-top: 1px dashed var(--border-strong);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+  }
+  .toc a {
+    display: block;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 4px 0;
+    transition: color 120ms;
+  }
+  .toc a:hover { color: var(--brand-teal-deep); }
+  .toc a::before {
+    content: "→ ";
+    color: var(--brand-teal);
+    opacity: 0.5;
+  }
+
+  /* ─── Sections ───────────────────────────────────────────────────── */
+  section {
+    padding: 56px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section.tight { padding: 36px 0; }
+  .section-eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--brand-teal-deep);
+    margin: 0 0 8px;
+    font-weight: 500;
+  }
+
+  /* ─── Pull quote / callout ───────────────────────────────────────── */
+  .callout {
+    background: var(--brand-teal-soft);
+    border-left: 3px solid var(--brand-teal);
+    padding: 22px 28px;
+    margin: 28px 0;
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 19px;
+    font-style: italic;
+    font-weight: 350;
+    color: var(--brand-navy);
+    max-width: 50em;
+    line-height: 1.45;
+    font-variation-settings: "opsz" 40, "SOFT" 50;
+  }
+  .callout p { margin: 0; max-width: none; }
+  .callout cite {
+    display: block;
+    margin-top: 12px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--text-muted);
+    font-style: normal;
+  }
+
+  /* ─── Architecture diagram ───────────────────────────────────────── */
+  .arch-stack {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 0 32px;
+    margin: 36px 0;
+  }
+  .arch-axis {
+    position: relative;
+    border-right: 2px solid var(--border-strong);
+  }
+  .arch-axis-label {
+    position: absolute;
+    top: 50%;
+    transform: rotate(-90deg) translateX(50%);
+    transform-origin: right top;
+    right: 16px;
+    white-space: nowrap;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--text-muted);
+  }
+  .arch-layers {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .arch-layer {
+    padding: 18px 24px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 200px 1fr auto;
+    align-items: center;
+    gap: 16px;
+  }
+  .arch-layer-name {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--brand-navy);
+    font-variation-settings: "opsz" 30, "SOFT" 30;
+  }
+  .arch-layer-desc {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .arch-layer-badge {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .arch-layer.trunk { border-color: var(--brand-teal); background: var(--brand-teal-soft); }
+  .arch-layer.trunk .arch-layer-badge { background: var(--brand-teal); color: white; border-color: transparent; }
+  .arch-layer.skills { border-style: dashed; border-color: var(--brand-orange); }
+  .arch-layer.skills .arch-layer-badge { color: var(--brand-orange); border-color: var(--brand-orange); background: white; }
+
+  /* ─── Phase timeline ─────────────────────────────────────────────── */
+  .phases {
+    margin: 40px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .phase {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 28px;
+    padding-bottom: 28px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .phase:last-child { border-bottom: none; }
+  .phase-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    padding-top: 4px;
+  }
+  .phase-id {
+    display: block;
+    font-size: 22px;
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: -0.005em;
+    color: var(--brand-navy);
+    margin-bottom: 4px;
+    font-variation-settings: "opsz" 30;
+  }
+  .phase-status {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 9px;
+    margin-top: 6px;
+  }
+  .phase-status.shipped { background: var(--shipped-soft); color: var(--shipped); }
+  .phase-status.planned { background: var(--planned-soft); color: var(--planned); }
+  .phase-status.future { background: var(--future-soft); color: var(--future); }
+  .phase-title {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--brand-navy);
+    margin: 0 0 8px;
+    font-variation-settings: "opsz" 30, "SOFT" 30;
+  }
+  .phase-body {
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1.55;
+    max-width: 56em;
+    margin-bottom: 12px;
+  }
+  .phase-body strong { color: var(--text); font-weight: 500; }
+
+  /* Item-level checks */
+  .checks {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 5px 22px;
+  }
+  .checks li {
+    font-size: 13px;
+    line-height: 1.45;
+    padding-left: 22px;
+    position: relative;
+    color: var(--text);
+  }
+  .checks li::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    width: 18px;
+    text-align: left;
+  }
+  .checks li.done::before { content: "✓"; color: var(--shipped); font-weight: 600; }
+  .checks li.todo::before { content: "○"; color: var(--planned); }
+  .checks li.future::before { content: "◇"; color: var(--future); }
+  .checks li .when {
+    color: var(--text-faint);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    margin-left: 6px;
+  }
+  .checks li .day-tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    font-size: 9px;
+    background: var(--brand-orange);
+    color: white;
+    border-radius: 3px;
+    font-family: "IBM Plex Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* ─── Tab gallery ────────────────────────────────────────────────── */
+  .tab-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 24px;
+    margin: 36px 0;
+  }
+  .tab-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .tab-card.coming { border-style: dashed; border-color: var(--brand-orange); background: linear-gradient(180deg, #fff 0%, #fdfaf3 100%); }
+  .tab-meta {
+    padding: 14px 18px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .tab-name {
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--brand-navy);
+    font-variation-settings: "opsz" 30, "SOFT" 30;
+  }
+  .tab-tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+  }
+  .tab-tag.live { color: var(--shipped); }
+  .tab-tag.future { color: var(--brand-orange); }
+  .tab-summary {
+    padding: 4px 18px 14px;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .tab-mockup {
+    background: var(--bg-warm);
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    flex: 1;
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mk-topbar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .mk-tab {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 3px 7px;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-faint);
+  }
+  .mk-tab.active { background: var(--brand-blue); color: white; }
+  .mk-body { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .mk-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 10px 12px;
+    font-size: 11px;
+    color: var(--text);
+  }
+  .mk-card-head {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .mk-bar {
+    height: 10px;
+    background: var(--bg);
+    border-radius: 2px;
+    margin: 4px 0;
+  }
+  .mk-bar.filled { background: var(--brand-blue); }
+  .mk-bar.filled-teal { background: var(--brand-teal); }
+  .mk-bar.filled-orange { background: var(--brand-orange); }
+  .mk-row { display: flex; gap: 8px; align-items: center; font-size: 10px; }
+  .mk-row-name { flex: 1; color: var(--text); }
+  .mk-row-value { font-family: "IBM Plex Mono", monospace; color: var(--text-muted); }
+  .mk-msg {
+    background: var(--surface);
+    border-radius: 8px 8px 8px 2px;
+    padding: 8px 12px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text);
+    border: 1px solid var(--border);
+    max-width: 78%;
+  }
+  .mk-msg.user { background: var(--brand-blue); color: white; border-color: var(--brand-blue); border-radius: 8px 8px 2px 8px; align-self: flex-end; }
+  .mk-trace {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+  .mk-trace .label { color: var(--brand-teal-deep); }
+  .mk-trace .cost { color: var(--brand-orange); }
+  .mk-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .mk-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .mk-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .mk-chip.on { background: var(--brand-teal-soft); border-color: var(--brand-teal); color: var(--brand-teal-deep); }
+
+  /* bench heat-map */
+  .mk-heat {
+    display: grid;
+    grid-template-columns: 70px repeat(5, 1fr) 50px;
+    gap: 2px;
+    font-size: 8px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .mk-heat-h { color: var(--text-muted); text-align: center; padding: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .mk-heat-r { padding: 4px 6px; color: var(--text-muted); font-size: 8px; }
+  .mk-heat-cell {
+    text-align: center;
+    padding: 4px 0;
+    color: white;
+    font-weight: 500;
+    font-size: 8px;
+  }
+  .mk-heat-ctx { font-size: 8px; color: var(--text-faint); text-align: center; padding: 4px 0; }
+  .heat-1 { background: #d8e8f5; color: var(--brand-navy); }
+  .heat-2 { background: #98c1e2; color: white; }
+  .heat-3 { background: #4a90e2; color: white; }
+  .heat-4 { background: #d97757; color: white; }
+  .heat-5 { background: #c8482a; color: white; }
+  .heat-na { background: var(--bg); color: var(--text-faint); }
+
+  /* ─── Data table ─────────────────────────────────────────────────── */
+  .tab-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 28px 0;
+    font-size: 14px;
+  }
+  .tab-table th, .tab-table td {
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .tab-table th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+    font-weight: 500;
+    border-bottom: 2px solid var(--border-strong);
+    background: var(--surface-alt);
+  }
+  .tab-table td .row-tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    margin-right: 6px;
+    color: var(--text-muted);
+  }
+
+  /* ─── Cards grid ─────────────────────────────────────────────────── */
+  .grid-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    margin: 28px 0;
+  }
+  .gcard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 22px;
+  }
+  .gcard h4 { margin-top: 0; }
+  .gcard p { font-size: 14px; color: var(--text-muted); line-height: 1.55; margin-bottom: 0; }
+  .gcard.accent { background: var(--brand-teal-soft); border-color: var(--brand-teal); }
+  .gcard.accent h4 { color: var(--brand-teal-deep); }
+
+  /* ─── Inline aside ───────────────────────────────────────────────── */
+  .inline-aside {
+    background: var(--surface-alt);
+    border-left: 3px solid var(--border-strong);
+    padding: 16px 22px;
+    margin: 20px 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.55;
+  }
+  .inline-aside strong { color: var(--text); }
+
+  /* ─── Footer ─────────────────────────────────────────────────────── */
+  footer {
+    padding: 56px 0 72px;
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    font-family: "IBM Plex Mono", monospace;
+    letter-spacing: 0.05em;
+  }
+  footer .sig {
+    margin-top: 18px;
+    font-style: normal;
+    color: var(--text-faint);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /* responsive */
+  @media (max-width: 720px) {
+    .container { padding: 0 22px; }
+    .hero { padding: 56px 0 28px; }
+    h1 { font-size: 44px; }
+    h2 { font-size: 28px; }
+    .arch-stack { grid-template-columns: 1fr; }
+    .arch-axis { display: none; }
+    .arch-layer { grid-template-columns: 1fr; }
+    .phase { grid-template-columns: 1fr; gap: 6px; }
+    .tab-gallery { grid-template-columns: 1fr; }
+    .checks { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header class="hero">
+  <div class="container">
+    <div class="hero-meta">
+      <span class="dot"></span>
+      <span>Vision Document</span>
+      <span style="opacity:0.4">·</span>
+      <span>v1.0 · 2026-05-19</span>
+      <span style="opacity:0.4">·</span>
+      <span>Chip Tonkin · Clemson University</span>
+    </div>
+    <h1>NanoClaw<br>Classroom.</h1>
+    <div class="hero-tag">A small platform for teaching with agents.</div>
+    <p class="lede">
+      An instructor runs a real class — one Telegram bot, ten students, a handful of TAs.
+      Each student has their own AI agent: separate workspace, separate credentials, isolated
+      container. The instructor watches costs in real time, swaps providers when one acts up,
+      and ships changes without reading vendor SDK release notes. The classroom keeps running.
+    </p>
+    <nav class="toc" aria-label="Sections">
+      <a href="#what">What it is</a>
+      <a href="#philosophy">Architecture</a>
+      <a href="#today">The playground today</a>
+      <a href="#tomorrow">Tabs coming next</a>
+      <a href="#classroom">Using it in a classroom</a>
+      <a href="#timeline">Phase timeline</a>
+      <a href="#economics">Cost economics</a>
+      <a href="#next">Open questions</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ─── WHAT IT IS ─────────────────────────────────────────────────── -->
+<section id="what">
+  <div class="container">
+    <p class="section-eyebrow">Section 01 — Premise</p>
+    <h2>What this is, and what it isn't.</h2>
+    <p>
+      NanoClaw started as a personal agent host — one user, one bot, one conversation. It evolved
+      into a multi-tenant classroom platform because the same architecture that gives one person
+      a working agent gives <em>thirty</em> people their own working agents with negligible
+      additional code. Most of that scaling was free: per-session containers, two-DB session split,
+      channel adapters, credential proxy. The interesting work is in <strong>what an instructor
+      needs that a single-user agent harness doesn't provide</strong> — roster, login flow,
+      cost tracking per student, agent provisioning at scale, the ability to retract a misbehaving
+      agent without rebooting the room.
+    </p>
+    <p>
+      This is a document about <em>that</em> system: where it is, where it's going, and the
+      design philosophy that keeps it from collapsing under feature creep.
+    </p>
+
+    <div class="callout">
+      <p>
+        Three constraints define the rest of the document: the classroom is real (Clemson, fall
+        cohort, twelve students plus TAs), the budget is meaningful (subscription tiers preferred
+        over metered API), and the architecture must survive the instructor wanting to add Discord
+        office hours next semester without rewriting.
+      </p>
+      <cite>— Design brief, 2026-05-19</cite>
+    </div>
+  </div>
+</section>
+
+<!-- ─── PHILOSOPHY / ARCHITECTURE ──────────────────────────────────── -->
+<section id="philosophy">
+  <div class="container">
+    <p class="section-eyebrow">Section 02 — Architectural philosophy</p>
+    <h2>Small trunk. Skills install everything else.</h2>
+    <p>
+      Every NanoClaw install gets the same trunk: a Node host that routes messages, a credential
+      proxy that keeps real keys out of containers, a per-session container runtime, an entity
+      model that ties users to messaging groups to agent groups to sessions. <strong>Trunk is
+      infrastructure every install needs.</strong> Anything optional — channels, providers,
+      classroom features, Google Workspace integration — lives on a long-lived branch and gets
+      copied in by an install skill.
+    </p>
+
+    <div class="arch-stack">
+      <div class="arch-axis"><span class="arch-axis-label">platform · agent · ui</span></div>
+      <div class="arch-layers">
+        <div class="arch-layer trunk">
+          <div class="arch-layer-name">Channel adapters</div>
+          <div class="arch-layer-desc">Telegram, playground (web), Discord, Slack, WhatsApp, iMessage, Teams, Resend, Matrix, gChat, GitHub, Linear, Webex, Signal, DeltaChat, WeChat. Each is a skill install.</div>
+          <div class="arch-layer-badge">trunk + skills</div>
+        </div>
+        <div class="arch-layer trunk">
+          <div class="arch-layer-name">Router · entity model</div>
+          <div class="arch-layer-desc">Users → messaging groups → agent groups → sessions. Per-channel adapters land messages here. <code>&lt;message to=&quot;name&quot;&gt;</code> routes across agent groups.</div>
+          <div class="arch-layer-badge">trunk</div>
+        </div>
+        <div class="arch-layer trunk">
+          <div class="arch-layer-name">Credential proxy</div>
+          <div class="arch-layer-desc">Real keys live on host. Containers send placeholder credentials; proxy substitutes per-request. Multi-provider: Anthropic, OpenAI, Google Workspace, local MLX.</div>
+          <div class="arch-layer-badge">trunk</div>
+        </div>
+        <div class="arch-layer trunk">
+          <div class="arch-layer-name">Per-session container</div>
+          <div class="arch-layer-desc">Apple Container (or Docker). Two-DB session split: <code>inbound.db</code> + <code>outbound.db</code>. One agent-runner instance per student session.</div>
+          <div class="arch-layer-badge">trunk</div>
+        </div>
+        <div class="arch-layer trunk">
+          <div class="arch-layer-name">Agent providers</div>
+          <div class="arch-layer-desc">Claude Agent SDK · Codex app-server · OpenCode · Ollama · local MLX. Vendor SDK boundary lives here; the upper layers don't care which provider is active.</div>
+          <div class="arch-layer-badge">trunk + branches</div>
+        </div>
+        <div class="arch-layer skills">
+          <div class="arch-layer-name">Classroom features</div>
+          <div class="arch-layer-desc">Roster, login passcode, magic-link enrollment, per-student Google folders, per-student LLM auth, instructor home dashboard. <code>/add-classroom</code>, <code>/add-classroom-gws</code>, <code>/add-classroom-provider-auth</code>.</div>
+          <div class="arch-layer-badge">skill installs</div>
+        </div>
+        <div class="arch-layer skills">
+          <div class="arch-layer-name">Workspace integrations</div>
+          <div class="arch-layer-desc">Google Drive Docs / Sheets / Slides / Calendar / Gmail via MCP relay. Bedrock-style ownership tag for shared-classroom mode. <code>/add-gws-tool</code>.</div>
+          <div class="arch-layer-badge">skill installs</div>
+        </div>
+        <div class="arch-layer skills">
+          <div class="arch-layer-name">Admin tooling</div>
+          <div class="arch-layer-desc">Telegram-driven <code>/auth</code>, <code>/model</code>, <code>/provider</code> for live operator switching. Status bar, dashboard, install handoff.</div>
+          <div class="arch-layer-badge">skill installs</div>
+        </div>
+      </div>
+    </div>
+
+    <p>
+      The dashed-border layers can be added or removed without trunk modification. The teal-border
+      layers can't — they're load-bearing for every install. The contract between the two: skills
+      may append to trunk barrels and call trunk-registered hooks, but trunk doesn't know skills
+      exist. Net effect: the same trunk runs a one-person agent and a classroom of thirty.
+    </p>
+  </div>
+</section>
+
+<!-- ─── TODAY: THE PLAYGROUND TABS ─────────────────────────────────── -->
+<section id="today">
+  <div class="container">
+    <p class="section-eyebrow">Section 03 — The playground today</p>
+    <h2>Five tabs. One window. All built.</h2>
+    <p>
+      The Agent Playground is the instructor-and-student web UI. Each user — student, TA, or
+      instructor — lands on the same five-tab interface; what differs is the underlying agent
+      group their session attaches to and the dashboards they can see on Home. The schematics
+      below approximate the live layout as of 2026-05-19.
+    </p>
+
+    <div class="tab-gallery">
+
+      <!-- HOME -->
+      <div class="tab-card">
+        <div class="tab-meta">
+          <span class="tab-name">Home</span>
+          <span class="tab-tag live">● Live</span>
+        </div>
+        <p class="tab-summary">
+          Landing tab. Role-aware. Instructor sees roster card + class passcode + enrollment
+          counts. Students see Telegram + Google connect cards.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab active">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab">Persona</span>
+            <span class="mk-tab">Skills</span>
+            <span class="mk-tab">Models</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-card">
+              <div class="mk-card-head">Class passcode · daily rotation</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:24px; letter-spacing:0.4em; color:var(--brand-teal-deep); margin:8px 0 4px;">7341</div>
+              <div style="font-size:9px; color:var(--text-muted);">↻ rotate · ⤴ display fullscreen</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Roster · 12 students · 1 TA</div>
+              <div class="mk-row"><span class="mk-row-name">Chip Tonkin</span><span class="mk-row-value">$0.04 ✓</span></div>
+              <div class="mk-row"><span class="mk-row-name">Caroline Yaman <span style="color:var(--brand-orange); font-size:8px;">TA</span></span><span class="mk-row-value">$0.00 ✓</span></div>
+              <div class="mk-row"><span class="mk-row-name">Bobby Hiller</span><span class="mk-row-value">$0.08 ✓</span></div>
+              <div class="mk-row"><span class="mk-row-name">Susanna Hiller</span><span class="mk-row-value">$0.06 ✓</span></div>
+              <div class="mk-row"><span class="mk-row-name">John Doe</span><span class="mk-row-value">$0.00 ○</span></div>
+              <div class="mk-row" style="color:var(--text-faint);"><span class="mk-row-name">+8 more</span><span class="mk-row-value"></span></div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Providers · per-student</div>
+              <div class="mk-row"><span class="mk-row-name"><span class="mk-chip on">Anthropic</span></span><span class="mk-row-value">connect</span></div>
+              <div class="mk-row"><span class="mk-row-name"><span class="mk-chip on">OpenAI</span></span><span class="mk-row-value">connect</span></div>
+              <div class="mk-row"><span class="mk-row-name"><span class="mk-chip">Local</span></span><span class="mk-row-value">$0 / free</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHAT -->
+      <div class="tab-card">
+        <div class="tab-meta">
+          <span class="tab-name">Chat</span>
+          <span class="tab-tag live">● Live</span>
+        </div>
+        <p class="tab-summary">
+          Main interaction surface. Conversation on the left, real-time trace on the right.
+          Each turn shows tool calls, model calls, cached vs new tokens, and live cost.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab active">Chat</span>
+            <span class="mk-tab">Persona</span>
+            <span class="mk-tab">Skills</span>
+            <span class="mk-tab">Models</span>
+          </div>
+          <div class="mk-body" style="display:grid; grid-template-columns: 1.4fr 1fr; gap:6px;">
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <div class="mk-msg user">Plan a 30-min lesson on dictionaries</div>
+              <div class="mk-msg">Here's an outline:<br>1. What's a dict?<br>2. Keys and values<br>3. Iteration patterns…</div>
+              <div class="mk-msg user">Add a code example for each.</div>
+              <div class="mk-msg" style="opacity:0.6;">▾ streaming…</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div class="mk-trace">
+                <div><span class="label">turn 2 · 11:24 PM</span></div>
+                <div>▸ model_call</div>
+                <div>   17,048 in · 16,896 cached</div>
+                <div>   29 out · 8 reasoning</div>
+                <div>   <span class="cost">$0.0050</span></div>
+                <div style="margin-top:5px;"><span class="label">turn total</span></div>
+                <div>   <span class="cost">$0.0050</span></div>
+                <div style="color:var(--text-faint);">thread cumulative $0.17</div>
+              </div>
+              <div class="mk-trace">
+                <div><span class="label">codex/gpt-5.4 · effort:low</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PERSONA -->
+      <div class="tab-card">
+        <div class="tab-meta">
+          <span class="tab-name">Persona</span>
+          <span class="tab-tag live">● Live</span>
+        </div>
+        <p class="tab-summary">
+          The agent's <code>CLAUDE.local.md</code> — its long-lived personality and per-group
+          memory. Layered view shows global → role → per-student.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab active">Persona</span>
+            <span class="mk-tab">Skills</span>
+            <span class="mk-tab">Models</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-card">
+              <div class="mk-card-head">Layer 1 · Global instructions</div>
+              <div style="font-size:10px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;">read-only · inherited from /app/CLAUDE.md</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Layer 2 · Role · student persona</div>
+              <div style="font-size:10px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;">You are a friendly tutor. Quirk: include a dad joke per reply.</div>
+            </div>
+            <div class="mk-card" style="border-color: var(--brand-teal); background: var(--brand-teal-soft);">
+              <div class="mk-card-head" style="color:var(--brand-teal-deep);">Layer 3 · This agent · editable</div>
+              <div style="font-size:10px; font-family:'IBM Plex Mono',monospace;">Prefers concise answers.<br>Likes Python.<br>Working on the dictionary lesson plan.</div>
+              <div style="margin-top:8px; font-size:9px; color:var(--text-faint);">last edited 14 min ago · saved</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SKILLS -->
+      <div class="tab-card">
+        <div class="tab-meta">
+          <span class="tab-name">Skills</span>
+          <span class="tab-tag live">● Live</span>
+        </div>
+        <p class="tab-summary">
+          What the agent can do. Toggle skills (one-line description + Read on demand).
+          Container-installed skills appear here; install-skills appear elsewhere.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab">Persona</span>
+            <span class="mk-tab active">Skills</span>
+            <span class="mk-tab">Models</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-card">
+              <div class="mk-card-head">Enabled</div>
+              <div class="mk-row" style="margin-bottom:4px;"><span class="mk-row-name"><span class="mk-chip on">agent-browser</span></span><span class="mk-row-value">web fetch + screenshot</span></div>
+              <div class="mk-row" style="margin-bottom:4px;"><span class="mk-row-name"><span class="mk-chip on">wiki</span></span><span class="mk-row-value">persistent notes</span></div>
+              <div class="mk-row" style="margin-bottom:4px;"><span class="mk-row-name"><span class="mk-chip on">pdf-reader</span></span><span class="mk-row-value">parse PDF docs</span></div>
+              <div class="mk-row"><span class="mk-row-name"><span class="mk-chip on">welcome</span></span><span class="mk-row-value">onboarding flow</span></div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Available · not enabled</div>
+              <div class="mk-row" style="margin-bottom:4px;"><span class="mk-row-name"><span class="mk-chip">make-website</span></span><span class="mk-row-value">+ enable</span></div>
+              <div class="mk-row" style="margin-bottom:4px;"><span class="mk-row-name"><span class="mk-chip">karpathy-llm-wiki</span></span><span class="mk-row-value">+ enable</span></div>
+              <div class="mk-row"><span class="mk-row-name"><span class="mk-chip">slack-formatting</span></span><span class="mk-row-value">+ enable</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODELS -->
+      <div class="tab-card">
+        <div class="tab-meta">
+          <span class="tab-name">Models</span>
+          <span class="tab-tag live">● Live</span>
+        </div>
+        <p class="tab-summary">
+          Provider + model picker. Three providers (Anthropic, OpenAI, Local MLX), each with
+          discovered + curated models. Auto-fill metadata from HuggingFace for local.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab">Persona</span>
+            <span class="mk-tab">Skills</span>
+            <span class="mk-tab active">Models</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-grid-3" style="margin-bottom:6px;">
+              <div class="mk-chip on" style="text-align:center;">Anthropic</div>
+              <div class="mk-chip" style="text-align:center;">OpenAI</div>
+              <div class="mk-chip" style="text-align:center;">Local</div>
+            </div>
+            <div class="mk-card" style="border-color:var(--brand-blue); background:#eef5fc;">
+              <div class="mk-card-head" style="color:var(--brand-blue-hover);">claude-sonnet-4-6 · selected</div>
+              <div style="font-size:10px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;">$3 / $15 per M · cache 0.1× / 1.25×</div>
+              <div style="font-size:9px; color:var(--text-faint); margin-top:3px;">200k context · vision · reasoning</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">claude-haiku-4-5</div>
+              <div style="font-size:10px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;">$0.80 / $4 per M · cache 0.1× / 1.25×</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">claude-opus-4-7</div>
+              <div style="font-size:10px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;">$30 / $75 per M · cache 0.1× / 1.25×</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── TOMORROW: COMING TABS ──────────────────────────────────────── -->
+<section id="tomorrow">
+  <div class="container">
+    <p class="section-eyebrow">Section 04 — Tabs forthcoming</p>
+    <h2>Three new surfaces — Bench, RAG, Eval.</h2>
+    <p>
+      The shipped tabs cover authoring and operating <em>one</em> agent. The forthcoming tabs
+      cover <em>fleets</em> of agents — measuring them, teaching with them, evaluating them
+      against each other. Below are schematic mockups designed before implementation, to lock in
+      the visual language and the user's mental model.
+    </p>
+
+    <div class="tab-gallery">
+
+      <!-- BENCH -->
+      <div class="tab-card coming">
+        <div class="tab-meta">
+          <span class="tab-name">Bench</span>
+          <span class="tab-tag future">○ Phase 3 · planned</span>
+        </div>
+        <p class="tab-summary">
+          Run the 5-request benchmark suite against any combination of provider × model ×
+          harness config. Side-by-side cost / latency / quality matrix. Cost applies
+          provider-specific cache rates. <strong>Context-window column tracks peak utilization
+          measured during the run</strong> — not the model's spec — so you can see which models
+          are running comfortably and which are flirting with overflow on classroom-length threads.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab">Models</span>
+            <span class="mk-tab active">Bench</span>
+            <span class="mk-tab">RAG</span>
+            <span class="mk-tab">Eval</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-card">
+              <div class="mk-card-head">Matrix · cost per turn · cache-warmed</div>
+              <div class="mk-heat">
+                <div class="mk-heat-h"></div>
+                <div class="mk-heat-h">Pong</div>
+                <div class="mk-heat-h">Clock</div>
+                <div class="mk-heat-h">Title</div>
+                <div class="mk-heat-h">Lesson</div>
+                <div class="mk-heat-h">Research</div>
+                <div class="mk-heat-h">Ctx</div>
+
+                <div class="mk-heat-r">sonnet 4.6</div>
+                <div class="mk-heat-cell heat-1">$.001</div>
+                <div class="mk-heat-cell heat-1">$.002</div>
+                <div class="mk-heat-cell heat-2">$.014</div>
+                <div class="mk-heat-cell heat-3">$.042</div>
+                <div class="mk-heat-cell heat-3">$.061</div>
+                <div class="mk-heat-ctx">8% pk</div>
+
+                <div class="mk-heat-r">haiku 4.5</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.001</div>
+                <div class="mk-heat-cell heat-1">$.003</div>
+                <div class="mk-heat-cell heat-2">$.011</div>
+                <div class="mk-heat-cell heat-2">$.018</div>
+                <div class="mk-heat-ctx">7% pk</div>
+
+                <div class="mk-heat-r">gpt-5.4</div>
+                <div class="mk-heat-cell heat-1">$.003</div>
+                <div class="mk-heat-cell heat-2">$.008</div>
+                <div class="mk-heat-cell heat-2">$.019</div>
+                <div class="mk-heat-cell heat-3">$.045</div>
+                <div class="mk-heat-cell heat-4">$.092</div>
+                <div class="mk-heat-ctx">18% pk</div>
+
+                <div class="mk-heat-r">5.4-mini</div>
+                <div class="mk-heat-cell heat-1">$.001</div>
+                <div class="mk-heat-cell heat-1">$.001</div>
+                <div class="mk-heat-cell heat-1">$.005</div>
+                <div class="mk-heat-cell heat-2">$.012</div>
+                <div class="mk-heat-cell heat-2">$.021</div>
+                <div class="mk-heat-ctx">36% pk</div>
+
+                <div class="mk-heat-r">gemma 31B</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-ctx" style="color:var(--danger);">88% pk</div>
+
+                <div class="mk-heat-r">qwen 35B</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-cell heat-1">$.000</div>
+                <div class="mk-heat-ctx" style="color:var(--danger);">91% pk</div>
+              </div>
+              <div style="font-size:9px; color:var(--text-faint); margin-top:6px; font-family:'IBM Plex Mono',monospace;">cache-creation 1.25× · cache-read 0.10× anthropic · 0.50× openai · pk = peak input tokens observed during run / model max · red ≥ 75%</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Context utilization · 3-turn Lesson request</div>
+              <div class="mk-row"><span class="mk-row-name">sonnet 4.6 · 200k</span><div class="mk-bar filled" style="flex:1; max-width:7%;"></div><span class="mk-row-value">14.7k</span></div>
+              <div class="mk-row"><span class="mk-row-name">gpt-5.4 · 256k</span><div class="mk-bar filled-teal" style="flex:1; max-width:18%;"></div><span class="mk-row-value">46.1k</span></div>
+              <div class="mk-row"><span class="mk-row-name">5.4-mini · 128k</span><div class="mk-bar filled-teal" style="flex:1; max-width:36%;"></div><span class="mk-row-value">46.1k</span></div>
+              <div class="mk-row"><span class="mk-row-name">gemma 31B · 32k</span><div class="mk-bar filled-orange" style="flex:1; max-width:88%;"></div><span class="mk-row-value" style="color:var(--danger);">28.2k</span></div>
+              <div style="font-size:9px; color:var(--text-muted); margin-top:6px; font-family:'IBM Plex Mono',monospace;">peak input across turns 1+2+3 / model max · early overflow signal</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Quality rubric · claude-haiku judge</div>
+              <div class="mk-row"><span class="mk-row-name">sonnet 4.6</span><div class="mk-bar filled" style="flex:1; max-width:55%;"></div><span class="mk-row-value">4.7</span></div>
+              <div class="mk-row"><span class="mk-row-name">gpt-5.4</span><div class="mk-bar filled-teal" style="flex:1; max-width:50%;"></div><span class="mk-row-value">4.4</span></div>
+              <div class="mk-row"><span class="mk-row-name">gemma 31B</span><div class="mk-bar filled-orange" style="flex:1; max-width:30%;"></div><span class="mk-row-value">3.1</span></div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Run history · pre/post codex 0.131 bump</div>
+              <div style="font-size:9px; color:var(--text-muted); font-family:'IBM Plex Mono',monospace;">codex 0.124 → 0.131 · −12% avg · effort:low contributes most</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RAG -->
+      <div class="tab-card coming">
+        <div class="tab-meta">
+          <span class="tab-name">RAG</span>
+          <span class="tab-tag future">○ Phase 4 · planned</span>
+        </div>
+        <p class="tab-summary">
+          Author RAG strategies as pipelines. Drag-arrange retrieval steps, embedding models,
+          rerankers, prompt templates. Save as named strategies; share between students.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab">Models</span>
+            <span class="mk-tab">Bench</span>
+            <span class="mk-tab active">RAG</span>
+            <span class="mk-tab">Eval</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-card">
+              <div class="mk-card-head">Strategy · "default-naive" · saved</div>
+              <div style="display:flex; gap:4px; align-items:center; margin-top:8px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:9px;">
+                <span class="mk-chip on">corpus</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">chunk · 512</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">embed · ada-002</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">top-k · 5</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">prompt · default</span>
+              </div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Strategy · "rerank-tighter" · draft</div>
+              <div style="display:flex; gap:4px; align-items:center; margin-top:8px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:9px;">
+                <span class="mk-chip on">corpus</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">chunk · 256</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">embed · BGE</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">top-k · 20</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">rerank · cohere</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">top-5</span>
+              </div>
+              <div style="font-size:9px; color:var(--text-muted); margin-top:6px; font-family:'IBM Plex Mono',monospace;">unsaved · 2 changes since last run</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Test query</div>
+              <div style="font-size:10px; padding:4px; background:var(--bg); border-radius:3px; font-family:'IBM Plex Mono',monospace; color:var(--text);">When did dictionaries become ordered in Python?</div>
+              <div class="mk-row" style="margin-top:6px;"><span class="mk-row-name">retrieved</span><span class="mk-row-value">5 chunks · 1.2s</span></div>
+              <div class="mk-row"><span class="mk-row-name">top result</span><span class="mk-row-value">PEP 468 · score 0.91</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EVAL -->
+      <div class="tab-card coming">
+        <div class="tab-meta">
+          <span class="tab-name">Eval</span>
+          <span class="tab-tag future">○ Phase 4 · planned</span>
+        </div>
+        <p class="tab-summary">
+          Side-by-side compare RAG strategies on a shared question set. LLM-as-judge scoring
+          plus human-spot-check toggle. Cost-normalized — see quality-per-dollar.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab">Models</span>
+            <span class="mk-tab">Bench</span>
+            <span class="mk-tab">RAG</span>
+            <span class="mk-tab active">Eval</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-card">
+              <div class="mk-card-head">Comparison · 24 questions</div>
+              <div class="mk-grid-2" style="font-size:10px; margin-top:6px;">
+                <div>
+                  <div style="font-family:'IBM Plex Mono',monospace; color:var(--text-muted); font-size:9px;">A · default-naive</div>
+                  <div style="font-size:28px; font-family:'Fraunces',serif; color:var(--brand-blue); line-height:1;">3.4</div>
+                  <div style="color:var(--text-faint); font-size:9px;">avg score · $0.42 total</div>
+                </div>
+                <div>
+                  <div style="font-family:'IBM Plex Mono',monospace; color:var(--text-muted); font-size:9px;">B · rerank-tighter</div>
+                  <div style="font-size:28px; font-family:'Fraunces',serif; color:var(--brand-teal-deep); line-height:1;">4.1</div>
+                  <div style="color:var(--text-faint); font-size:9px;">avg score · $1.18 total</div>
+                </div>
+              </div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Question-by-question · click to expand</div>
+              <div class="mk-row" style="font-size:10px;"><span class="mk-row-name">Q1 — ordered dicts</span><span class="mk-row-value">A:3 · <strong style="color:var(--brand-teal-deep);">B:5</strong></span></div>
+              <div class="mk-row" style="font-size:10px;"><span class="mk-row-name">Q2 — comprehensions</span><span class="mk-row-value"><strong style="color:var(--brand-blue);">A:5</strong> · B:5</span></div>
+              <div class="mk-row" style="font-size:10px;"><span class="mk-row-name">Q3 — nested defaults</span><span class="mk-row-value">A:2 · <strong style="color:var(--brand-teal-deep);">B:4</strong></span></div>
+              <div class="mk-row" style="font-size:10px;"><span class="mk-row-name">Q4 — copy semantics</span><span class="mk-row-value">A:4 · <strong style="color:var(--brand-teal-deep);">B:5</strong></span></div>
+              <div class="mk-row" style="color:var(--text-faint); font-size:10px;"><span class="mk-row-name">+20 more</span><span class="mk-row-value"></span></div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Quality per dollar</div>
+              <div class="mk-row"><span class="mk-row-name">strategy A</span><div class="mk-bar filled" style="flex:1; max-width:65%;"></div><span class="mk-row-value">8.1</span></div>
+              <div class="mk-row"><span class="mk-row-name">strategy B</span><div class="mk-bar filled-teal" style="flex:1; max-width:35%;"></div><span class="mk-row-value">3.5</span></div>
+              <div style="font-size:9px; color:var(--text-muted); margin-top:4px; font-family:'IBM Plex Mono',monospace;">score / cost · A wins on efficiency</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <h3>Two more, further out</h3>
+    <p>
+      Also on the Phase 4 build order: <strong>Library</strong> (save / open / branch the
+      current agent state as a named library entry — File menu for agents), and
+      <strong>Export</strong> (one-direction take-home in four formats: <code>nanoclaw</code>,
+      <code>claude-code</code>, <code>codex</code>, <code>json</code>). Library precedes Export
+      because export depends on the "what's the current agent" notion being addressable. Together
+      with the walkaway deploy script, these are how someone takes their tuned agent off the
+      classroom server and stands it up on their own infrastructure.
+    </p>
+  </div>
+</section>
+
+<!-- ─── USING IT IN A CLASSROOM ────────────────────────────────────── -->
+<section id="classroom">
+  <div class="container">
+    <p class="section-eyebrow">Section 05 — Using NanoClaw in a classroom</p>
+    <h2>Each concept lands in a tab.</h2>
+    <p>
+      Each concept that comes up in teaching maps to a piece of the playground. The
+      <strong>LLM-vs-agent distinction</strong> is taught by running the <em>same prompt</em>
+      through both modes in the Chat tab — direct mode hits the raw model, agent mode goes
+      through the configured Persona, Skills, and Models — and participants watch the trace
+      panel side-by-side to see what an agent <em>adds</em>. <strong>Persona</strong> is taught
+      in the Persona tab: participants edit Layer 3 of their own agent's instructions and
+      immediately feel the difference. <strong>Skills</strong> are taught in the Skills tab by
+      toggling capabilities on and off and re-running the same task. <strong>Tool wiring</strong>
+      (Google Workspace, Resend, web fetch) lands through the <code>/add-gws-tool</code> and
+      channel-install skills — students don't install them, but they see what's available and
+      run tasks against real Drive folders.
+    </p>
+    <p>
+      <strong>Knowledge retrieval</strong> lives in the RAG tab (forthcoming) — participants
+      build pipelines (chunk → embed → retrieve → rerank) and run them against shared
+      documents. <strong>Evaluation</strong> lands in the Eval tab (forthcoming): two strategies
+      side-by-side, quality-per-dollar settling out across a question set. <strong>Take it
+      home</strong> uses Export + the Phase 4 walkaway script to stand up the tuned agent on
+      infrastructure the participant owns. Throughout, the instructor's Home tab is showing
+      roster, per-student costs, and live activity — the room visible at a glance.
+    </p>
+    <h3>Why this works for teaching</h3>
+    <p>
+      Three properties make NanoClaw Classroom suit a teaching environment specifically:
+      <strong>self-contained</strong> (one bootstrap script gets a working install — no IT
+      department, no cloud provisioning, no waiting on accounts), <strong>fast to deploy</strong>
+      (a new course or section can be stood up in an hour, not a semester), and
+      <strong>safe but functional</strong> (per-session containers isolate every student's
+      mistakes from every other student's, while keeping the agent capable enough to do real
+      work against real APIs). Participants can break things in their own container without
+      breaking the room. Instructors can recover by killing a session, not the install.
+    </p>
+  </div>
+</section>
+
+<!-- ─── PHASE TIMELINE ─────────────────────────────────────────────── -->
+<section id="timeline">
+  <div class="container">
+    <p class="section-eyebrow">Section 06 — Phase timeline</p>
+    <h2>Four phases. Two shipped, two ahead.</h2>
+    <p>
+      Phase 1 is the foundation: the multi-tenant platform every install needs. Phase 2 is the
+      polish + per-student auth work that absorbed the live-class operating reality. Phase 3 is
+      measurement — the agent-harness benchmark suite. Phase 4 is personalization and labs, where
+      the knowledge-retrieval, evaluation, and deploy-your-own surfaces land.
+    </p>
+
+    <div class="phases">
+
+      <!-- PHASE 1 -->
+      <div class="phase">
+        <div class="phase-label">
+          <span class="phase-id">Phase 1</span>
+          <span class="phase-status shipped">● Shipped</span>
+        </div>
+        <div>
+          <div class="phase-title">Foundation — shared-classroom MVP</div>
+          <div class="phase-body">
+            The multi-tenant entity model, per-session container runtime, credential proxy,
+            channel adapters, classroom skill suite, GWS V1 (Docs / Sheets / Slides), local-LLM
+            runbook, ai-coding-CLI picker. One Google Workspace OAuth, one LLM provider OAuth,
+            students log in via personal email. <strong>Twelve students plus one TA running
+            today on a Mac Studio at <code>130.127.162.180</code>.</strong>
+          </div>
+          <ul class="checks">
+            <li class="done"><code>wasFallback</code> Google-auth principal-tagging infra</li>
+            <li class="done">GWS Phase 13.6 — ownership primitive (shared-classroom mode)</li>
+            <li class="done">GWS Phase 13.5a — Sheets read/write</li>
+            <li class="done">GWS Phase 13.5e — Slides create/append/replace-text</li>
+            <li class="done">Credential proxy Phase X.4 — instructor provider OAuth</li>
+            <li class="done">Classroom Phase 4 slice — class login tokens (URL identity)</li>
+            <li class="done">Classroom Phase 6 — local-LLM runbook + <code>.env</code> wiring</li>
+            <li class="done">AI-coding-CLI Phase G — smoke matrix coverage</li>
+            <li class="done"><code>scripts/gws-authorize.ts</code> — operator OAuth helper</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- PHASE 2 -->
+      <div class="phase">
+        <div class="phase-label">
+          <span class="phase-id">Phase 2</span>
+          <span class="phase-status shipped">● Shipped</span>
+        </div>
+        <div>
+          <div class="phase-title">Polish + per-student auth</div>
+          <div class="phase-body">
+            Operational reality fed back into the platform. Three slates of polish (sign-in
+            friction reduction, classroom roster overhaul, brand identity), the X.7 per-student
+            LLM provider auth subsystem with explicit active-method toggle and instructor-pool
+            fallback, classroom-branch modernization, and tonight's cost-accounting + trace UI
+            rework. Also absorbs deferred follow-ups from Phase 1 and cross-cutting concerns:
+            the <code>/codex-auth</code> ChatGPT-subscription daemon, trace surfacing for
+            non-Claude providers, live in-browser GCP smoke, and the nightly long-lived-branch
+            sync workflow. None of those gate the seminar; they land alongside Phase 4 as
+            convenient.
+          </div>
+          <ul class="checks">
+            <li class="done">Per-call <code>model_call</code> trace event <span class="when">1.5</span></li>
+            <li class="done">Codex catalog auto-refresh + Claude direct-chat <span class="when">1.5</span></li>
+            <li class="done">Provider / model sync on switch <span class="when">1.5</span></li>
+            <li class="done">In-class passcode sign-in flow + roster atomic-enroll <span class="when">1.6</span></li>
+            <li class="done">Brand identity — NanoClaw Classroom logo retiring the raccoon <span class="when">1.7</span></li>
+            <li class="done">Login page rewrite (self-contained, popup-blocker fallback) <span class="when">1.7</span></li>
+            <li class="done">Class-skeleton bug fixes (provider, names, model defaults) <span class="when">1.7</span></li>
+            <li class="done">Roster card overhaul + activation tracking <span class="when">1.7</span></li>
+            <li class="done">Trace panel rework — turn-grouping + live totals footer <span class="when">1.7</span></li>
+            <li class="done">Caroline Yaman provisioned as <code>ta_01</code> <span class="when">1.7</span></li>
+            <li class="done"><code>apikey</code> backport (codex CLI schema fix) <span class="when">1.7</span></li>
+            <li class="done">Trunk admintools rehydration <span class="when">1.7</span></li>
+            <li class="done"><code>origin/classroom</code> modernization (616-commit path-a merge) <span class="when">1.7</span></li>
+            <li class="done">Nightly long-lived-branch sync GitHub Actions workflow <span class="when">1.7</span></li>
+            <li class="done">X.7 — per-student provider auth (registry, resolver, OAuth, Home Providers card)</li>
+            <li class="done"><code>require()</code> → static import in switch helpers (ESM fix)</li>
+            <li class="done">Trace footer: per-turn cost vs thread-cumulative (UI correctness)</li>
+            <li class="done">Codex 0.124 → 0.131 + <code>effort: low</code> wiring</li>
+            <li class="done">Anthropic three-tier cache token accounting (creation 1.25× / read 0.10×)</li>
+            <li class="todo"><code>/codex-auth</code> daemon + ChatGPT subscription OAuth refresh (~3hr) <span class="when">deferred</span></li>
+            <li class="todo">Trace surfacing for non-Claude providers (~30 min each) <span class="when">deferred</span></li>
+            <li class="todo">Live in-browser GCP OAuth smoke <span class="when">deferred</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- PHASE 3 -->
+      <div class="phase">
+        <div class="phase-label">
+          <span class="phase-id">Phase 3</span>
+          <span class="phase-status planned">○ In progress</span>
+        </div>
+        <div>
+          <div class="phase-title">Measurement — agent-harness benchmark suite</div>
+          <div class="phase-body">
+            Triggered by a 2026-05-18 cost spike that turned out to be a trace-UI artifact (the
+            "$1.10 yolo" was thread-cumulative, not turn cost). The bench suite gives us calibrated
+            expectations before enrolling the next class, and regression detection across codex
+            and SDK bumps. Five requests (Pong / Clock / Title / Lesson / Research) × six systems
+            (claude sonnet+haiku, codex 5.4+5.4-mini, gemma+qwen MLX) × three reps. Three assessment
+            layers: auto token/cost/latency, programmatic correctness per request, claude-haiku-judge
+            quality rubric. Cost calculations apply provider-specific cache rates;
+            <strong>context-window utilization is measured live during each run</strong> (peak
+            input tokens / model max) so we can see which models flirt with overflow on
+            multi-turn classroom workloads — that's the signal that catches local MLX models
+            choking on long threads before a student does. Wire-level observability via a
+            credential-proxy payload logger so we can answer "what bytes went up the wire?"
+          </div>
+          <ul class="checks">
+            <li class="done">B0 — token accounting prerequisite (cache_creation / cache_read plumbed)</li>
+            <li class="todo">B1 — baseline runner against <code>claude-sonnet-4-6</code></li>
+            <li class="todo">B2 — programmatic gates + claude-haiku quality rubric</li>
+            <li class="todo">B3 — multi-system matrix runner + markdown report</li>
+            <li class="todo">B4 — full matrix run with cost + context-window comparison</li>
+            <li class="todo">B5 — credential-proxy wire payload logger</li>
+            <li class="future">B6 — harness-config A/B (with/without skills, reasoning, continuation pruning)</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- PHASE 4 -->
+      <div class="phase">
+        <div class="phase-label">
+          <span class="phase-id">Phase 4</span>
+          <span class="phase-status future">◇ Future</span>
+        </div>
+        <div>
+          <div class="phase-title">Personalization + labs</div>
+          <div class="phase-body">
+            Layer per-person Google Workspace OAuth on top of shared-classroom mode, finish
+            GWS V2 (Calendar / Drive / Gmail), ship agent library + export, build the RAG
+            strategy framework and evaluation surface, and close with a walkaway cloud deploy
+            that bundles a class into a single bootstrap script. Together, the RAG + Eval tabs
+            make knowledge-retrieval strategy something participants experiment with directly;
+            Export + walkaway make the resulting agent portable — the tuned persona, skills, and
+            connections move off the classroom server onto infrastructure the participant owns.
+          </div>
+          <ul class="checks">
+            <li class="future">Phase 14 — per-person GWS OAuth (blocked on 5-min GCP click-through)</li>
+            <li class="future">GWS 13.5b — Calendar list/create</li>
+            <li class="future">GWS 13.5c — Drive listing</li>
+            <li class="future">GWS 13.5d — Gmail search/send</li>
+            <li class="future">Classroom Phase 4 (Phase-2 slice) — student-facing provider settings panel</li>
+            <li class="future">Classroom Phase 5b — Agent Library (save / open / branch named agents)</li>
+            <li class="future">Classroom Phase 5 — Agent Export (nanoclaw / claude-code / codex / json)</li>
+            <li class="future">Classroom Phase 7 — RAG strategies + pipeline builder</li>
+            <li class="future">Classroom Phase 8 — Evaluation framework + LLM-as-judge</li>
+            <li class="future">Classroom Phase 9 — Walkaway cloud deploy (bundle + bootstrap script)</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── COST ECONOMICS ─────────────────────────────────────────────── -->
+<section id="economics">
+  <div class="container">
+    <p class="section-eyebrow">Section 07 — Cost economics</p>
+    <h2>The bill, demystified.</h2>
+    <p>
+      The cost-spike diagnostic that triggered Phase 3 turned out to be a UI artifact, not a
+      structural issue. The actual per-turn costs once cache warms up — measured on
+      <code>codex/gpt-5.4</code> with <code>effort: low</code> — settle at about
+      <strong>half a cent per simple turn</strong>. For a class of twelve students × N turns/day ×
+      a semester, that puts the order of magnitude in single-digit dollars per student even on
+      metered API pricing. With subscription auth (ChatGPT Plus/Pro at $20–$200/mo, Claude
+      Pro/Max similar) the ceiling drops further.
+    </p>
+
+    <table class="tab-table">
+      <thead>
+        <tr>
+          <th>Path</th>
+          <th>Subscription auth</th>
+          <th>Per-turn (warm)</th>
+          <th>Trade-offs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="row-tag">A</span>Anthropic API key</td>
+          <td>—</td>
+          <td>$0.005 – $0.060</td>
+          <td>Pay metered. Cache-creation 1.25× is real cost; cache-read 0.10× makes long threads cheap.</td>
+        </tr>
+        <tr>
+          <td><span class="row-tag">B</span>Claude Pro / Max</td>
+          <td>✓ via Agent SDK</td>
+          <td>fixed $$/mo</td>
+          <td>Bounded ceiling. Anthropic ToS permits subscription OAuth only via official SDK.</td>
+        </tr>
+        <tr>
+          <td><span class="row-tag">C</span>OpenAI API key</td>
+          <td>—</td>
+          <td>$0.005 – $0.092</td>
+          <td>Pay metered. <code>effort: low</code> cuts reasoning output meaningfully on gpt-5.x.</td>
+        </tr>
+        <tr>
+          <td><span class="row-tag">D</span>ChatGPT Plus / Pro</td>
+          <td>✓ via codex CLI</td>
+          <td>fixed $$/mo</td>
+          <td>Bounded ceiling. Today via codex app-server subprocess. <code>/codex-auth</code> daemon + refresh deferred under Phase 2.</td>
+        </tr>
+        <tr>
+          <td><span class="row-tag">E</span>Local MLX</td>
+          <td>n/a</td>
+          <td>$0</td>
+          <td>Free at the meter. Constrained on context window and model intelligence; great for non-critical chatter.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      The classroom routes per-student by policy — instructor's class-pool credentials by default,
+      student's own connected provider when authorized via the Home Providers card.
+    </p>
+  </div>
+</section>
+
+<!-- ─── OPEN QUESTIONS ─────────────────────────────────────────────── -->
+<section id="next" class="tight">
+  <div class="container">
+    <p class="section-eyebrow">Section 08 — Open questions</p>
+    <h2>What's still unresolved.</h2>
+
+    <div class="grid-cards">
+      <div class="gcard accent">
+        <h4>Trunk vs skill-installable boundary</h4>
+        <p>
+          Recent polish surfaced that this fork's trunk has accumulated classroom-specific code
+          (Roster, X.7 Providers card, enrollment passcode). Project rule says trunk should be
+          only what every install needs. Three options on the table; decision deferred until a
+          real second classroom install or an upstream merge surfaces the cost.
+        </p>
+      </div>
+      <div class="gcard">
+        <h4>Architectural simplification at the agent layer</h4>
+        <p>
+          The five hand-rolled provider implementations (claude / codex / opencode / ollama /
+          local MLX) total roughly 2,000 lines and produce the messiest part of the codebase.
+          An alternative library — multi-provider with subscription OAuth, in-process agent loop,
+          built-in cost tracking — would collapse them into one provider. Best evaluated in a
+          separate install before any production migration.
+        </p>
+      </div>
+      <div class="gcard">
+        <h4>Phase 14 GCP unblock</h4>
+        <p>
+          Per-person Google Workspace OAuth blocked on five minutes of GCP Console work the
+          operator hasn't done: redirect URI + test users + scopes. Gates the student
+          "Connect Google" card on Home. No code blocker.
+        </p>
+      </div>
+      <div class="gcard">
+        <h4>Codex ChatGPT subscription OAuth daemon</h4>
+        <p>
+          <code>/codex-auth</code> Telegram admin command + refresh daemon — Phase 2 deferred
+          item. Current install runs API-key mode; the chatgpt-mode path is reachable but
+          unexercised. ~3 hr build when needed.
+        </p>
+      </div>
+      <div class="gcard">
+        <h4>Three branches drifting</h4>
+        <p>
+          <code>providers</code>, <code>admin</code>, and <code>gws-mcp</code> branches sit
+          ~210-737 commits behind <code>main</code>. Nightly GitHub Actions workflow handles
+          conflict-free fast-forwards; conflicts file issues with the resolve recipe.
+        </p>
+      </div>
+      <div class="gcard">
+        <h4>Trace UI: model_call disclosure</h4>
+        <p>
+          Today's trace UI has tool-call disclosure. <code>model_call</code> and
+          <code>agent_call</code> show one-line summaries — making them disclosable requires
+          the agent-runner to emit prompt + response in the ProviderEvent. ~3-4 hr.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FOOTER ─────────────────────────────────────────────────────── -->
+<footer>
+  <div class="container">
+    <div>NanoClaw Classroom · vision document · 2026-05-19</div>
+    <div class="sig">github.com/chiptoe-svg/nanoclaw_gccourse · MIT license</div>
+  </div>
+</footer>
+
+</main>
+</body>
+</html>

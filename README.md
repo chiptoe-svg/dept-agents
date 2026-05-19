@@ -15,6 +15,10 @@
   <a href="repo-tokens"><img src="repo-tokens/badge.svg" alt="repo tokens" valign="middle"></a>
 </p>
 
+<p align="center">
+  📄 <strong><a href="https://chiptoe-svg.github.io/nanoclaw_gccourse/vision/">Vision &amp; Roadmap</a></strong> — what's built, what's coming, and how it fits a teaching environment
+</p>
+
 ---
 
 ## Why Use NanoClaw?
