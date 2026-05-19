@@ -177,6 +177,41 @@ reality; living with it. Revisit when one of:
   "X.7 stays skill-installable" rule but in practice trunk-with-X.7
   is the deployed reality. Document or revert in a follow-up commit.
 
+## Phase 1.8 — agent-harness benchmark suite (planned)
+
+Triggered by the 2026-05-18 cost spike: a single "yolo" message on
+codex/gpt-5.4 billed at $1.10 because codex makes 6–10 internal API
+calls per user turn and each one replays the full conversation +
+prior tool outputs. We don't have a calibrated picture of the cost
+surface we're shipping to instructors.
+
+**Goal.** A repeatable benchmark suite that produces comparable
+cost / latency / quality metrics across (provider × model × harness
+config) combinations. Used to quantify the codex / claude gap,
+inform harness optimization, and give instructors data-backed model
+recommendations.
+
+**Distinct from Phase 2 #9 (classroom evaluation framework).** That
+is the student-facing side-by-side comparison UI; this is internal
+developer tooling. Lands first because the eval-framework's design
+benefits from us having concrete cross-harness data already.
+
+**5-request suite** spans the cost curve: trivial no-tool greeting,
+single-tool clock, single-fetch synthesis, three-turn continuation,
+multi-fetch comparative research. Each isolates a different
+amplification factor. Three reps per (system × request) cell. Six
+V1 systems in the matrix (Anthropic Sonnet + Haiku, Codex
+gpt-5.4 + gpt-5.4-mini, two local MLX models). Three assessment
+layers: token/cost/latency (auto), programmatic correctness per
+request (deterministic), claude-haiku-as-judge quality rubric.
+
+**Phasing.** B1 baseline runner against `claude-sonnet-4-6` (2 hr) →
+B2 gates + judge (1 hr) → B3 matrix + report (1 hr) → B4 full matrix
+run, first diagnostic dataset (1 hr setup + run-time). ~5 hr to land
+B1–B4. B5 (harness-config knobs) optional.
+
+Detailed plan: [`agent-benchmark-suite.md`](./agent-benchmark-suite.md).
+
 ## Phase 1 — shared-classroom MVP
 
 **Goal.** A class can deploy with: one Google Workspace OAuth
