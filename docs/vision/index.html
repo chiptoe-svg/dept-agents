@@ -680,10 +680,10 @@
     <h1>NanoClaw<br>Classroom.</h1>
     <div class="hero-tag">A small platform for teaching with agents.</div>
     <p class="lede">
-      An instructor runs a real class — one Telegram bot, ten students, a handful of TAs.
-      Each student has their own AI agent: separate workspace, separate credentials, isolated
-      container. The instructor watches costs in real time, swaps providers when one acts up,
-      and ships changes without reading vendor SDK release notes. The classroom keeps running.
+      A classroom tool that gives every student their own AI agent — separate workspace,
+      separate credentials, isolated container. The instructor watches costs in real time,
+      swaps providers when one acts up, and ships changes without reading vendor SDK release
+      notes. Designed for about twenty-five concurrent sessions on a single Mac Studio.
     </p>
     <nav class="toc" aria-label="Sections">
       <a href="#what">What it is</a>
@@ -704,26 +704,25 @@
     <p class="section-eyebrow">Section 01 — Premise</p>
     <h2>What this is, and what it isn't.</h2>
     <p>
-      NanoClaw started as a personal agent host — one user, one bot, one conversation. It evolved
-      into a multi-tenant classroom platform because the same architecture that gives one person
-      a working agent gives <em>thirty</em> people their own working agents with negligible
-      additional code. Most of that scaling was free: per-session containers, two-DB session split,
-      channel adapters, credential proxy. The interesting work is in <strong>what an instructor
-      needs that a single-user agent harness doesn't provide</strong> — roster, login flow,
-      cost tracking per student, agent provisioning at scale, the ability to retract a misbehaving
-      agent without rebooting the room.
+      NanoClaw is a fork of an existing personal-agent host, extended for classroom use. The
+      underlying single-user architecture — per-session containers, two-DB session split, channel
+      adapters, credential proxy — already isolates one user from the system. Multiplying that to
+      a classroom turned out to be mostly mechanical; the work that actually mattered was
+      everything a teacher specifically needs: roster, sign-in flow, per-student cost tracking,
+      agent provisioning at scale, and a way to retract a misbehaving agent without rebooting
+      the room.
     </p>
     <p>
-      This is a document about <em>that</em> system: where it is, where it's going, and the
-      design philosophy that keeps it from collapsing under feature creep.
+      This document covers what's built, what's coming, and the design choices behind both.
     </p>
 
     <div class="callout">
       <p>
-        Three constraints define the rest of the document: the classroom is real (Clemson, fall
-        cohort, twelve students plus TAs), the budget is meaningful (subscription tiers preferred
-        over metered API), and the architecture must survive the instructor wanting to add Discord
-        office hours next semester without rewriting.
+        Three constraints shaped the design: it has to run a real classroom (around two dozen
+        students working at the same time, instructor watching the room), the budget has to stay
+        manageable (subscription tiers preferred over metered API where possible), and the
+        architecture has to absorb new requirements — additional channels, providers, course
+        formats — without a rewrite each time.
       </p>
       <cite>— Design brief, 2026-05-19</cite>
     </div>
@@ -803,7 +802,7 @@
 <section id="today">
   <div class="container">
     <p class="section-eyebrow">Section 03 — The playground today</p>
-    <h2>Five tabs. One window. All built.</h2>
+    <h2>Five tabs, all built.</h2>
     <p>
       The Agent Playground is the instructor-and-student web UI. Each user — student, TA, or
       instructor — lands on the same five-tab interface; what differs is the underlying agent
@@ -1021,12 +1020,13 @@
 <section id="tomorrow">
   <div class="container">
     <p class="section-eyebrow">Section 04 — Tabs forthcoming</p>
-    <h2>Three new surfaces — Bench, RAG, Eval.</h2>
+    <h2>Three new tabs — Bench, RAG, Eval.</h2>
     <p>
-      The shipped tabs cover authoring and operating <em>one</em> agent. The forthcoming tabs
-      cover <em>fleets</em> of agents — measuring them, teaching with them, evaluating them
-      against each other. Below are schematic mockups designed before implementation, to lock in
-      the visual language and the user's mental model.
+      The shipped tabs cover authoring and operating one agent at a time. The forthcoming tabs
+      add the things that matter when you're comparing across agents: measurement, retrieval
+      strategy, and side-by-side evaluation. Below are schematic mockups drawn before
+      implementation, to settle the visual language and the user's mental model before any
+      code lands.
     </p>
 
     <div class="tab-gallery">
@@ -1295,14 +1295,15 @@
     </p>
     <h3>Why this works for teaching</h3>
     <p>
-      Three properties make NanoClaw Classroom suit a teaching environment specifically:
-      <strong>self-contained</strong> (one bootstrap script gets a working install — no IT
-      department, no cloud provisioning, no waiting on accounts), <strong>fast to deploy</strong>
-      (a new course or section can be stood up in an hour, not a semester), and
-      <strong>safe but functional</strong> (per-session containers isolate every student's
-      mistakes from every other student's, while keeping the agent capable enough to do real
-      work against real APIs). Participants can break things in their own container without
-      breaking the room. Instructors can recover by killing a session, not the install.
+      A few practical things matter when you're teaching with this. The whole install is
+      self-contained — one bootstrap script on a fresh machine, no IT department in the loop,
+      no cloud provisioning, no waiting on institutional accounts. A new course or section can
+      be stood up in about an hour. Once it's running, students get going with a single email
+      containing their playground URL plus the class passcode the instructor displays. Email
+      magic-link and Telegram (for instructor admin) are wired through the same install — no
+      per-student configuration. And because every session runs in its own container, students
+      can break things in their own sandbox without affecting the room; an instructor recovers
+      by killing one session, not by rebooting the install.
     </p>
   </div>
 </section>
@@ -1333,8 +1334,9 @@
             The multi-tenant entity model, per-session container runtime, credential proxy,
             channel adapters, classroom skill suite, GWS V1 (Docs / Sheets / Slides), local-LLM
             runbook, ai-coding-CLI picker. One Google Workspace OAuth, one LLM provider OAuth,
-            students log in via personal email. <strong>Twelve students plus one TA running
-            today on a Mac Studio at <code>130.127.162.180</code>.</strong>
+            students log in via personal email. <strong>Currently running an active course; the
+            install is sized for about twenty-five concurrent sessions on a 64GB Mac Studio
+            M4 Max.</strong>
           </div>
           <ul class="checks">
             <li class="done"><code>wasFallback</code> Google-auth principal-tagging infra</li>
@@ -1469,16 +1471,15 @@
 <!-- ─── COST ECONOMICS ─────────────────────────────────────────────── -->
 <section id="economics">
   <div class="container">
-    <p class="section-eyebrow">Section 07 — Cost economics</p>
-    <h2>The bill, demystified.</h2>
+    <p class="section-eyebrow">Section 07 — Cost in practice</p>
+    <h2>What this actually costs.</h2>
     <p>
-      The cost-spike diagnostic that triggered Phase 3 turned out to be a UI artifact, not a
-      structural issue. The actual per-turn costs once cache warms up — measured on
-      <code>codex/gpt-5.4</code> with <code>effort: low</code> — settle at about
-      <strong>half a cent per simple turn</strong>. For a class of twelve students × N turns/day ×
-      a semester, that puts the order of magnitude in single-digit dollars per student even on
-      metered API pricing. With subscription auth (ChatGPT Plus/Pro at $20–$200/mo, Claude
-      Pro/Max similar) the ceiling drops further.
+      The cost spike that triggered Phase 3 turned out to be a UI artifact, not a structural
+      issue. Actual per-turn costs once cache warms up — measured on <code>codex/gpt-5.4</code>
+      with <code>effort: low</code> — settle at about <strong>half a cent per simple turn</strong>.
+      Across a classroom-sized cohort × N turns per day × a semester, that puts the order of
+      magnitude in single-digit dollars per student on metered API pricing. With subscription
+      auth (ChatGPT Plus/Pro at $20–$200/mo, Claude Pro/Max similar) the ceiling drops further.
     </p>
 
     <table class="tab-table">
