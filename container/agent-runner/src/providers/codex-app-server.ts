@@ -346,6 +346,17 @@ export interface TurnParams {
   localImagePaths?: string[];
   model?: string;
   cwd?: string;
+  /**
+   * Reasoning effort for the turn. Maps to codex's `effort` turn/start
+   * parameter (low | medium | high). Codex's default is the model's
+   * `defaultReasoningEffort` (medium for gpt-5.x), which surfaces real
+   * cost as reasoning_output_tokens billed at the output rate. For
+   * conversational classroom use 'low' is almost always right — saves
+   * hundreds of reasoning tokens per turn on chat-class prompts and the
+   * quality loss on short prompts is negligible. Per-group override
+   * possible via container.json (future).
+   */
+  effort?: 'low' | 'medium' | 'high';
 }
 
 export async function startCodexTurn(server: AppServer, params: TurnParams): Promise<void> {
@@ -366,6 +377,7 @@ export async function startCodexTurn(server: AppServer, params: TurnParams): Pro
     input,
     model: params.model,
     cwd: params.cwd,
+    ...(params.effort ? { effort: params.effort } : {}),
   });
   if (resp.error) throw new Error(`turn/start failed: ${resp.error.message}`);
 }

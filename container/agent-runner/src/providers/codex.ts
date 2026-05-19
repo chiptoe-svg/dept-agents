@@ -238,6 +238,13 @@ export class CodexProvider implements AgentProvider {
             provider?: string;
             model?: string;
             skills?: string[] | 'all';
+            /**
+             * Reasoning effort for codex turns (low|medium|high). Default
+             * 'low' — see TurnParams.effort docs in codex-app-server.ts.
+             * Set to undefined or omit to let codex use the model's own
+             * default (typically 'medium' on gpt-5.x).
+             */
+            codexEffort?: 'low' | 'medium' | 'high';
           })
         : {};
       const proxyBaseUrl = (process.env.OPENAI_BASE_URL ?? 'http://host.docker.internal:3001/openai/v1')
@@ -305,6 +312,7 @@ export class CodexProvider implements AgentProvider {
             self.model,
             input.cwd,
             turnImagePaths,
+            containerJson.codexEffort ?? 'low',
             () => initYielded,
             () => {
               initYielded = true;
@@ -478,6 +486,7 @@ async function* runOneTurn(
   model: string | undefined,
   cwd: string,
   localImagePaths: string[] | undefined,
+  effort: 'low' | 'medium' | 'high',
   hasInit: () => boolean,
   markInit: () => void,
 ): AsyncGenerator<ProviderEvent> {
@@ -634,7 +643,7 @@ async function* runOneTurn(
       buffer.push({ type: 'init', continuation: threadId });
     }
 
-    await startCodexTurn(server, { threadId, inputText, localImagePaths, model, cwd });
+    await startCodexTurn(server, { threadId, inputText, localImagePaths, model, cwd, effort });
 
     while (true) {
       while (buffer.length > 0) {
@@ -658,10 +667,20 @@ async function* runOneTurn(
     yield {
       type: 'result',
       text: resultText || null,
-      // Token counts come from the token_count notification stream (see
-      // handler above). Cached-input tokens aren't yet plumbed through
-      // ProviderEvent — captured in `tokensCached` for future surfacing.
-      ...(tokensIn > 0 || tokensOut > 0 ? { tokens: { input: tokensIn, output: tokensOut } } : {}),
+      // Token counts come from thread/tokenUsage/updated notifications (see
+      // handler above). Codex's prompt-cache hits land on
+      // tokenUsage.total.cachedInputTokens — we forward as cacheRead (OpenAI
+      // prefix-cache, billed at 0.5× input). No cacheCreation: OpenAI's
+      // prefix cache is automatic and isn't billed at a separate write rate.
+      ...(tokensIn > 0 || tokensOut > 0
+        ? {
+            tokens: {
+              input: tokensIn,
+              output: tokensOut,
+              ...(tokensCached > 0 ? { cacheRead: tokensCached } : {}),
+            },
+          }
+        : {}),
       latencyMs: Date.now() - startedAt,
       provider: 'codex',
       ...(model ? { model } : {}),
