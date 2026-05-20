@@ -1,6 +1,6 @@
 name: Sync long-lived branches with main
 
-# Why: long-lived category branches (classroom, providers, admin, gws-mcp)
+# Why: long-lived category branches (classroom, providers, admin)
 # are the source-of-truth that /add-* install skills fetch from. They need
 # to stay in sync with trunk so the skills don't ship code that references
 # trunk APIs that have moved (the failure mode that surfaced during Phase
@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        branch: [classroom, providers, admin, gws-mcp]
+        branch: [classroom, providers, admin]
     steps:
       - name: Checkout long-lived branch
         uses: actions/checkout@v4
