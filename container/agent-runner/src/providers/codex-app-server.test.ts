@@ -168,7 +168,7 @@ describe('writeCodexConfigToml — local provider', () => {
     expect(toml).toContain('[model_providers.omlx]');
     expect(toml).toContain('name = "omlx"');
     expect(toml).toContain('base_url = "http://host.docker.internal:3001/omlx/v1"');
-    expect(toml).toContain('wire_api = "chat"');
+    expect(toml).toContain('wire_api = "responses"');
     expect(toml).toContain('env_key = "OMLX_API_KEY"');
     expect(toml).toContain('model = "Qwen3.6-35B-A3B-UD-MLX-4bit"');
     expect(toml).toContain('model_provider = "omlx"');
