@@ -4,8 +4,9 @@
  * The Skills tab's editor saves named custom skills here. Unlike the
  * shared built-in (`container/skills/*`) and Anthropic-library skills,
  * a custom skill belongs to one agent group and is stored under its
- * group folder at `groups/<folder>/custom-skills/<name>/SKILL.md`.
+ * group folder at `groups/<folder>/custom-skills/<name>/`.
  *
+ * A custom skill is a directory of files (always at least `SKILL.md`).
  * The group folder is mounted into the container at `/workspace/agent`,
  * so a custom skill is reachable in-container at
  * `/workspace/agent/custom-skills/<name>` — `syncSkillSymlinks`
@@ -17,12 +18,18 @@ import path from 'path';
 
 import { GROUPS_DIR } from '../../config.js';
 
-/** Same validator the skill-library browser uses — no traversal, no dotfiles. */
+/** Skill-directory name validator — no traversal, no dotfiles. */
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 
 export interface CustomSkillEntry {
   name: string;
   description: string;
+}
+
+export interface CustomSkillFile {
+  /** Path relative to the skill directory, e.g. "SKILL.md", "examples/demo.md". */
+  path: string;
+  isDir: boolean;
 }
 
 function customSkillsRoot(folder: string): string {
@@ -40,6 +47,22 @@ function parseDescription(md: string): string {
   return '';
 }
 
+/**
+ * Resolve a file path inside a skill, rejecting anything that would escape
+ * the skill directory. Returns the absolute path or null when invalid.
+ */
+function resolveSkillFile(folder: string, name: string, relPath: string): string | null {
+  if (!NAME_RE.test(name)) return null;
+  const segments = relPath.split('/');
+  if (segments.some((seg) => seg === '' || seg === '..' || seg.startsWith('.'))) return null;
+  if (!segments.every((seg) => NAME_RE.test(seg))) return null;
+  const skillDir = path.join(customSkillsRoot(folder), name);
+  const full = path.join(skillDir, relPath);
+  // Defense-in-depth: ensure the resolved path stays inside the skill dir.
+  if (full !== skillDir && !path.resolve(full).startsWith(path.resolve(skillDir) + path.sep)) return null;
+  return full;
+}
+
 export function listCustomSkills(folder: string): CustomSkillEntry[] {
   const root = customSkillsRoot(folder);
   if (!fs.existsSync(root)) return [];
@@ -53,12 +76,33 @@ export function listCustomSkills(folder: string): CustomSkillEntry[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function readCustomSkill(folder: string, name: string): string | undefined {
-  if (!NAME_RE.test(name)) return undefined;
-  const skillMd = path.join(customSkillsRoot(folder), name, 'SKILL.md');
-  if (!fs.existsSync(skillMd)) return undefined;
+/** Enumerate every non-hidden file inside a custom skill. Recursive. */
+export function listCustomSkillFiles(folder: string, name: string): CustomSkillFile[] {
+  if (!NAME_RE.test(name)) return [];
+  const skillDir = path.join(customSkillsRoot(folder), name);
+  if (!fs.existsSync(skillDir)) return [];
+  const out: CustomSkillFile[] = [];
+  const walk = (dir: string, rel: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      const subRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        out.push({ path: subRel, isDir: true });
+        walk(path.join(dir, entry.name), subRel);
+      } else if (entry.isFile()) {
+        out.push({ path: subRel, isDir: false });
+      }
+    }
+  };
+  walk(skillDir, '');
+  return out.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export function readCustomSkillFile(folder: string, name: string, relPath: string): string | undefined {
+  const full = resolveSkillFile(folder, name, relPath);
+  if (!full || !fs.existsSync(full)) return undefined;
   try {
-    return fs.readFileSync(skillMd, 'utf-8');
+    return fs.readFileSync(full, 'utf-8');
   } catch {
     return undefined;
   }
@@ -68,17 +112,18 @@ export function customSkillExists(folder: string, name: string): boolean {
   return NAME_RE.test(name) && fs.existsSync(path.join(customSkillsRoot(folder), name, 'SKILL.md'));
 }
 
-/** Create or overwrite a custom skill's SKILL.md. Throws on an invalid name. */
-export function writeCustomSkill(folder: string, name: string, content: string): void {
+/** Create or overwrite one file inside a custom skill. Throws on a bad name/path. */
+export function writeCustomSkillFile(folder: string, name: string, relPath: string, content: string): void {
   if (!NAME_RE.test(name)) {
     throw new Error('skill name must be alphanumeric (dashes, dots, underscores allowed)');
   }
-  const dir = path.join(customSkillsRoot(folder), name);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'SKILL.md'), content);
+  const full = resolveSkillFile(folder, name, relPath);
+  if (!full) throw new Error(`invalid file path: ${relPath}`);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, content);
 }
 
-/** Delete a custom skill. Returns false when the name is invalid or absent. */
+/** Delete a whole custom skill. Returns false when the name is invalid or absent. */
 export function deleteCustomSkill(folder: string, name: string): boolean {
   if (!NAME_RE.test(name)) return false;
   const dir = path.join(customSkillsRoot(folder), name);

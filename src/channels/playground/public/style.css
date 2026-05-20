@@ -794,8 +794,37 @@ select.model-changed {
   white-space: pre-wrap;
   background: #fff;
 }
-/* Right panel — the SKILL.md editor. Name input sits in the footer
-   alongside Save / Delete. */
+/* Right panel — the skill editor. The file strip picks which file of the
+   skill is in the textarea; the name input sits in the footer with Save. */
+.editor-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #eee;
+  background: #fafafa;
+}
+.editor-file {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background: #fff;
+  color: #555;
+  cursor: pointer;
+}
+.editor-file:hover { border-color: #4a90e2; }
+.editor-file.active {
+  background: #e6f0ff;
+  border-color: #4a90e2;
+  color: #1a4d8f;
+  font-weight: 600;
+}
+.editor-file-add {
+  color: #2ea043;
+  border-style: dashed;
+}
 .editor-footer {
   display: flex;
   align-items: center;

@@ -7,10 +7,14 @@ let currentSkills = null;
 // Merged skill list: built-in + Anthropic library + this agent's custom skills.
 let libraryCache = [];
 
-// Editor state.
-let currentSelection = null; // { category, name } of the previewed/edited skill
-let editorBaseline = ''; // last-loaded SKILL.md text, for dirty detection
-let editorSourceIsCustom = false;
+let currentSelection = null; // { category, name } highlighted on the left
+
+// Editor working set — the files of the skill being authored / edited.
+//   files:      { relPath: content }
+//   current:    relPath shown in the textarea
+//   customName: name when editing an existing custom skill in place, else null
+//   baseline:   JSON snapshot of files at load, for dirty detection
+let editor = { files: {}, current: null, customName: null, baseline: '{}' };
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 
@@ -26,6 +30,16 @@ description: One-line summary of when the agent should use this skill.
 
 Describe what the agent should do when this skill is active.
 `;
+
+function enc(s) {
+  return encodeURIComponent(s);
+}
+
+function fetchJson(url, fallback) {
+  return fetch(url, { credentials: 'same-origin' })
+    .then((r) => (r.ok ? r.json() : fallback))
+    .catch(() => fallback);
+}
 
 export function mountSkills(el) {
   const folder = window.__pg.agent.folder;
@@ -58,6 +72,7 @@ export function mountSkills(el) {
           <span>Edit</span>
           <button id="author-skill" class="btn btn-ghost" type="button">+ New skill</button>
         </header>
+        <div id="editor-files" class="editor-files"></div>
         <textarea id="skill-edit" class="active-text" placeholder="Select a skill on the left to edit it, or click + New skill…"></textarea>
         <footer class="editor-footer">
           <label class="editor-name">name <input id="skill-name" placeholder="name your custom skill" autocomplete="off"></label>
@@ -86,30 +101,22 @@ export function mountSkills(el) {
 /** Fetch the shared library, this agent's custom skills, and the active set. */
 function loadSkills(el, folder) {
   return Promise.all([
-    fetch('/api/skills/library', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : { entries: [] })),
-    fetch(`/api/drafts/${folder}/custom-skills`, { credentials: 'same-origin' }).then((r) =>
-      r.ok ? r.json() : { entries: [] },
-    ),
-    fetch(`/api/drafts/${folder}/skills`, { credentials: 'same-origin' }).then((r) =>
-      r.ok ? r.json() : { skills: [] },
-    ),
-  ])
-    .then(([lib, custom, active]) => {
-      const customEntries = (custom.entries || []).map((c) => ({
-        category: 'custom',
-        name: c.name,
-        description: c.description || '',
-        compatibility: 'compatible',
-      }));
-      libraryCache = [...(lib.entries || []), ...customEntries];
-      currentSkills = active.skills;
-      originalSkills = Array.isArray(currentSkills) ? [...currentSkills] : currentSkills;
-      renderLibraryList(el);
-      recomputeRollup(el);
-    })
-    .catch(() => {
-      /* ignore — tab still renders empty */
-    });
+    fetchJson('/api/skills/library', { entries: [] }),
+    fetchJson(`/api/drafts/${folder}/custom-skills`, { entries: [] }),
+    fetchJson(`/api/drafts/${folder}/skills`, { skills: [] }),
+  ]).then(([lib, custom, active]) => {
+    const customEntries = (custom.entries || []).map((c) => ({
+      category: 'custom',
+      name: c.name,
+      description: c.description || '',
+      compatibility: 'compatible',
+    }));
+    libraryCache = [...(lib.entries || []), ...customEntries];
+    currentSkills = active.skills;
+    originalSkills = Array.isArray(currentSkills) ? [...currentSkills] : currentSkills;
+    renderLibraryList(el);
+    recomputeRollup(el);
+  });
 }
 
 function isSkillActive(name) {
@@ -216,14 +223,29 @@ function saveActive(el) {
 
 function selectSkill(el, category, name) {
   // Guard against silently discarding unsaved editor edits.
-  const ta = el.querySelector('#skill-edit');
-  if (ta.value !== editorBaseline && !confirm('Discard unsaved skill edits?')) return;
+  if (editorSnapshot(el) !== editor.baseline && !confirm('Discard unsaved skill edits?')) return;
   currentSelection = { category, name };
   for (const li of el.querySelectorAll('.skill-entry')) li.classList.remove('selected');
   const sel = el.querySelector(`.skill-entry[data-category="${category}"][data-name="${name}"]`);
   if (sel) sel.classList.add('selected');
   loadPreview(el, category, name);
   loadEditor(el, category, name);
+}
+
+// ── Middle preview ─────────────────────────────────────────────────────────
+
+function skillFilesUrl(category, name) {
+  if (category === 'custom') {
+    return `/api/drafts/${enc(window.__pg.agent.folder)}/custom-skills/${enc(name)}/files`;
+  }
+  return `/api/skills/library/${enc(category)}/${enc(name)}/files`;
+}
+
+function skillFileUrl(category, name, relPath) {
+  if (category === 'custom') {
+    return `/api/drafts/${enc(window.__pg.agent.folder)}/custom-skills/${enc(name)}/file?path=${enc(relPath)}`;
+  }
+  return `/api/skills/library/${enc(category)}/${enc(name)}/file?path=${enc(relPath)}`;
 }
 
 function loadPreview(el, category, name) {
@@ -236,18 +258,8 @@ function loadPreview(el, category, name) {
     if (entry.latencyMs != null) metaParts.push(`+${entry.latencyMs}ms/turn`);
   }
   el.querySelector('#skill-prev-meta').textContent = metaParts.join(' · ');
-  if (category === 'custom') {
-    // Custom skills are a single SKILL.md — no multi-file tree.
-    renderFileTree(el, [{ path: 'SKILL.md', isDir: false }]);
-    loadFile(el, category, name, 'SKILL.md');
-  } else {
-    fetch(`/api/skills/library/${encodeURIComponent(category)}/${encodeURIComponent(name)}/files`, {
-      credentials: 'same-origin',
-    })
-      .then((r) => (r.ok ? r.json() : { files: [] }))
-      .then((data) => renderFileTree(el, data.files || []));
-    loadFile(el, category, name, 'SKILL.md');
-  }
+  fetchJson(skillFilesUrl(category, name), { files: [] }).then((data) => renderFileTree(el, data.files || []));
+  loadFile(el, category, name, 'SKILL.md');
 }
 
 function renderFileTree(el, files) {
@@ -265,54 +277,123 @@ function renderFileTree(el, files) {
       for (const x of tree.querySelectorAll('.file-entry')) x.classList.remove('selected');
       li.classList.add('selected');
       loadFile(el, currentSelection.category, currentSelection.name, f.path);
+      // Also move the editor to this file so the right panel tracks the
+      // file selection (when the editor holds the same skill).
+      if (f.path in editor.files) switchEditorFile(el, f.path);
     });
     tree.appendChild(li);
   }
 }
 
-function skillFileUrl(category, name, relPath) {
-  if (category === 'custom') {
-    return `/api/drafts/${window.__pg.agent.folder}/custom-skills/${encodeURIComponent(name)}`;
-  }
-  return `/api/skills/library/${encodeURIComponent(category)}/${encodeURIComponent(name)}/file?path=${encodeURIComponent(relPath)}`;
-}
-
 function loadFile(el, category, name, relPath) {
-  fetch(skillFileUrl(category, name, relPath), { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : { text: '(not found)' }))
-    .then((data) => {
-      el.querySelector('#file-body').textContent = data.text || '';
-    });
+  fetchJson(skillFileUrl(category, name, relPath), { text: '(not found)' }).then((data) => {
+    el.querySelector('#file-body').textContent = data.text || '';
+  });
 }
 
-function loadEditor(el, category, name) {
-  const nameInput = el.querySelector('#skill-name');
-  const ta = el.querySelector('#skill-edit');
-  editorSourceIsCustom = category === 'custom';
-  el.querySelector('#skill-delete').hidden = !editorSourceIsCustom;
+// ── Right-hand editor (multi-file working set) ──────────────────────────────
+
+/** Save the textarea's current contents back into the working set. */
+function stashCurrent(el) {
+  if (editor.current) editor.files[editor.current] = el.querySelector('#skill-edit').value;
+}
+
+/** Stable JSON of the working set — for dirty detection. */
+function editorSnapshot(el) {
+  stashCurrent(el);
+  const sorted = {};
+  for (const k of Object.keys(editor.files).sort()) sorted[k] = editor.files[k];
+  return JSON.stringify(sorted);
+}
+
+function renderEditorFiles(el) {
+  const strip = el.querySelector('#editor-files');
+  strip.replaceChildren();
+  for (const rel of Object.keys(editor.files).sort()) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = rel === editor.current ? 'editor-file active' : 'editor-file';
+    chip.textContent = rel;
+    chip.addEventListener('click', () => switchEditorFile(el, rel));
+    strip.appendChild(chip);
+  }
+  // Hide "+ file" until a skill is loaded — nothing to add files to yet.
+  if (Object.keys(editor.files).length > 0) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'editor-file editor-file-add';
+    add.textContent = '+ file';
+    add.title = 'Add a file to this skill';
+    add.addEventListener('click', () => addEditorFile(el));
+    strip.appendChild(add);
+  }
+}
+
+function switchEditorFile(el, rel) {
+  if (!(rel in editor.files) || rel === editor.current) return;
+  stashCurrent(el);
+  editor.current = rel;
+  el.querySelector('#skill-edit').value = editor.files[rel];
+  renderEditorFiles(el);
+}
+
+function addEditorFile(el) {
+  const rel = (prompt('New file (e.g. reference.md, examples/demo.md):') || '').trim();
+  if (!rel) return;
+  if (!rel.split('/').every((seg) => NAME_RE.test(seg))) {
+    alert('File path segments must be alphanumeric (dashes, dots, underscores allowed).');
+    return;
+  }
+  if (rel in editor.files) {
+    switchEditorFile(el, rel);
+    return;
+  }
+  stashCurrent(el);
+  editor.files[rel] = rel.endsWith('.md') ? `# ${rel.replace(/\.md$/, '').replace(/.*\//, '')}\n` : '';
+  editor.current = rel;
+  el.querySelector('#skill-edit').value = editor.files[rel];
+  renderEditorFiles(el);
+  refreshDraftBanner(el);
+}
+
+async function loadEditor(el, category, name) {
+  editor.customName = category === 'custom' ? name : null;
+  el.querySelector('#skill-delete').hidden = !editor.customName;
   el.querySelector('#skill-save').disabled = false;
-  fetch(skillFileUrl(category, name, 'SKILL.md'), { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : { text: '' }))
-    .then((d) => {
-      ta.value = d.text || '';
-      editorBaseline = ta.value;
-      // Editing a custom skill saves in place; editing a shared library /
-      // built-in skill forks a new custom skill, so its name starts blank.
-      nameInput.value = editorSourceIsCustom ? name : '';
-      nameInput.placeholder = editorSourceIsCustom ? '' : 'name your custom skill';
-      refreshDraftBanner(el);
-    });
+  // Build the working set from the source skill's files. A library/built-in
+  // skill is the basis for a fork; a custom skill is edited in place.
+  const list = await fetchJson(skillFilesUrl(category, name), { files: [] });
+  const entries = await Promise.all(
+    (list.files || [])
+      .filter((f) => !f.isDir)
+      .map(async (f) => {
+        const d = await fetchJson(skillFileUrl(category, name, f.path), { text: '' });
+        return [f.path, d.text || ''];
+      }),
+  );
+  const files = Object.fromEntries(entries);
+  if (Object.keys(files).length === 0) files['SKILL.md'] = '';
+  editor.files = files;
+  editor.current = 'SKILL.md' in files ? 'SKILL.md' : Object.keys(files).sort()[0];
+  el.querySelector('#skill-edit').value = editor.files[editor.current];
+  editor.baseline = editorSnapshot(el);
+  const nameInput = el.querySelector('#skill-name');
+  nameInput.value = editor.customName || '';
+  nameInput.placeholder = editor.customName ? '' : 'name your custom skill';
+  renderEditorFiles(el);
+  refreshDraftBanner(el);
 }
 
 function authorNewSkill(el) {
+  if (editorSnapshot(el) !== editor.baseline && !confirm('Discard unsaved skill edits?')) return;
   currentSelection = null;
   for (const li of el.querySelectorAll('.skill-entry')) li.classList.remove('selected');
-  editorSourceIsCustom = false;
+  editor = { files: { 'SKILL.md': SKILL_TEMPLATE }, current: 'SKILL.md', customName: null, baseline: '{}' };
   el.querySelector('#skill-delete').hidden = true;
   el.querySelector('#skill-save').disabled = false;
-  const ta = el.querySelector('#skill-edit');
-  ta.value = SKILL_TEMPLATE;
-  editorBaseline = SKILL_TEMPLATE;
+  el.querySelector('#skill-edit').value = SKILL_TEMPLATE;
+  editor.baseline = editorSnapshot(el);
+  renderEditorFiles(el);
   const nameInput = el.querySelector('#skill-name');
   nameInput.value = '';
   nameInput.placeholder = 'name your custom skill';
@@ -321,12 +402,12 @@ function authorNewSkill(el) {
   el.querySelector('#skill-prev-meta').textContent = '';
   el.querySelector('#file-tree').replaceChildren();
   el.querySelector('#file-body').textContent = 'Name it and Save to add it to your skills.';
+  refreshDraftBanner(el);
 }
 
 async function saveSkill(el) {
   const folder = window.__pg.agent.folder;
   const name = el.querySelector('#skill-name').value.trim();
-  const content = el.querySelector('#skill-edit').value;
   if (!name) {
     alert('Give the skill a name first.');
     return;
@@ -341,28 +422,31 @@ async function saveSkill(el) {
     alert(`"${name}" is already a ${CATEGORY_LABEL[clash.category] || clash.category} skill — pick another name.`);
     return;
   }
-  const r = await fetch(`/api/drafts/${folder}/custom-skills/${encodeURIComponent(name)}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    credentials: 'same-origin',
-    body: JSON.stringify({ content }),
-  });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({}));
-    alert(`Save failed: ${e.error || r.status}`);
-    return;
+  stashCurrent(el);
+  for (const [rel, content] of Object.entries(editor.files)) {
+    const r = await fetch(`/api/drafts/${folder}/custom-skills/${enc(name)}/file?path=${enc(rel)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ content }),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      alert(`Save failed for ${rel}: ${e.error || r.status}`);
+      return;
+    }
   }
-  editorBaseline = content; // mark clean so the reselect guard doesn't prompt
+  editor.baseline = editorSnapshot(el); // mark clean so the reselect guard stays quiet
   await loadSkills(el, folder);
   selectSkill(el, 'custom', name);
 }
 
 async function deleteSkill(el) {
   const folder = window.__pg.agent.folder;
-  if (!currentSelection || !editorSourceIsCustom) return;
-  const name = currentSelection.name;
+  const name = editor.customName;
+  if (!name) return;
   if (!confirm(`Delete custom skill "${name}"? This cannot be undone.`)) return;
-  const r = await fetch(`/api/drafts/${folder}/custom-skills/${encodeURIComponent(name)}`, {
+  const r = await fetch(`/api/drafts/${folder}/custom-skills/${enc(name)}`, {
     method: 'DELETE',
     credentials: 'same-origin',
   });
@@ -380,16 +464,22 @@ async function deleteSkill(el) {
       body: JSON.stringify({ skills: currentSkills }),
     });
   }
+  resetEditor(el);
+  await loadSkills(el, folder);
+}
+
+function resetEditor(el) {
   currentSelection = null;
-  editorBaseline = '';
+  editor = { files: {}, current: null, customName: null, baseline: '{}' };
   el.querySelector('#skill-edit').value = '';
   el.querySelector('#skill-name').value = '';
   el.querySelector('#skill-delete').hidden = true;
+  el.querySelector('#skill-save').disabled = true;
+  el.querySelector('#editor-files').replaceChildren();
   el.querySelector('#skill-prev-title').textContent = 'Preview';
   el.querySelector('#skill-prev-meta').textContent = '';
   el.querySelector('#file-tree').replaceChildren();
   el.querySelector('#file-body').textContent = 'Select a skill to preview.';
-  await loadSkills(el, folder);
 }
 
 function recomputeRollup(el) {
@@ -428,7 +518,7 @@ function recomputeRollup(el) {
 /** One draft banner for both dirty sources: the active set and the editor. */
 function refreshDraftBanner(el) {
   const activeDirty = JSON.stringify(currentSkills) !== JSON.stringify(originalSkills);
-  const editorDirty = el.querySelector('#skill-edit').value !== editorBaseline;
+  const editorDirty = editorSnapshot(el) !== editor.baseline;
   if (activeDirty || editorDirty) {
     showDraftBanner(`${window.__pg.agent.name} has unsaved skill changes.`);
   } else {

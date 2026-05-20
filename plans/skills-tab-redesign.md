@@ -37,9 +37,10 @@ Active skills) with three panels:
 
 ## Status
 
-Phases 1–3 complete. Phase 4: unit tests + build + host restart done;
-the browser end-to-end check (author → toggle → reload → agent uses it)
-is the remaining manual step.
+Phases 1–5 complete (Phase 5 = multi-file custom skills + file editor).
+Unit tests + build + host restart all done; the browser end-to-end check
+(author multi-file skill → toggle → reload → agent uses it) is the
+remaining manual step.
 
 ## Phase 1 — Backend: per-agent custom skills ✅
 
@@ -105,7 +106,32 @@ is the remaining manual step.
 solely to test it would be scope creep). Its target-selection change is
 covered by the manual browser check above.
 
-## Out of scope (v1)
+## Phase 5 — Multi-file custom skills ✅
 
-- Multi-file custom skills — editor handles `SKILL.md` only.
+Custom skills become real directories (multiple files), the editor follows
+the file selection, and authoring supports adding files.
+
+- [x] `custom-skills.ts` → per-file API: `listCustomSkillFiles`,
+  `readCustomSkillFile`, `writeCustomSkillFile(relPath, content)` with
+  rel-path traversal validation. `listCustomSkills`/`deleteCustomSkill`
+  unchanged.
+- [x] Routes: `GET .../custom-skills/:name/files`, `GET|PUT
+  .../custom-skills/:name/file?path=`. Drop the single-file `:name`
+  GET/PUT; keep `:name` DELETE.
+- [x] `skills.js` editor → an in-memory working set `{relPath: content}`:
+  - A file strip in the editor panel: one chip per file + `+ file`.
+  - Clicking a chip (or a file in the middle preview tree) switches the
+    edited file; the current buffer is stashed first.
+  - `+ file` prompts for a name and adds a blank file (`.md` → `# ` stub).
+  - Selecting a library/built-in skill loads ALL its files as a fork
+    basis; selecting a custom skill loads its files for in-place edit.
+  - Save writes every working-set file via per-file PUT.
+- [x] CSS for the editor file strip.
+- [x] Update `custom-skills` tests for the per-file API.
+
+## Out of scope
+
+- Per-file delete inside a skill (delete the whole custom skill instead).
 - Renaming a custom skill (use save-as + delete).
+- A template picker — `+ New skill` seeds a `SKILL.md`; added files are
+  blank (or a `# ` stub for `.md`).

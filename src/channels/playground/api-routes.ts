@@ -37,7 +37,13 @@ import { checkDraftMutation } from '../playground-gate-registry.js';
 import { getPlatformPrefix, getSetupConfig } from './adapter.js';
 import type { PlaygroundSession } from './auth-store.js';
 import { readJsonBody, send } from './http-helpers.js';
-import { deleteCustomSkill, listCustomSkills, readCustomSkill, writeCustomSkill } from './custom-skills.js';
+import {
+  deleteCustomSkill,
+  listCustomSkillFiles,
+  listCustomSkills,
+  readCustomSkillFile,
+  writeCustomSkillFile,
+} from './custom-skills.js';
 import { getLibraryCacheStat, listLibrary, listSkillFiles, readSkillFile } from './library.js';
 import { handlePersonaLayers } from './api/persona-layers.js';
 import {
@@ -474,35 +480,51 @@ export async function route(
     return send(res, 200, { entries: listCustomSkills(customSkillsListMatch[1]!) });
   }
 
-  // GET/PUT/DELETE /api/drafts/:folder/custom-skills/:name — one custom skill's SKILL.md
-  const customSkillMatch = url.pathname.match(
-    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)$/,
+  // GET /api/drafts/:folder/custom-skills/:name/files — file list of one custom skill
+  const customSkillFilesMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/files$/,
   );
-  if (customSkillMatch) {
-    const draftFolder = customSkillMatch[1]!;
-    const name = customSkillMatch[2]!;
+  if (method === 'GET' && customSkillFilesMatch) {
+    return send(res, 200, { files: listCustomSkillFiles(customSkillFilesMatch[1]!, customSkillFilesMatch[2]!) });
+  }
+
+  // GET/PUT /api/drafts/:folder/custom-skills/:name/file?path=<relPath> — one file
+  const customSkillFileMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/file$/,
+  );
+  if (customSkillFileMatch) {
+    const draftFolder = customSkillFileMatch[1]!;
+    const name = customSkillFileMatch[2]!;
+    const relPath = url.searchParams.get('path') || 'SKILL.md';
     if (method === 'GET') {
-      const text = readCustomSkill(draftFolder, name);
+      const text = readCustomSkillFile(draftFolder, name, relPath);
       if (text === undefined) return send(res, 404, { error: 'not found' });
       return send(res, 200, { text });
     }
-    if (method === 'PUT' || method === 'DELETE') {
+    if (method === 'PUT') {
       const decision = checkDraftMutation(draftFolder, 'skills_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
-      if (method === 'DELETE') {
-        return send(res, 200, { ok: deleteCustomSkill(draftFolder, name) });
-      }
       const body = await readJsonBody(req);
       if (typeof body.content !== 'string') {
         return send(res, 400, { error: 'content (string) required' });
       }
       try {
-        writeCustomSkill(draftFolder, name, body.content);
+        writeCustomSkillFile(draftFolder, name, relPath, body.content);
         return send(res, 200, { ok: true });
       } catch (err) {
         return send(res, 400, { error: (err as Error).message });
       }
     }
+  }
+
+  // DELETE /api/drafts/:folder/custom-skills/:name — delete a whole custom skill
+  const customSkillMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)$/,
+  );
+  if (method === 'DELETE' && customSkillMatch) {
+    const decision = checkDraftMutation(customSkillMatch[1]!, 'skills_put', session.userId);
+    if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    return send(res, 200, { ok: deleteCustomSkill(customSkillMatch[1]!, customSkillMatch[2]!) });
   }
 
   // GET /api/drafts/:folder/models — catalog + current whitelist
