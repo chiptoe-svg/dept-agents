@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Playground v3 — Design</title>
+<style>
+  body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 920px; margin: 30px auto; padding: 0 20px; color: #222; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+  h2 { border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 36px; }
+  h3 { margin-top: 28px; }
+  code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #f4f4f4; padding: 10px 14px; border-radius: 5px; overflow-x: auto; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #fafafa; }
+  blockquote { border-left: 3px solid #888; margin: 14px 0; padding: 4px 14px; color: #555; background: #f9f9f9; }
+  ul, ol { padding-left: 24px; }
+  .meta { color: #666; font-size: 13px; }
+  .meta a { color: #4a90e2; }
+</style>
+</head>
+<body>
+
+<h1>Agent Playground v3 — Design</h1>
+
+<p class="meta">
+  <strong>Status:</strong> Brainstorm complete. Implementation plan in
+  <a href="../plans/2026-05-13-agent-playground-v3.html"><code>docs/superpowers/plans/2026-05-13-agent-playground-v3.html</code></a>.<br>
+  <strong>Visual mockups:</strong> <a href="2026-05-13-agent-playground-v3-mockups/index.html"><code>2026-05-13-agent-playground-v3-mockups/</code></a> — the 13 brainstorm screens that drove this design, with the canonical screens (those the spec reflects) called out.<br>
+  <strong>Predecessor:</strong> <a href="../../../plans/agent-playground-v2.md"><code>plans/agent-playground-v2.md</code></a> (SHIPPED, code in <code>src/channels/playground.ts</code> and <code>src/channels/playground/</code>).<br>
+  <strong>Related:</strong> <a href="../../../plans/master.md"><code>plans/master.md</code></a> (Phase 2 work — playground rebuild precedes per-student GWS OAuth).
+</p>
+
+<h2>Why a v3</h2>
+
+<p>The v2 playground works but accreted features (light theme, brand pass, mode pills, file editor, diff view, trace panel, role-aware lockdown for class) without a coherent overall design. The result is clunky on the student side — the most important audience now that Phase 1 has shipped.</p>
+
+<p>The v3 redesign reframes the playground from "operator's authoring workbench" into <strong>student learning surface</strong> (with the instructor using the same surface for demos). The pedagogical goal is for students to <em>experience</em> developing and fine-tuning agent behavior — including the <strong>economic and speed trade-offs</strong> between models and skill choices.</p>
+
+<h2>Audience and workflow</h2>
+
+<ul>
+  <li><strong>Primary user:</strong> student in a NanoClaw classroom deployment.</li>
+  <li><strong>Secondary user:</strong> instructor demonstrating live (uses the same surface, no separate "demo mode").</li>
+  <li><strong>Workflow shape:</strong> mixed — starts free-form ("play with the knobs and see what happens"), evolves into structured assignments by mid-semester. The surface must be inviting on day 1 <em>and</em> support deliberate task work.</li>
+</ul>
+
+<h2>Core concept changes</h2>
+
+<table>
+  <tr><th>Concept</th><th>v2</th><th>v3</th></tr>
+  <tr><td>Unit of work</td><td>Draft = experimental agent that gets applied to a target group</td><td>Each student has <strong>one current agent</strong> (the agent group assigned to them by <code>/add-classroom</code>), edited via a transient <strong>draft state</strong>. No "target."</td></tr>
+  <tr><td>Snapshots</td><td>Not a concept</td><td>Saved versions live in <strong>My library</strong>; same mechanism as picking a Default or Class library entry to start from</td></tr>
+  <tr><td>Persona surface</td><td>Single textarea on <code>CLAUDE.local.md</code></td><td>Three-panel (Library / Preview / Active) with sub-tabs to inspect read-only base layers</td></tr>
+  <tr><td>Skills surface</td><td>Two-column enable/disable toggle</td><td>Three-panel (Library / Preview-with-file-tree / Active) with cost annotations</td></tr>
+  <tr><td>Model surface</td><td>Hardcoded claude/codex toggle in topbar</td><td>Dedicated <strong>Models</strong> tab — whitelist of allowed models with cost/speed/modalities/notes</td></tr>
+  <tr><td>Cost/speed</td><td>Invisible</td><td>Per-message annotation under every agent reply</td></tr>
+  <tr><td>Apply / Save</td><td>Single "Apply" button in topbar</td><td><strong>Draft banner</strong> at top of every tab with three actions: Discard / Save to my library / Apply to my agent</td></tr>
+</table>
+
+<h2>Surface</h2>
+
+<h3>Header (always visible)</h3>
+<ul>
+  <li>Brand mark.</li>
+  <li>"Current agent: <strong>&lt;name&gt;</strong>" (the locked-in version that survives container restarts).</li>
+  <li>Authenticated user.</li>
+  <li>Tab bar: <strong>Chat / Persona / Skills / Models</strong>.</li>
+</ul>
+
+<h3>Draft banner (appears when there are unsaved edits — top of every tab)</h3>
+<ul>
+  <li>"⚠ Draft — &lt;agent&gt; has unsaved changes."</li>
+  <li>Three buttons, distinct color treatment:
+    <ul>
+      <li><strong>↩ Discard</strong> (red-tinged) — reset draft to current agent state.</li>
+      <li><strong>💾 Save to my library…</strong> (green) — name + freeze the current draft as a library entry. Doesn't affect "current agent."</li>
+      <li><strong>✓ Apply to my agent</strong> (blue, primary) — make draft permanent (writes persona / skills / model fields onto the current agent group). Survives container restarts and library reloads. Does <strong>not</strong> kill the running container — only provider changes do that, and the provider switch has its own modal in the Chat tab.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>The draft banner is the <strong>single source of truth</strong> for committing or discarding changes. Apply / Save / Discard exist nowhere else.</p>
+
+<h3>Tab 1 — Chat</h3>
+<ul>
+  <li><strong>Toolbar</strong> (top): "Chat with: &lt;agent&gt;" · provider dropdown (claude / codex / opencode / ollama) · model dropdown (filtered by selected provider).</li>
+  <li><strong>Two-column body:</strong>
+    <ul>
+      <li>Left (~60%): chat log + input. Each agent reply gets a small annotation line: <code>provider/model · N tok · $0.00X · 0.Ys</code>.</li>
+      <li>Right (~40%): trace panel — tool calls, tool results, system events. Already wired for the Claude provider via <code>ProviderEvent</code> types <code>tool_use</code> / <code>tool_result</code> (see <code>container/agent-runner/src/providers/types.ts</code>); other providers' trace surfacing is a known follow-up tracked in <a href="../../../plans/master.md"><code>plans/master.md</code></a>.</li>
+    </ul>
+  </li>
+  <li><strong>Provider switch UX:</strong> confirmation modal — <em>"Switching from &lt;X&gt; to &lt;Y&gt; will reset this chat (kills the running container; persona, skills, library entries are not affected). Cancel / Switch &amp; reset chat."</em> Matches existing behavior in <code>src/channels/playground/api-routes.ts</code> <code>/api/drafts/:folder/provider</code> (PUT kills container).</li>
+  <li><strong>Model switch UX:</strong> no modal. Inline pill on the dropdown: "↻ next message". Italic note in chat log: "— model changed to &lt;X&gt;; next reply will use it —".</li>
+  <li>Chat <strong>always talks to the current draft state</strong>, not a saved version. Editing the persona in another tab and switching back to Chat picks up the change automatically; no "save draft" intermediate step.</li>
+</ul>
+
+<h3>Tab 2 — Persona</h3>
+
+<p>Three panels: Library / Preview / Active. Library is a fixed-width sidebar (~150px); Preview and Active share the rest of the width.</p>
+
+<p><strong>Library (left panel):</strong> scrollable list with a filter input. Three sections, all read-only as a list (deletion of My library entries is out of scope for v3 — handled later via a separate "manage my library" surface or CLI):</p>
+<ul>
+  <li><strong>Default agents</strong> — bundled with NanoClaw (renamed from any "nanoclaw default" labels). Same set every install.</li>
+  <li><strong>Class library</strong> — instructor-curated. Already partially populated on this install.</li>
+  <li><strong>My library</strong> — student-saved snapshots. Created via "Save to my library…" in the draft banner.</li>
+</ul>
+<p>Click an entry → loads it into the Preview panel.</p>
+
+<p><strong>Preview (middle panel):</strong> read-only display of the selected library entry's persona text. Header shows source section + persona's preferred provider/model + skills used. Body is a <code>&lt;pre&gt;</code> tag with selectable text. Hint at top-right: "read-only · ⌘A then ⌘C to copy". No magic buttons — copying is native browser behavior.</p>
+
+<p><strong>Active (right panel):</strong> the agent's actual editable state. Sub-tab strip at top:</p>
+<ul>
+  <li><strong>✏️ My persona</strong> (active) — editable textarea backed by <code>groups/&lt;folder&gt;/CLAUDE.local.md</code>. Paste / edit / delete are native.</li>
+  <li><strong>🔒 Group base</strong> (read-only) — <code>groups/&lt;folder&gt;/CLAUDE.md</code> after <code>@import</code> resolution. Shows the auto-composed module fragments (telegram messaging, scheduling, wiki, etc.).</li>
+  <li><strong>🔒 Container base</strong> (read-only) — <code>container/CLAUDE.md</code>. Common to all NanoClaw agents on this install.</li>
+  <li><strong>🔒 Global</strong> (dimmed when absent) — <code>groups/global/CLAUDE.md</code> if present (typically absent in v2).</li>
+</ul>
+
+<p>Footer of the Active panel:</p>
+<ul>
+  <li><code>prefers provider: &lt;dropdown&gt;</code> — same options as Chat tab.</li>
+  <li><code>model: &lt;dropdown&gt;</code> — filtered by selected provider.</li>
+</ul>
+
+<p>Edits to any of these (textarea content, prefers provider, model) trigger draft state and surface the draft banner.</p>
+
+<h3>Tab 3 — Skills</h3>
+
+<p>Same three-panel pattern as Persona.</p>
+
+<p><strong>Library (left, fixed-width sidebar):</strong> sections for <strong>Anthropic library</strong> (the cloned <code>anthropic/skills</code> cache — existing in v2), <strong>Class skills</strong> (instructor-authored, lives on <code>classroom</code> branch), and <strong>My skills</strong> (student-authored). Below the list: <strong>+ Author my own skill…</strong> button (sub-flow for creating a new skill — design TBD as part of implementation).</p>
+
+<p><strong>Preview (middle):</strong> file tree on the left + file viewer on the right. Skills are sometimes a single SKILL.md, sometimes a directory with multiple files (scripts, references, examples). The tree handles both. Default-selected file: SKILL.md.</p>
+
+<p><strong>Active (right):</strong> list of currently-enabled skills for the agent. Each entry shows skill name + estimated cost impact (<code>+~N tok/turn</code>) + a remove button. Footer: aggregate "Estimated cost impact" and "Latency impact" totals.</p>
+
+<p>Cost/latency annotations on skills are estimates, sourced from per-skill metadata (added to SKILL.md frontmatter as <code>cost_tokens</code> / <code>latency_ms</code> — populated on a best-effort basis; missing values render as "?"). Population of the metadata across the existing skill catalog is part of implementation.</p>
+
+<h3>Tab 4 — Models</h3>
+
+<p>Card grid. Each card represents one model the install can route to. Cards are checkable — checked = "this model is allowed for the agent to use" (whitelist).</p>
+
+<p><strong>Common card fields (all models):</strong></p>
+<ul>
+  <li>Checkbox + display name.</li>
+  <li>Speed/cost/origin chips (e.g., "⚡ fast · $ cheap · ☁ Anthropic" or "🏠 local · 🆓 free · 🐢🐢 hardware-bound").</li>
+  <li><code>$X / 1k tokens · Ys avg latency</code>.</li>
+  <li><code>params: &lt;count&gt; · modalities: &lt;text/image/audio&gt;</code>.</li>
+  <li>Notes line (free-form, instructor-authored on a class deployment).</li>
+</ul>
+
+<p><strong>Local-model cards</strong> (Ollama, mlx-omni-server, LM Studio, anything OpenAI-compatible at a custom base URL) get an extra inset:</p>
+<ul>
+  <li><code>host: &lt;url&gt;</code> (the custom OpenAI base URL).</li>
+  <li><code>context: &lt;size&gt; · quantization: &lt;Q4_K_M / FP16 / etc.&gt;</code>.</li>
+  <li><code>status: ● online | ○ offline</code> (live polled from the host).</li>
+</ul>
+
+<p>The whitelist controls which models appear in the Chat tab and Persona tab dropdowns. Picking a persona that prefers a model outside the whitelist surfaces a warning when loading.</p>
+
+<h2>Architecture</h2>
+
+<h3>Host-side: persona-layers helper (new)</h3>
+
+<p>New module: <strong><code>src/persona-layers.ts</code></strong>.</p>
+
+<p>Single exported function:</p>
+
+<pre>function getEffectivePersonaLayers(folder: string): {
+  myPersona:     string;            // groups/&lt;folder&gt;/CLAUDE.local.md
+  groupBase:     string;            // groups/&lt;folder&gt;/CLAUDE.md with @imports resolved
+  containerBase: string;            // container/CLAUDE.md
+  global?:       string;            // groups/global/CLAUDE.md if present
+};</pre>
+
+<p>Refactor <code>resolveClaudeImports</code> from <code>container/agent-runner/src/providers/codex.ts:54</code> into a shared utility (<code>src/lib/claude-imports.ts</code>) — duplicate the ~15-line pure function rather than couple the two runtimes via a shared package. Both copies stay in lockstep via tests.</p>
+
+<p>The playground API consumes this single function regardless of whether the agent is configured to use Claude or Codex; provider-specific quirks stay in agent-runner.</p>
+
+<h3>Host-side: model whitelist storage (new)</h3>
+
+<p>Whitelist is a per-agent-group setting stored in <code>container.json</code> as <code>allowedModels: [{ provider, model }]</code>. API:</p>
+<ul>
+  <li><code>GET /api/drafts/:folder/models</code> — returns whitelist + the model catalog (cards above).</li>
+  <li><code>PUT /api/drafts/:folder/models</code> — replaces the whitelist.</li>
+</ul>
+
+<p>Model catalog comes from a static config (<code>src/model-catalog.ts</code>), populated with cost/speed/params/modalities for each known cloud model. Local-model entries layer in from an instructor-editable file (<code>config/model-catalog-local.json</code>) at install time (instructor adds entries pointing at their Ollama / mlx-omni / LM Studio host).</p>
+
+<h3>Host-side: library tier (new)</h3>
+
+<p>Three-tier listing in the Persona tab. Single-file-per-entry layout (one JSON per entry):</p>
+
+<table>
+  <tr><th>Tier</th><th>On-disk path</th><th>Source</th></tr>
+  <tr><td>Default agents</td><td><code>library/default-agents/&lt;name&gt;.json</code></td><td>Shipped with NanoClaw</td></tr>
+  <tr><td>Class library</td><td><code>library/class/&lt;name&gt;.json</code></td><td>Installed by <code>/add-classroom</code> (lives on <code>classroom</code> branch)</td></tr>
+  <tr><td>My library</td><td><code>data/student-libraries/&lt;student_id&gt;/&lt;name&gt;.json</code></td><td>Per-student, written via "Save to my library…"</td></tr>
+</table>
+
+<p>Entry shape:</p>
+
+<pre>{
+  "name": "concise_writer",
+  "description": "Writes the shortest correct answer to any question.",
+  "persona": "# Concise writer\n\nYou write the shortest correct answer...",
+  "preferredProvider": "claude",
+  "preferredModel": "claude-haiku-4-5",
+  "skills": ["calculator"]
+}</pre>
+
+<p>API:</p>
+<ul>
+  <li><code>GET /api/library</code> — returns all three tiers (with <code>name</code> and <code>description</code> only — list view).</li>
+  <li><code>GET /api/library/:tier/:name</code> — full entry contents.</li>
+  <li><code>POST /api/library/my/:name</code> — save current draft as named entry (creates or overwrites in My library only).</li>
+</ul>
+
+<h3>Host-side: per-message cost/speed tracking</h3>
+
+<p>Provider events (<code>ProviderEvent</code> in <code>container/agent-runner/src/providers/types.ts</code>) need to carry token counts and latency. Today's <code>result</code> event has <code>text</code> only; extend to include token counts (<code>{ input, output }</code>) and latency (timestamp on <code>init</code> + <code>result</code>). The poll-loop writes this to <code>outbound.db</code> as part of the message row (or a sibling row) so playground SSE can surface it.</p>
+
+<p>Per-message annotation rendering on the client is purely additive — the existing chat log gets a small grey line under each agent reply.</p>
+
+<h3>Client-side: full UI rewrite</h3>
+
+<p>The 5-mode v2 UI (Chat / Persona / Skills / Files / Diff) does not survive intact. Diff mode, Files mode, and the standalone Persona mode collapse into the new 4-tab structure (Files mode's escape-hatch role is dropped — students don't need raw container.json access; what they actually want is exposed via Skills + Models). Trace panel survives and moves into Chat tab as the right column.</p>
+
+<p>Client architecture stays the same shape (vanilla TS/JS over SSE + REST, no framework). File reorg is part of the implementation plan.</p>
+
+<h2>Out of scope for v3</h2>
+
+<ul>
+  <li><strong>Per-skill cost backfill across the entire <code>anthropic/skills</code> catalog</strong> — populate metadata on a best-effort basis; missing values render as "?".</li>
+  <li><strong>Trace surfacing for non-Claude providers</strong> — known follow-up in <a href="../../../plans/master.md"><code>plans/master.md</code></a>. v3 ships with trace working on Claude only.</li>
+  <li><strong>Managing My library entries (rename, delete, reorder)</strong> — list-only in v3. A separate surface or CLI command later.</li>
+  <li><strong>Skill authoring sub-flow</strong> — placeholder button in v3 (<code>+ Author my own skill…</code>); the actual flow is its own design pass.</li>
+  <li><strong>Live local-model status polling</strong> — display is live-updating but the "status: online/offline" mechanism (timer? on-demand?) is an implementation detail to nail down then.</li>
+  <li><strong>Multi-model concurrent comparison</strong> — no "run this prompt against snapshot A and B side-by-side." Save snapshots, switch between them, compare manually. (Could be a future tab.)</li>
+</ul>
+
+<h2>Success criteria</h2>
+
+<ul>
+  <li>A student can open the playground, click into Persona, browse Default agents, click <code>socratic_tutor</code>, copy the text into their My persona, switch to Chat, send a message, and see per-message cost/speed annotations — without seeing a single error or needing to ask the instructor what a button means.</li>
+  <li>A student can switch the model in Chat (no warning) and see the next reply use the new model with new cost/speed numbers.</li>
+  <li>A student can switch the provider in Chat, see the warning modal, accept it, and have a fresh chat under the new provider.</li>
+  <li>A student can click "Save to my library…", name the snapshot, see it appear in their My library section, navigate away, come back, click the snapshot, and see it preview correctly.</li>
+  <li>An instructor can add a Local model card (pointing at their classroom Ollama box) and see it appear in the Models tab with online status, params, modalities, and instructor notes.</li>
+  <li>The Persona tab right-panel sub-tabs render the same content for an <code>agent_provider=claude</code> group as for an <code>agent_provider=codex</code> group (provider-uniform via <code>getEffectivePersonaLayers</code>).</li>
+</ul>
+
+</body>
+</html>

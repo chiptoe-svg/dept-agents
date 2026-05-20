@@ -15,7 +15,10 @@ export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER || envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 
 // Absolute paths needed for container mounts
-const PROJECT_ROOT = process.cwd();
+// Exported so per-feature modules (class controls, etc.) can resolve
+// their config files relative to the install root without each
+// re-deriving from process.cwd().
+export const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || os.homedir();
 
 // Mount security: allowlist stored OUTSIDE project root, never mounted into containers
@@ -23,7 +26,11 @@ export const MOUNT_ALLOWLIST_PATH = path.join(HOME_DIR, '.config', 'nanoclaw', '
 export const SENDER_ALLOWLIST_PATH = path.join(HOME_DIR, '.config', 'nanoclaw', 'sender-allowlist.json');
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
+export const CONTAINER_DIR = path.resolve(PROJECT_ROOT, 'container');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+export const LIBRARY_DIR = path.resolve(PROJECT_ROOT, 'library');
+export const STUDENT_LIBRARIES_DIR = path.resolve(PROJECT_ROOT, 'data', 'student-libraries');
+export const MODEL_CATALOG_LOCAL_PATH = path.resolve(PROJECT_ROOT, 'config', 'model-catalog-local.json');
 
 // Per-checkout image tag so two installs on the same host don't share
 // `nanoclaw-agent:latest` and clobber each other on rebuild.
@@ -37,10 +44,10 @@ export const CONTAINER_TIMEOUT = parseInt(process.env.CONTAINER_TIMEOUT || '1800
 export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(process.env.CONTAINER_MAX_OUTPUT_SIZE || '10485760', 10); // 10MB default
 export const CREDENTIAL_PROXY_PORT = parseInt(process.env.CREDENTIAL_PROXY_PORT || '3001', 10);
 export const PLAYGROUND_PORT = parseInt(process.env.PLAYGROUND_PORT || '3002', 10);
-export const PLAYGROUND_ENABLED =
-  (process.env.PLAYGROUND_ENABLED || '').toLowerCase() === '1' ||
-  (process.env.PLAYGROUND_ENABLED || '').toLowerCase() === 'true';
-const playgroundEnv = readEnvFile(['PLAYGROUND_BIND_HOST', 'PLAYGROUND_IDLE_MINUTES']);
+export const GWS_MCP_RELAY_PORT = parseInt(process.env.GWS_MCP_RELAY_PORT || '3007', 10);
+const playgroundEnv = readEnvFile(['PLAYGROUND_BIND_HOST', 'PLAYGROUND_IDLE_MINUTES', 'PLAYGROUND_ENABLED']);
+const playgroundEnabledRaw = (process.env.PLAYGROUND_ENABLED || playgroundEnv.PLAYGROUND_ENABLED || '').toLowerCase();
+export const PLAYGROUND_ENABLED = playgroundEnabledRaw === '1' || playgroundEnabledRaw === 'true';
 export const PLAYGROUND_IDLE_MS =
   parseInt(process.env.PLAYGROUND_IDLE_MINUTES || playgroundEnv.PLAYGROUND_IDLE_MINUTES || '30', 10) * 60 * 1000;
 // Default 0.0.0.0 — exposed beyond loopback. Magic-link auth (rotating

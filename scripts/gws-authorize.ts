@@ -15,10 +15,19 @@
  * exchange logic is the same; only the redirect URI and storage
  * path differ.
  *
- * Usage (default — localhost callback for VPS-via-SSH workflows):
+ * Usage (default — localhost callback for remote-host workflows):
  *
- *   ssh -L 8765:localhost:8765 user@host
+ *   # On a fresh terminal on your laptop, tunnel the callback port:
+ *   ssh -N -L 8765:localhost:8765 user@host
+ *
+ *   # On the host (a different shell — the SSH command above blocks):
  *   pnpm exec tsx scripts/gws-authorize.ts
+ *
+ *   # The script writes the authorization URL to a tmp file. On the
+ *   # host: cat that file, copy the URL, paste into a browser ON YOUR
+ *   # LAPTOP (so the SSH tunnel can deliver Google's redirect to the
+ *   # host's local listener). The inline-echoed URL at the bottom is
+ *   # a fallback for terminals that don't wrap.
  *
  * Usage (public callback — for hosts where browser is on the same
  * machine, or for testing the Phase 14 redirect-URI shape):
@@ -35,7 +44,10 @@
  *   8080 or 8000), pass `--port <that>` to match what's already
  *   registered, or add 8765 to the client's allowed redirects.
  */
+import fs from 'fs';
 import http from 'http';
+import os from 'os';
+import path from 'path';
 import { URL } from 'url';
 
 import {
@@ -76,15 +88,45 @@ async function main(): Promise<void> {
     scopes: DEFAULT_GWS_SCOPES,
   });
 
+  // Write the URL to a tmp file at 0600. Terminals wrap long URLs and
+  // break click-to-copy / triple-click workflows; the file is the
+  // primary delivery, the inline echo at the bottom is a fallback.
+  const urlFile = path.join(os.tmpdir(), `gws-authorize-url-${process.pid}.txt`);
+  fs.writeFileSync(urlFile, authUrl + '\n', { mode: 0o600 });
+
   console.log('');
-  console.log('Open the following URL in a browser to authorize:');
+  console.log('───────────────────────────────────────────────────────────────');
+  console.log('Authorization URL written to (use this — terminal wrap breaks');
+  console.log('copy of the inline version):');
   console.log('');
-  console.log(`  ${authUrl}`);
+  console.log(`  ${urlFile}`);
   console.log('');
-  console.log(`After granting access Google will redirect to ${redirectUri}.`);
-  console.log(`If you are SSH'd in, run:  ssh -L ${opts.port}:localhost:${opts.port} <host>  on a fresh terminal first.`);
+  console.log('On the host:        cat ' + urlFile);
+  console.log(`On your machine:    ssh -N -L ${opts.port}:localhost:${opts.port} <host>`);
+  console.log('Then paste the URL into a browser on your machine.');
+  console.log('───────────────────────────────────────────────────────────────');
+  console.log('');
+  console.log('After granting access Google redirects to:');
+  console.log(`  ${redirectUri}`);
   console.log('');
   console.log(`Listening for callback on ${opts.host}:${opts.port}…`);
+  console.log('');
+  console.log('(Inline copy — may wrap, prefer the file above):');
+  console.log(authUrl);
+
+  const cleanupUrlFile = (): void => {
+    try {
+      fs.unlinkSync(urlFile);
+    } catch {
+      /* best-effort — file may already be gone */
+    }
+  };
+  // If the user Ctrl-Cs out before the callback, still wipe the URL
+  // file (it has the client_id query param embedded — mildly sensitive).
+  process.on('SIGINT', () => {
+    cleanupUrlFile();
+    process.exit(130);
+  });
 
   const code = await new Promise<string>((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -119,6 +161,7 @@ async function main(): Promise<void> {
     server.listen(opts.port, opts.host);
   });
 
+  cleanupUrlFile();
   console.log('Code received, exchanging for tokens…');
   const tokens = await exchangeCodeForTokens({
     clientId: client_id,
@@ -127,9 +170,9 @@ async function main(): Promise<void> {
     redirectUri,
   });
 
-  const path = writeCredentialsJson({ tokens });
+  const credsPath = writeCredentialsJson({ tokens });
   console.log('');
-  console.log(`✓ Credentials written to ${path}`);
+  console.log(`✓ Credentials written to ${credsPath}`);
   console.log(`  refresh_token: present`);
   console.log(`  expires_in: ${tokens.expires_in}s`);
   console.log(`  scope: ${tokens.scope}`);

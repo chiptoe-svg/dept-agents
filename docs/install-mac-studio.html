@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Install NanoClaw on Mac Studio</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #fff;
+    --border: #e0e0e0;
+    --text: #222;
+    --muted: #666;
+    --code-bg: #1e1e2e;
+    --code-fg: #f5f5f7;
+    --accent: #4a90e2;
+    --accent-fg: #fff;
+    --success: #2a7;
+    --warning: #f0c060;
+    --danger: #a44;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    max-width: 880px;
+    margin: 30px auto;
+    padding: 0 20px 80px;
+    color: var(--text);
+    background: var(--bg);
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h1 .lobster { font-size: 32px; }
+  h2 {
+    font-size: 18px;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0 6px;
+    margin-top: 36px;
+  }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  p { margin: 6px 0; }
+  a { color: var(--accent); }
+  .lead { color: var(--muted); margin-bottom: 24px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .card h2 { margin-top: 0; border: none; padding-top: 0; }
+
+  /* Code block with copy button */
+  .code-block {
+    position: relative;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 6px;
+    padding: 14px 50px 14px 16px;
+    font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 8px 0;
+    white-space: pre;
+  }
+  .code-block .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(255,255,255,0.1);
+    color: var(--code-fg);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .code-block .copy-btn:hover { background: rgba(255,255,255,0.2); }
+  .code-block .copy-btn.copied { background: var(--success); border-color: var(--success); color: #fff; }
+
+  .step {
+    display: flex;
+    gap: 14px;
+    margin: 22px 0;
+  }
+  .step-number {
+    flex: 0 0 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 600;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-body { flex: 1; }
+  .step-body h2 { margin: 4px 0 4px; border: none; padding: 0; font-size: 17px; }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    background: #eef4fb;
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  .pill.warn { background: #fff8e6; color: #8a6d00; }
+  .pill.ok { background: #eaf5ea; color: var(--success); }
+
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #fafafa; font-weight: 600; }
+  td code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+
+  .links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .links a {
+    display: block;
+    padding: 10px 14px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .links a:hover { border-color: var(--accent); background: #f5faff; }
+  .links .meta { display: block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+
+  .callout {
+    background: #fff8e6;
+    border-left: 4px solid var(--warning);
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .callout strong { color: #8a6d00; }
+</style>
+</head>
+<body>
+
+<h1><span class="lobster">🦞</span> Install NanoClaw on Mac Studio</h1>
+<p class="lead">Three commands, click-to-copy. Tested for macOS 13+ with Claude Code already authenticated.</p>
+
+<div class="card">
+  <h2>Before you start</h2>
+  <p>You need:</p>
+  <ul>
+    <li><span class="pill ok">have it</span> <strong>Claude Code</strong> installed and authenticated (you confirmed)</li>
+    <li><span class="pill ok">have it</span> <strong>GitHub authenticated</strong> via <code>gh auth login</code> or SSH (you confirmed)</li>
+    <li><span class="pill warn">check</span> <strong>Docker Desktop</strong> for Mac — install if missing: <a href="https://www.docker.com/products/docker-desktop">docker.com/products/docker-desktop</a>. Apple Silicon: pick the Apple Silicon build.</li>
+  </ul>
+  <p class="callout"><strong>Apple Container alternative:</strong> if you'd rather use Apple's native container runtime instead of Docker (M-series only, faster cold-start, smaller install), skip Docker. After install, run <code>/convert-to-apple-container</code> in Claude Code.</p>
+</div>
+
+<div class="step">
+  <div class="step-number">1</div>
+  <div class="step-body">
+    <h2>Clone the repo</h2>
+    <p>Pulls the latest <code>main</code> — v3 playground is now merged.</p>
+    <div class="code-block">git clone https://github.com/chiptoe-svg/nanoclaw_gccourse.git ~/nanoclaw
+cd ~/nanoclaw<button class="copy-btn" type="button" data-copy>Copy</button></div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-number">1.5</div>
+  <div class="step-body">
+    <h2>(Optional) Migrate everything from an existing install</h2>
+    <p>If you already have a working install elsewhere, you can clone the credentials over in one step instead of re-entering them here. This fork ships an <code>/install-handoff</code> skill that generates a time-limited single-use URL bundling <code>.env</code> + Google Workspace OAuth + Codex creds. Workflow:</p>
+    <ol>
+      <li>On the source machine: open Claude Code in the repo and run:
+        <div class="code-block">ncl handoffs create --ttl 24h --max-uses 1<button class="copy-btn" type="button" data-copy>Copy</button></div>
+        It prints a URL like <code>http://&lt;source-host&gt;:3008/handoff/&lt;token&gt;/install.html</code>.
+      </li>
+      <li>Open that URL in this Mac's browser. The page detects macOS and shows the right install commands inline.</li>
+      <li>Follow the steps it shows: <code>git clone</code>, paste the credential <code>curl</code> block, <code>bash nanoclaw.sh</code>, restart the service. The bootstrap auto-detects the migrated values and skips those prompts.</li>
+    </ol>
+    <p class="callout"><strong>Don't have <code>/install-handoff</code> on the source yet?</strong> Pull this fork's main branch and run <code>/install-handoff</code> in Claude Code — it's a one-shot install. Or skip step 1.5 entirely; the bootstrap will prompt for everything from scratch.</p>
+    <p class="callout"><strong>Note on Claude Code OAuth:</strong> on macOS the OAuth lives in Keychain, not a file. You don't need to migrate it — the setup script auto-extracts it via <code>security find-generic-password -s "Claude Code-credentials" -w</code> when you pick "Use my Claude Code subscription".</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-number">2</div>
+  <div class="step-body">
+    <h2>Run the bootstrap script</h2>
+    <p><code>nanoclaw.sh</code> installs Node + pnpm + native modules, builds the agent container, walks you through credential and channel setup, and pairs your first messaging app. If a step fails it hands off to Claude Code to diagnose and resume from where it broke.</p>
+    <div class="code-block">bash nanoclaw.sh<button class="copy-btn" type="button" data-copy>Copy</button></div>
+    <p>If you did step 1.5 (handoff URL), expect <strong>~2–5 minutes</strong> of mostly-automated work — Docker check, container build, service install. Prompts that would normally ask for credentials get skipped when the values are already in <code>.env</code>.</p>
+    <p>If you skipped step 1.5, expect <strong>~5–15 minutes</strong> — you'll be prompted for: display name, AI-coding-CLI (pick Claude Code), <strong>credential mode (defaults to native credential proxy)</strong>, provider credentials, timezone, and which channel to pair first (Telegram is smoothest).</p>
+    <p class="callout"><strong>Credential mode — IMPORTANT:</strong> the setup script asks "How would you like to manage credentials?" with two options: <em>Native credential proxy (recommended)</em> and <em>OneCLI vault</em>. <strong>Hit Enter to accept the default (native).</strong> OneCLI is a separate gateway service this fork does NOT install — selecting it triggers an extra ~5min install of the OneCLI binary + vault setup. Native is what you want unless you specifically need centralized credential vaulting or per-user OAuth tokens (Phase 2 classroom territory). If you accidentally pick OneCLI, abort with Ctrl-C and rerun <code>bash nanoclaw.sh</code>.</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-number">3</div>
+  <div class="step-body">
+    <h2>Open the playground</h2>
+    <p>After step 2 finishes, the host service is running as a LaunchAgent and the playground is reachable at:</p>
+    <div class="code-block">http://&lt;your-mac-studio-LAN-ip&gt;:3002/<button class="copy-btn" type="button" data-copy>Copy</button></div>
+    <p>The first time you visit, run <code>/playground</code> in your paired chat (Telegram, etc.) — you'll get a magic-link URL DM'd back. Click it, you'll land on the Home tab of the new v3 surface.</p>
+  </div>
+</div>
+
+<h2>What goes in <code>.env</code> (for reference)</h2>
+<p><code>nanoclaw.sh</code> writes most of this for you. Listed here so you know what's controlling what — useful when troubleshooting or layering on options later.</p>
+
+<h3>Required (one of)</h3>
+<table>
+  <tr><th>Variable</th><th>Purpose</th></tr>
+  <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Anthropic API key — the simplest path. Get from <a href="https://console.anthropic.com">console.anthropic.com</a>.</td></tr>
+  <tr><td><code>CLAUDE_CODE_OAUTH_TOKEN</code></td><td>Use your Claude Code subscription instead of an API key. Setup script can extract this from your local <code>~/.claude/.credentials.json</code>.</td></tr>
+</table>
+
+<h3>Optional providers</h3>
+<table>
+  <tr><th>Variable</th><th>Purpose</th></tr>
+  <tr><td><code>OPENAI_API_KEY</code></td><td>For agents using Codex (OpenAI) as their provider. Add via <code>/add-codex</code> in Claude Code.</td></tr>
+  <tr><td><code>ANTHROPIC_BASE_URL</code> / <code>OPENAI_BASE_URL</code></td><td>Custom upstream URLs (proxies, local models). Defaults to the official endpoints.</td></tr>
+</table>
+
+<h3>Playground</h3>
+<table>
+  <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
+  <tr><td><code>PLAYGROUND_ENABLED</code></td><td><code>(unset)</code></td><td>Set to <code>1</code> to allow the <code>/playground</code> Telegram command. Required.</td></tr>
+  <tr><td><code>PLAYGROUND_PORT</code></td><td><code>3002</code></td><td>HTTP port for the playground web UI.</td></tr>
+  <tr><td><code>PLAYGROUND_BIND_HOST</code></td><td><code>0.0.0.0</code></td><td>Set to <code>127.0.0.1</code> if you'd rather tunnel via SSH and skip magic-link auth.</td></tr>
+  <tr><td><code>PLAYGROUND_IDLE_MINUTES</code></td><td><code>30</code></td><td>Auto-revoke idle playground sessions after N minutes.</td></tr>
+</table>
+
+<h3>General</h3>
+<table>
+  <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
+  <tr><td><code>ASSISTANT_NAME</code></td><td><code>Andy</code></td><td>What your agents call themselves and how you address them (<code>@Andy</code>).</td></tr>
+  <tr><td><code>TZ</code></td><td>auto-detected</td><td>Timezone for scheduled tasks and message formatting (IANA, e.g. <code>America/New_York</code>).</td></tr>
+  <tr><td><code>CONTAINER_TIMEOUT</code></td><td><code>1800000</code></td><td>Max container lifetime in ms (default 30 min).</td></tr>
+  <tr><td><code>MAX_CONCURRENT_CONTAINERS</code></td><td><code>5</code></td><td>Cap on simultaneous agent containers.</td></tr>
+</table>
+
+<h2>Useful links</h2>
+<div class="links">
+  <a href="https://github.com/chiptoe-svg/nanoclaw_gccourse">📦 Repo<span class="meta">chiptoe-svg/nanoclaw_gccourse</span></a>
+  <a href="https://github.com/chiptoe-svg/nanoclaw_gccourse/tree/main">🌿 v3 branch<span class="meta">worktree-playground-v3</span></a>
+  <a href="https://github.com/chiptoe-svg/nanoclaw_gccourse/blob/main/nanoclaw.sh">📜 nanoclaw.sh<span class="meta">bootstrap script source</span></a>
+  <a href="superpowers/specs/2026-05-13-agent-playground-v3-design.html">📘 v3 spec<span class="meta">student-first redesign</span></a>
+  <a href="superpowers/plans/2026-05-13-agent-playground-v3.html">🛠 v3 plan<span class="meta">24-task implementation log</span></a>
+  <a href="superpowers/specs/2026-05-13-agent-playground-v3-mockups/index.html">🎨 v3 mockups<span class="meta">brainstorm-era UI sketches</span></a>
+  <a href="https://github.com/chiptoe-svg/nanoclaw_gccourse/blob/main/README.md">📖 README<span class="meta">project overview</span></a>
+  <a href="https://github.com/chiptoe-svg/nanoclaw_gccourse/blob/main/docs/architecture.md">🏗 Architecture doc<span class="meta">host + container split</span></a>
+</div>
+
+<h2>Once installed</h2>
+<p>From the Mac Studio terminal, useful follow-ups (all via Claude Code in the repo dir):</p>
+<table>
+  <tr><th>Command</th><th>What it does</th></tr>
+  <tr><td><code>claude</code> → <code>/setup</code></td><td>Re-runs setup interactively (idempotent — safe to re-invoke if something needs redoing).</td></tr>
+  <tr><td><code>claude</code> → <code>/add-telegram</code></td><td>Pair a Telegram bot if you skipped channels in step 2.</td></tr>
+  <tr><td><code>claude</code> → <code>/init-first-agent</code></td><td>Bootstrap the first agent group for the channel you just paired.</td></tr>
+  <tr><td><code>claude</code> → <code>/debug</code></td><td>If anything breaks. Looks at logs and runs container diagnostics.</td></tr>
+  <tr><td><code>tail -F logs/nanoclaw.log</code></td><td>Watch the host service.</td></tr>
+  <tr><td><code>launchctl kickstart -k gui/$(id -u)/com.nanoclaw</code></td><td>Restart the service after a .env change.</td></tr>
+</table>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Fix</th></tr>
+  <tr><td>Step 2 fails at "Build container"</td><td>Open Docker Desktop, accept any license prompts, retry: <code>bash nanoclaw.sh</code> (it resumes from the failing step).</td></tr>
+  <tr><td>Magic-link 404s</td><td>Make sure <code>PLAYGROUND_ENABLED=1</code> in <code>.env</code> and restart: <code>launchctl kickstart -k gui/$(id -u)/com.nanoclaw</code>.</td></tr>
+  <tr><td>"current agent: (no agent yet)" in Home tab</td><td>Run <code>/init-first-agent</code> in Claude Code from the repo dir.</td></tr>
+  <tr><td>Magic-link URL points at <code>localhost</code> instead of the LAN IP</td><td>Set <code>PLAYGROUND_PUBLIC_HOST=&lt;mac-studio-lan-ip&gt;</code> in <code>.env</code> and restart.</td></tr>
+  <tr><td>Anything else</td><td>Inside the repo dir: <code>claude</code> → <code>/debug</code>. It reads logs and offers fixes.</td></tr>
+</table>
+
+<script>
+document.querySelectorAll('[data-copy]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const code = btn.parentElement.textContent.replace(/Copy$|Copied$/, '').trim();
+    try {
+      await navigator.clipboard.writeText(code);
+      const old = btn.textContent;
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = old; btn.classList.remove('copied'); }, 1500);
+    } catch (err) {
+      btn.textContent = 'Copy failed';
+      console.error(err);
+    }
+  });
+});
+</script>
+
+</body>
+</html>

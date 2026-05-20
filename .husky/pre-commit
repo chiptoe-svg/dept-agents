@@ -10,5 +10,13 @@ if command -v gitleaks >/dev/null 2>&1; then
   }
 fi
 
-# Format staged code.
-npm run format:fix
+# Verify formatting — block the commit if anything is unformatted.
+# The old hook ran `prettier --write` on every src file without
+# re-staging the result, so it silently reformatted unrelated files
+# and left the tree dirty without ever enforcing anything. `--check`
+# enforces instead: run `pnpm format` to fix and re-stage.
+npm run format:check || {
+  echo ""
+  echo "❌ prettier found unformatted files — run 'pnpm format', re-stage, and commit again."
+  exit 1
+}

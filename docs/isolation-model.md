@@ -86,3 +86,63 @@ messaging_group_agents (session_mode, trigger_rules, priority)
 - **Shared session:** multiple messaging_groups → same agent_group, `session_mode = 'agent-shared'`
 - **Same agent, separate sessions:** multiple messaging_groups → same agent_group, `session_mode = 'shared'`
 - **Separate agents:** each messaging_group → different agent_group
+
+## Classroom isolation (orthogonal to channel isolation)
+
+The classroom feature layers a *role-tier* isolation model on top of
+the channel-isolation choices above. It's a different axis: channel
+isolation answers "do channels share an agent?", classroom isolation
+answers "what role does this agent's owner have, and what can other
+agent groups' admins do to it?".
+
+The classroom feature uses **folder-name prefixes** as the role
+signal:
+
+| Folder prefix | Role | Default scope |
+|---|---|---|
+| `student_NN/` | Student | Member of their own group only. No admin reach into other students. |
+| `ta_NN/` | TA | Scoped admin on every `student_*` and every other `ta_*` in the class. Whole-class reach, no global admin. |
+| `instructor_NN/` | Instructor | Global admin role. Sees and edits every group. |
+| (no prefix, or other prefix) | Non-class agent | No special class role. |
+
+The prefix is what `class-skeleton.ts` writes when provisioning, and
+what `command-gate.ts` checks at command time to decide whether to
+honor admin-only commands. There's no separate "is this a class
+group?" flag — the folder name carries the signal.
+
+**Channel isolation is independent of role.** Every class agent group
+is a separate `agent_group` (level 3 isolation between students by
+default) — but a single agent group can be wired to multiple
+channels with any of the three modes if the role warrants it.
+Common patterns:
+
+- **Per-student Telegram** → one `student_NN` agent group per
+  student, wired to that student's DM as a `'per-thread'` session
+  (level 3: separate agents). Default.
+- **Instructor's mobile-and-desktop** → one `instructor_01` agent
+  group wired to both Telegram (mobile) and a CLI channel (laptop)
+  with `session_mode: 'shared'` (level 2: same agent, separate
+  sessions). The instructor's notes and memory carry across, but
+  the conversations don't bleed.
+- **A class wiki bot** → one shared `wiki` agent group wired to a
+  class Slack channel + a GitHub webhook with `session_mode:
+  'agent-shared'` (level 1: shared session). Everyone with access
+  to the channels sees the agent's view. Distinct from per-student
+  groups.
+
+**Permissions across role tiers.** Privilege is *user-level*, not
+agent-group-level. A user with the `admin` role (instructor or TA)
+can target any group they have scope on via `ncl` commands or
+admin-only chat commands. The classroom feature stamps the right
+roles at pair-time by reading the folder prefix of the group the
+pairing code targeted:
+
+- Instructor pairing → `user_roles` row with `role = 'admin'`, no
+  scope (global).
+- TA pairing → `user_roles` rows with `role = 'admin'` scoped to
+  each student / TA agent group in the class.
+- Student pairing → `agent_group_members` row on the student's own
+  folder (membership, not admin).
+
+See [docs/shared-classroom.md](shared-classroom.md) for the
+end-to-end deploy story.

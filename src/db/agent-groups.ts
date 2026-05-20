@@ -73,3 +73,32 @@ export function updateAgentGroup(
 export function deleteAgentGroup(id: string): void {
   getDb().prepare('DELETE FROM agent_groups WHERE id = ?').run(id);
 }
+
+/**
+ * Return the agent group the playground should default to for this user.
+ *
+ * Resolution order:
+ *  1. The user's first `agent_group_members` row (oldest by added_at) —
+ *     this is how the classroom feature assigns a student to an agent.
+ *  2. Falls back to the first non-draft agent group in the install —
+ *     for operators / admins who aren't formally members of any group.
+ *  3. null if neither resolves.
+ */
+export function getPlaygroundAgentForUser(userId: string | null): AgentGroup | null {
+  if (userId) {
+    const row = getDb()
+      .prepare(
+        `SELECT ag.* FROM agent_groups ag
+           INNER JOIN agent_group_members agm ON agm.agent_group_id = ag.id
+           WHERE agm.user_id = ?
+           ORDER BY agm.added_at ASC
+           LIMIT 1`,
+      )
+      .get(userId) as AgentGroup | undefined;
+    if (row) return row;
+  }
+  const fallback = getDb()
+    .prepare(`SELECT * FROM agent_groups WHERE folder NOT LIKE 'draft_%' ORDER BY created_at ASC LIMIT 1`)
+    .get() as AgentGroup | undefined;
+  return fallback ?? null;
+}

@@ -7,10 +7,11 @@
  */
 import Database from 'better-sqlite3';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { describe, it, expect, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { getInboundSourceSessionId, migrateMessagesInTable } from './session-db.js';
+import { ensureSchema, getInboundSourceSessionId, migrateMessagesInTable } from './session-db.js';
 
 const TEST_DIR = '/tmp/nanoclaw-session-db-test';
 const DB_PATH = path.join(TEST_DIR, 'inbound.db');
@@ -90,5 +91,93 @@ describe('migrateMessagesInTable', () => {
     expect(getInboundSourceSessionId(db, 'legacy-2')).toBeNull();
     expect(getInboundSourceSessionId(db, 'does-not-exist')).toBeNull();
     db.close();
+  });
+});
+
+describe('ensureSchema (outbound) — idempotent cost-column upgrades', () => {
+  let tmp: string;
+  let dbPath: string;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'session-db-'));
+    dbPath = path.join(tmp, 'outbound.db');
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('creates messages_out with the new cost columns on a fresh DB', () => {
+    ensureSchema(dbPath, 'outbound');
+    const db = new Database(dbPath, { readonly: true });
+    const cols = (db.prepare('PRAGMA table_info(messages_out)').all() as { name: string }[]).map((c) => c.name);
+    db.close();
+    expect(cols).toContain('tokens_in');
+    expect(cols).toContain('tokens_out');
+    expect(cols).toContain('latency_ms');
+    expect(cols).toContain('provider');
+    expect(cols).toContain('model');
+  });
+
+  it('upgrades a pre-existing outbound.db that has the old schema', () => {
+    // Simulate a Phase 3 / pre-v3 outbound.db by creating messages_out without the new columns.
+    const seed = new Database(dbPath);
+    seed.exec(`
+      CREATE TABLE messages_out (
+        id             TEXT PRIMARY KEY,
+        seq            INTEGER UNIQUE,
+        in_reply_to    TEXT,
+        timestamp      TEXT NOT NULL,
+        deliver_after  TEXT,
+        recurrence     TEXT,
+        kind           TEXT NOT NULL,
+        platform_id    TEXT,
+        channel_type   TEXT,
+        thread_id      TEXT,
+        content        TEXT NOT NULL
+      );
+    `);
+    seed.close();
+
+    // Now call ensureSchema — should add the missing columns without touching existing data.
+    ensureSchema(dbPath, 'outbound');
+
+    const db = new Database(dbPath, { readonly: true });
+    const cols = (db.prepare('PRAGMA table_info(messages_out)').all() as { name: string }[]).map((c) => c.name);
+    db.close();
+    expect(cols).toContain('tokens_in');
+    expect(cols).toContain('tokens_out');
+    expect(cols).toContain('latency_ms');
+    expect(cols).toContain('provider');
+    expect(cols).toContain('model');
+  });
+
+  it('is idempotent — calling ensureSchema twice does not throw', () => {
+    ensureSchema(dbPath, 'outbound');
+    expect(() => ensureSchema(dbPath, 'outbound')).not.toThrow();
+  });
+
+  it('does not touch existing messages_out rows on upgrade', () => {
+    const seed = new Database(dbPath);
+    seed.exec(`
+      CREATE TABLE messages_out (
+        id    TEXT PRIMARY KEY,
+        seq   INTEGER UNIQUE,
+        timestamp TEXT NOT NULL,
+        kind  TEXT NOT NULL,
+        content TEXT NOT NULL
+      );
+      INSERT INTO messages_out (id, seq, timestamp, kind, content) VALUES ('m1', 1, 't', 'chat', 'hello');
+    `);
+    seed.close();
+
+    ensureSchema(dbPath, 'outbound');
+
+    const db = new Database(dbPath, { readonly: true });
+    const row = db.prepare('SELECT id, content FROM messages_out WHERE id = ?').get('m1') as {
+      id: string;
+      content: string;
+    };
+    db.close();
+    expect(row).toEqual({ id: 'm1', content: 'hello' });
   });
 });

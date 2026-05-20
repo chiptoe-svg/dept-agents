@@ -1,8 +1,9 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 
 import {
   type AppServer,
@@ -10,6 +11,7 @@ import {
   STALE_THREAD_RE,
   attachCodexAutoApproval,
   tomlBasicString,
+  writeCodexConfigToml,
 } from './codex-app-server.js';
 
 describe('tomlBasicString', () => {
@@ -115,5 +117,95 @@ describe('attachCodexAutoApproval', () => {
       permissions: { fileSystem: { read: ['/'], write: ['/'] }, network: { enabled: true } },
       scope: 'session',
     });
+  });
+});
+
+let tmpHome: string;
+let savedHome: string | undefined;
+let configPath: string;
+
+beforeEach(() => {
+  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-config-test-'));
+  savedHome = process.env.HOME;
+  process.env.HOME = tmpHome;
+  configPath = path.join(tmpHome, '.codex', 'config.toml');
+});
+
+afterEach(() => {
+  if (savedHome === undefined) delete process.env.HOME;
+  else process.env.HOME = savedHome;
+  fs.rmSync(tmpHome, { recursive: true, force: true });
+});
+
+describe('writeCodexConfigToml — codex provider', () => {
+  it('emits [model_providers.openai-custom] block plus top-level model / model_provider', () => {
+    writeCodexConfigToml({
+      mcpServers: {},
+      activeProvider: 'codex',
+      model: 'gpt-5-mini',
+      proxyBaseUrl: 'http://host.docker.internal:3001',
+    });
+    const toml = fs.readFileSync(configPath, 'utf8');
+    expect(toml).toContain('[model_providers.openai-custom]');
+    expect(toml).toContain('name = "openai-custom"');
+    expect(toml).toContain('base_url = "http://host.docker.internal:3001/openai/v1"');
+    expect(toml).toContain('env_key = "OPENAI_API_KEY"');
+    expect(toml).toContain('model = "gpt-5-mini"');
+    expect(toml).toContain('model_provider = "openai-custom"');
+    expect(toml).not.toContain('[model_providers.omlx]');
+  });
+});
+
+describe('writeCodexConfigToml — local provider', () => {
+  it('emits [model_providers.omlx] block plus top-level model / model_provider', () => {
+    writeCodexConfigToml({
+      mcpServers: {},
+      activeProvider: 'local',
+      model: 'Qwen3.6-35B-A3B-UD-MLX-4bit',
+      proxyBaseUrl: 'http://host.docker.internal:3001',
+    });
+    const toml = fs.readFileSync(configPath, 'utf8');
+    expect(toml).toContain('[model_providers.omlx]');
+    expect(toml).toContain('name = "omlx"');
+    expect(toml).toContain('base_url = "http://host.docker.internal:3001/omlx/v1"');
+    expect(toml).toContain('wire_api = "chat"');
+    expect(toml).toContain('env_key = "OMLX_API_KEY"');
+    expect(toml).toContain('model = "Qwen3.6-35B-A3B-UD-MLX-4bit"');
+    expect(toml).toContain('model_provider = "omlx"');
+    expect(toml).not.toContain('[model_providers.openai-custom]');
+  });
+});
+
+describe('writeCodexConfigToml — mcp servers still emitted', () => {
+  it('writes both [mcp_servers.*] and the active [model_providers.*] in one file', () => {
+    writeCodexConfigToml({
+      mcpServers: {
+        nanoclaw: { command: '/usr/bin/bun', args: ['run', '/app/src/mcp.ts'], env: { FOO: 'bar' } },
+      },
+      activeProvider: 'codex',
+      model: 'gpt-5-mini',
+      proxyBaseUrl: 'http://host.docker.internal:3001',
+    });
+    const toml = fs.readFileSync(configPath, 'utf8');
+    expect(toml).toContain('[mcp_servers.nanoclaw]');
+    expect(toml).toContain('[model_providers.openai-custom]');
+    expect(toml).toContain('FOO = "bar"');
+  });
+});
+
+describe('writeCodexConfigToml — model omitted', () => {
+  it('still emits [model_providers.<name>] block when no model is set', () => {
+    writeCodexConfigToml({
+      mcpServers: {},
+      activeProvider: 'local',
+      model: undefined,
+      proxyBaseUrl: 'http://host.docker.internal:3001',
+    });
+    const toml = fs.readFileSync(configPath, 'utf8');
+    expect(toml).toContain('[model_providers.omlx]');
+    // model_provider must still be set so codex routes to omlx
+    expect(toml).toContain('model_provider = "omlx"');
+    // model line is omitted when not set — codex falls back to its own default
+    expect(toml).not.toMatch(/^model = /m);
   });
 });

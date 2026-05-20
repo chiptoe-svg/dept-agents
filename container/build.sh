@@ -19,17 +19,24 @@ cd "$SCRIPT_DIR"
 source "$PROJECT_ROOT/setup/lib/install-slug.sh"
 IMAGE_NAME="$(container_image_base)"
 TAG="${1:-latest}"
-CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
+CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-container}"
 
 # Caller's env takes precedence; fall back to .env.
 if [ -z "${INSTALL_CJK_FONTS:-}" ] && [ -f "../.env" ]; then
     INSTALL_CJK_FONTS="$(grep '^INSTALL_CJK_FONTS=' ../.env | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')"
+fi
+if [ -z "${DEB_MIRROR:-}" ] && [ -f "../.env" ]; then
+    DEB_MIRROR="$(grep '^DEB_MIRROR=' ../.env | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '[:space:]')"
 fi
 
 BUILD_ARGS=()
 if [ "${INSTALL_CJK_FONTS:-false}" = "true" ]; then
     echo "CJK fonts: enabled (adds ~200MB)"
     BUILD_ARGS+=(--build-arg INSTALL_CJK_FONTS=true)
+fi
+if [ -n "${DEB_MIRROR:-}" ]; then
+    echo "Debian mirror: ${DEB_MIRROR} (deb.debian.org → ${DEB_MIRROR}, security stays on security.debian.org)"
+    BUILD_ARGS+=(--build-arg "DEB_MIRROR=${DEB_MIRROR}")
 fi
 
 echo "Building NanoClaw agent container image..."

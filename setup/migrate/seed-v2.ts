@@ -196,6 +196,7 @@ function seed(v1Data: string, dryRun: boolean): SeedStats {
         name: g.name,
         folder: g.folder,
         agent_provider: null,
+        model: null,
         created_at: nowIso(),
       };
       createAgentGroup(row);

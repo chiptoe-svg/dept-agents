@@ -141,34 +141,136 @@ gongrzhe/cocal MCPs).
 
 #### 13.0 — Plan ✅
 
-#### 13.1 — Clean up OneCLI-only skills
-- [ ] Delete `.claude/skills/add-gmail-tool/`
-- [ ] Delete `.claude/skills/add-gcal-tool/`
+#### 13.1 — Clean up OneCLI-only skills ✅
+- [x] Delete `.claude/skills/add-gmail-tool/` (removed in 8f5f040).
+- [x] Delete `.claude/skills/add-gcal-tool/` (removed in 8f5f040).
 
 These don't work on this install (require OneCLI gateway). Phase
 13's `/add-gws-tool` supersedes them.
 
-#### 13.2 — Host-side MCP server (V1: Doc read/write)
-- [ ] `src/gws-mcp-server.ts` — minimal MCP over JSON-RPC.
-- [ ] `src/gws-mcp-tools.ts` — `drive_doc_read_as_markdown`,
+#### 13.2 — Host-side MCP server (V1: Doc read/write) ✅
+- [x] `src/gws-mcp-server.ts` — minimal MCP over JSON-RPC.
+- [x] `src/gws-mcp-tools.ts` — `drive_doc_read_as_markdown`,
       `drive_doc_write_from_markdown`. Use `@googleapis/drive` and
       `@googleapis/docs`.
-- [ ] OAuth client setup in `src/gws-auth.ts` — reads
+- [x] OAuth client setup in `src/gws-auth.ts` — reads
       `~/.config/gws/credentials.json`, exchanges refresh for
       access token, refreshes on 401.
 
-#### 13.3 — Per-agent relay
-- [ ] `src/gws-mcp-relay.ts` — JSON-RPC pass-through with role
+#### 13.3 — Per-agent relay ✅
+- [x] `src/gws-mcp-relay.ts` — JSON-RPC pass-through with role
       check via `canAccessAgentGroup`.
-- [ ] Reuses the credential proxy's per-container placeholder
+- [x] Reuses the credential proxy's per-container placeholder
       pattern to identify the caller.
 
-#### 13.4 — Container stub + skill
-- [ ] `container/agent-runner/src/mcp-tools/gws-stub.ts` — local
-      stub MCP that forwards to the host relay.
-- [ ] `.claude/skills/add-gws-tool/` (SKILL.md, REMOVE.md, VERIFY.md).
+#### 13.4 — Container → relay wiring + install skill ✅
 
-#### 13.5 — V2 tool surface (separate plan, write when needed)
+Originally framed as "stub MCP that forwards to the host relay." In
+practice the container already has an inline `gws.ts` registered via
+`registerTools()` (global, every agent), reaching the credential
+proxy's `/googleapis/*` pass-through at port 3001. That works but
+bypasses the per-agent role boundary the relay enforces.
+
+So 13.4 is a refactor, not a new stub file: point `gws.ts` at the
+Phase 13.3 relay (port 3007) so role checks via `canAccessAgentGroup`
+actually fire on every tool call. The per-agent attribution header
+(`X-NanoClaw-Agent-Group`) is already set on every container by the
+recent `feat/credential-proxy-attribution` work — we just have to
+include the relay's origin in the set of "proxy-bound" hosts.
+
+- [x] `src/container-runner.ts` — add `GWS_MCP_RELAY_URL=http://<gateway>:GWS_MCP_RELAY_PORT`
+      env at spawn; drop the now-unused `GWS_BASE_URL` (gws.ts was the
+      only consumer; proxy-fetch falls back to `ANTHROPIC_BASE_URL`).
+- [x] `container/agent-runner/src/mcp-tools/gws.ts` — rewrite both
+      handlers to `POST ${GWS_MCP_RELAY_URL}/tools/<name>`, JSON body =
+      args, header `X-NanoClaw-Agent-Group` set explicitly from
+      `X_NANOCLAW_AGENT_GROUP`. Mirror host's write surface (file_id
+      required; create_if_missing/parent_folder_id/name optional).
+- [x] `container/agent-runner/src/proxy-fetch.ts` + `.test.ts` — drop
+      the now-stale `GWS_BASE_URL` reference; relay's port-3007 attribution
+      is set explicitly by `gws.ts` so it doesn't need to live in the
+      monkey-patched fetch's match set.
+- [x] `container/agent-runner/src/mcp-tools/gws.test.ts` — new bun:test
+      file. Mock fetch, verify path/header/body and that `ok:false` is
+      surfaced as MCP `isError: true`.
+- [x] `.claude/skills/add-gws-tool/SKILL.md` — verify
+      `~/.config/gws/credentials.json` exists, smoke-test the relay
+      with `curl /tools`. Convention in this tree is single SKILL.md
+      (no separate REMOVE.md / VERIFY.md); uninstall + verify steps
+      are inline. Defers OAuth bootstrap to manual or the future
+      `scripts/gws-authorize.ts` (still pending — see Phase 14).
+
+#### 13.5 — V2 tool surface (separate plan)
+
+Detailed sub-plan: [plans/gws-mcp-v2.md](gws-mcp-v2.md). Splits V2 into
+five sub-phases (sheets, calendar, drive-listing, gmail, slides), each
+gated on a real use case. Sheets (13.5a) is the suggested first
+landing target when a classroom gradebook need appears.
+
+#### 13.6 — shared-classroom mode ownership primitive (unblocks shared-workspace mode) ✅
+
+V1 + V2 tools assume Google's own permissions are the boundary. For
+**Shared-classroom mode** — one shared class-workspace OAuth account, students
+operate under it, no privacy expectation but real friction expected
+when one student touches another's work — Google can't help us: every
+file is owned by the same workspace account. We tag NanoClaw ownership
+as Drive `customProperties` (and Calendar `extendedProperties.private`)
+and enforce friction at the tool layer.
+
+**Schema.** Single property `nanoclaw_owners` on every NanoClaw-created
+file / event. Value is a comma-separated list of agent_group_ids, e.g.
+`ag_42,ag_77`. First entry is the original creator; the list grows when
+existing owners grant to others. Lifecycle:
+
+- **Create** → set `nanoclaw_owners = [caller_agent_group_id]`. Apply
+  `anyone-with-link can edit` share so students can open through their
+  personal-email web login.
+- **Write/edit** → read `nanoclaw_owners`; if absent, **claim-on-first-touch**
+  (set to `[caller]`, proceed); if present and caller not listed,
+  **hard block** with a human-readable error including the owners'
+  display names (looked up from `agent_groups.display_name`).
+- **Delete** → same check as write. Hard block if not in list.
+- **Grant/revoke ownership** → three new tools below; require caller to
+  be in current `nanoclaw_owners`.
+
+**New tools (all roles):**
+
+- `drive_doc_grant_ownership({ file_id, agent_group_id })` — add an
+  agent group to `nanoclaw_owners`.
+- `drive_doc_revoke_ownership({ file_id, agent_group_id })` — remove
+  one. Caller can't revoke itself if it's the last owner (would leave
+  the file unowned).
+- `drive_doc_list_owners({ file_id })` — return the list with
+  display_name resolution.
+
+Calendar gets the same trio (`calendar_event_grant_ownership`, etc.)
+mirroring the schema on `extendedProperties.private.nanoclaw_owners`.
+Sheets and Slides ride on Drive's `customProperties` — same tools work.
+
+**Substeps:**
+
+- [x] `src/gws-ownership.ts` (extracted from gws-mcp-tools for reuse) — add `readDriveOwners(fileId)`,
+      `claimOrCheckDriveOwnership(fileId, callerAgentGroupId)`,
+      `writeDriveOwners`, `stampNewDriveFile`, `formatHardBlockMessage`
+      helpers. Wire `driveDocWriteFromMarkdown` through the check;
+      on create, set initial `customProperties` + `anyone-with-link`
+      share via `drive.permissions.create`.
+- [x] `src/gws-mcp-tools.ts` — add `driveGrantOwnership`,
+      `driveRevokeOwnership`, `driveListOwners`. Each resolves
+      display names from `agent_groups` table for the error/list
+      response.
+- [x] `src/gws-mcp-server.ts` — register the three new tools in the
+      `TOOL_REGISTRY`. Validators accept `file_id` + `agent_group_id`.
+- [x] `src/gws-mcp-server.test.ts` — extend `listToolNames` expectations;
+      add dispatch unit tests for the three new tools.
+- [x] `container/agent-runner/src/mcp-tools/gws.ts` — three new shims
+      mirroring the host signature. Export each for tests.
+- [x] `container/agent-runner/src/mcp-tools/gws.test.ts` — add cases
+      for grant/revoke/list + a "hard block" case verifying the
+      error text includes a display name (not just an ID).
+- [x] Operational note in `.claude/skills/add-gws-tool/SKILL.md`
+      — flag the single-point-of-failure caveat for shared-classroom mode, plus
+      per-account API quota + polite-enforcement-not-secure notes.
 
 ## Out of scope (V1)
 

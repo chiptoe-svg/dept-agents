@@ -13,7 +13,7 @@
  * Default install registers no gates; all mutations are allowed.
  */
 
-export type DraftMutationAction = 'file_put' | 'skills_put' | 'provider_put';
+export type DraftMutationAction = 'file_put' | 'skills_put' | 'provider_put' | 'models_put';
 
 export interface DraftMutationDecision {
   allow: boolean;

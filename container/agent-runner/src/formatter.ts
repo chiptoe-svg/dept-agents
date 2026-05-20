@@ -115,6 +115,37 @@ export function extractRouting(messages: MessageInRow[]): RoutingContext {
 }
 
 /**
+ * Extract container-visible image file paths from a batch of inbound
+ * messages. The host's telegram adapter stamps each image attachment with
+ * a `containerPath` (`/workspace/agent/attachments/photo_<msgId>.jpg`) at
+ * processForkAttachments time. Providers with vision support (codex
+ * via `local_image`, claude via image content blocks) forward these to
+ * the upstream model; text-only providers get an empty array.
+ *
+ * Returns absolute paths only — the caller has already validated the
+ * route. Missing or malformed images are silently skipped rather than
+ * inserting bad paths that would fail later in the provider.
+ */
+export function extractImagePaths(messages: MessageInRow[]): string[] {
+  const paths: string[] = [];
+  for (const msg of messages) {
+    let content: { images?: Array<{ containerPath?: string }> };
+    try {
+      content = JSON.parse(msg.content) as typeof content;
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(content.images)) continue;
+    for (const img of content.images) {
+      if (typeof img?.containerPath === 'string' && img.containerPath.startsWith('/')) {
+        paths.push(img.containerPath);
+      }
+    }
+  }
+  return paths;
+}
+
+/**
  * Format a batch of messages_in rows into a prompt string.
  *
  * Prepends a `<context timezone="<IANA>" />` header so the agent always knows
@@ -270,10 +301,20 @@ function escapeXml(str: string): string {
 }
 
 /**
- * Strip `<internal>...</internal>` blocks from agent output, then trim.
+ * Strip reasoning/scratchpad blocks from agent output, then trim. Removes:
+ *   - `<internal>...</internal>` — the convention we tell agents to use
+ *     for their own scratchpad reasoning
+ *   - `<think>...</think>` — emitted natively by reasoning models like
+ *     Qwen3 and DeepSeek-R1 as part of their chain-of-thought. Without
+ *     this, the model's internal reasoning leaks verbatim into the chat
+ *     reply on every turn.
+ *
  * Ported from v1 (src/v1/router.ts:25-27). Used to remove the agent's
  * own scratchpad/reasoning before a reply goes out over a channel.
  */
 export function stripInternalTags(text: string): string {
-  return text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+  return text
+    .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .trim();
 }

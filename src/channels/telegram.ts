@@ -386,10 +386,20 @@ async function processAttachments(platformId: string, message: InboundMessage): 
           const savePath = path.join(attachDir, `photo_${msgId}.jpg`);
           const processed = await processImage(buffer, savePath);
 
-          // Inject processed image into content for multimodal delivery
+          // Inject processed image into content for multimodal delivery.
+          // `containerPath` is the path the agent-runner will pass to the
+          // upstream provider (codex `local_image`, claude image content
+          // block). The group folder mounts at /workspace/agent in the
+          // container, so the attachment file the host just wrote at
+          // `<groupDir>/attachments/photo_<msgId>.jpg` is reachable inside
+          // at `/workspace/agent/attachments/photo_<msgId>.jpg`.
           updatedContent.images = [
             ...(Array.isArray(updatedContent.images) ? updatedContent.images : []),
-            { base64: processed.base64, mimeType: processed.mimeType },
+            {
+              base64: processed.base64,
+              mimeType: processed.mimeType,
+              containerPath: `/workspace/agent/attachments/photo_${msgId}.jpg`,
+            },
           ];
           // Update text to reference the saved file
           const caption = updatedContent.text ? ` ${updatedContent.text}` : '';
@@ -467,22 +477,38 @@ async function processAttachments(platformId: string, message: InboundMessage): 
 
 /**
  * Handle the /playground Telegram command.
- *   /playground       → start the HTTP server (idempotent), reply with URL
- *   /playground stop  → stop the server
- *   /playground       → if already running, just reports the URL
+ *   /playground             → start server (idempotent), reply with magic-link URL
+ *   /playground stop        → stop the server (revokes every authed session)
+ *   /playground stop --self → revoke only the caller's sessions; others stay live
+ *   /playground status      → report whether the server is running
  *
  * Returns true if consumed.
  */
-async function handlePlaygroundCommand(token: string, platformId: string, text: string): Promise<boolean> {
+async function handlePlaygroundCommand(
+  token: string,
+  platformId: string,
+  text: string,
+  authorUserId: string | null,
+): Promise<boolean> {
   if (!text.startsWith('/playground')) return false;
 
   const chatId = platformId.split(':').slice(1).join(':');
   if (!chatId) return false;
 
-  const { startPlaygroundServer, stopPlaygroundServer, getPlaygroundStatus } = await import('./playground.js');
+  const { startPlaygroundServer, stopPlaygroundServer, getPlaygroundStatus, revokeSessionsForUser } =
+    await import('./playground.js');
+
+  // Normalize the caller's user_id to the canonical `<channel>:<handle>`
+  // form used by the rest of the entity model (agent_group_members,
+  // user_roles, sessions). The bare handle Telegram gives us — e.g.
+  // "8731035088" — would otherwise fail every later lookup, landing the
+  // user on the wrong default agent in the playground.
+  const normalizedAuthorUserId =
+    authorUserId && !authorUserId.includes(':') ? `telegram:${authorUserId}` : authorUserId;
 
   const parts = text.trim().split(/\s+/);
   const sub = parts[1]?.toLowerCase();
+  const flag = parts[2]?.toLowerCase();
 
   let reply: string;
   try {
@@ -490,18 +516,30 @@ async function handlePlaygroundCommand(token: string, platformId: string, text: 
       const status = getPlaygroundStatus();
       if (!status.running) {
         reply = 'Playground is not running.';
+      } else if (flag === '--self') {
+        if (!normalizedAuthorUserId) {
+          reply = '❌ /playground stop --self requires an identified caller.';
+        } else {
+          const removed = revokeSessionsForUser(normalizedAuthorUserId);
+          reply =
+            removed > 0
+              ? `✅ Revoked ${removed} of your session(s). Other users unaffected.`
+              : 'No active sessions for you to revoke.';
+        }
       } else {
         await stopPlaygroundServer();
-        reply = '✅ Playground stopped.';
+        reply = '✅ Playground stopped (all sessions revoked).';
       }
     } else if (!sub || sub === 'start') {
-      const { url, alreadyRunning } = await startPlaygroundServer();
-      reply = alreadyRunning ? `Playground already running at ${url}` : `✅ Playground started.\n${url}`;
+      const { url, alreadyRunning } = await startPlaygroundServer({ userId: normalizedAuthorUserId });
+      reply = alreadyRunning
+        ? `Playground already running.\nFresh magic link: ${url}`
+        : `✅ Playground started.\n${url}`;
     } else if (sub === 'status') {
       const status = getPlaygroundStatus();
       reply = status.running ? `Running: ${status.url}` : 'Not running. Send /playground to start.';
     } else {
-      reply = `Unknown subcommand: ${sub}\nUsage: /playground | /playground stop | /playground status`;
+      reply = `Unknown subcommand: ${sub}\nUsage: /playground | /playground stop [--self] | /playground status`;
     }
   } catch (err) {
     reply = `❌ Playground command failed: ${(err as Error).message}`;
@@ -510,7 +548,6 @@ async function handlePlaygroundCommand(token: string, platformId: string, text: 
   await sendTelegram(token, chatId, reply);
   return true;
 }
-
 
 /**
  * Send a plain-text reply to a Telegram chat. No parse_mode — legacy
@@ -534,12 +571,13 @@ export async function sendTelegram(token: string, chatId: string, text: string):
   }
 }
 
-
 // ── Built-in command registrations ─────────────────────────────────────────
 // /auth, /model, /provider, /playground all ship with main. /login (class
 // feature) registers itself from src/class-telegram-commands.ts when imported.
 
-registerTelegramCommand('/playground', (ctx) => handlePlaygroundCommand(ctx.token, ctx.platformId, ctx.text));
+registerTelegramCommand('/playground', (ctx) =>
+  handlePlaygroundCommand(ctx.token, ctx.platformId, ctx.text, ctx.authorUserId),
+);
 
 /**
  * Outer interceptor that applies fork customizations (attachment processing,

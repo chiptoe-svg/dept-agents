@@ -63,6 +63,17 @@ export interface ResourceDef {
   };
   /** Non-standard verbs (grant, revoke, add, remove, restart, etc.). */
   customOperations?: Record<string, CustomOperation>;
+  /**
+   * Side-effects fired after a successful generic update. Use for cross-cutting
+   * concerns the generic CRUD doesn't know about — e.g. an agent_provider
+   * change needs to cascade into active sessions and kill running containers,
+   * mirroring what the playground does inline.
+   *
+   * Throwing here does not roll back the DB update; the row is already changed.
+   * Best practice: surface errors via console.error and let the operation
+   * report success on the primary write.
+   */
+  afterUpdate?: (ctx: { id: string; updates: Record<string, unknown> }) => Promise<void> | void;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +196,10 @@ function genericUpdate(def: ResourceDef) {
       .prepare(`UPDATE ${def.table} SET ${setClause} WHERE ${def.idColumn} = @_id`)
       .run({ ...updates, _id: id });
     if (result.changes === 0) throw new Error(`${def.name} not found: ${id}`);
+
+    if (def.afterUpdate) {
+      await def.afterUpdate({ id, updates });
+    }
 
     const cols = visibleColumns(def).join(', ');
     return getDb().prepare(`SELECT ${cols} FROM ${def.table} WHERE ${def.idColumn} = ?`).get(id);

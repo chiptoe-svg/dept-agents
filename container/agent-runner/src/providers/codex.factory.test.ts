@@ -4,8 +4,49 @@ import path from 'path';
 
 import { describe, it, expect } from 'bun:test';
 
+import type { ProviderEvent } from './types.js';
+
 import { createProvider } from './factory.js';
-import { CodexProvider, composeAvailableSkills, resolveClaudeImports, resolveCodexModel } from './codex.js';
+import {
+  CodexProvider,
+  composeAvailableSkills,
+  composeRuntimeIdentity,
+  resolveClaudeImports,
+  resolveCodexModel,
+} from './codex.js';
+
+describe('ProviderEvent result extensions (codex)', () => {
+  it('result variant carries latencyMs and provider from codex', () => {
+    const event: ProviderEvent = {
+      type: 'result',
+      text: 'response text',
+      latencyMs: 800,
+      provider: 'codex',
+      model: 'gpt-5.2-codex',
+    };
+    expect(event.type).toBe('result');
+    if (event.type === 'result') {
+      expect(event.latencyMs).toBe(800);
+      expect(event.provider).toBe('codex');
+      expect(event.model).toBe('gpt-5.2-codex');
+      // codex does not expose token usage — tokens is absent
+      expect(event.tokens).toBeUndefined();
+    }
+  });
+
+  it('result variant works without tokens (best-effort absent)', () => {
+    const event: ProviderEvent = {
+      type: 'result',
+      text: null,
+      latencyMs: 0,
+      provider: 'codex',
+    };
+    expect(event.type).toBe('result');
+    if (event.type === 'result') {
+      expect(event.tokens).toBeUndefined();
+    }
+  });
+});
 
 describe('createProvider (codex)', () => {
   it('returns CodexProvider for codex', () => {
@@ -160,5 +201,18 @@ describe('composeAvailableSkills', () => {
     const zIdx = out.indexOf('**zulu**');
     expect(aIdx).toBeLessThan(mIdx);
     expect(mIdx).toBeLessThan(zIdx);
+  });
+});
+
+describe('composeRuntimeIdentity', () => {
+  it('produces a one-line identity block when model is set', () => {
+    const out = composeRuntimeIdentity('local', 'Qwen3.6-35B-A3B-UD-MLX-4bit');
+    expect(out).toContain('Qwen3.6-35B-A3B-UD-MLX-4bit');
+    expect(out).toContain('local');
+    expect(out).toMatch(/do not guess/i);
+  });
+
+  it('returns undefined when model is undefined', () => {
+    expect(composeRuntimeIdentity('codex', undefined)).toBeUndefined();
   });
 });

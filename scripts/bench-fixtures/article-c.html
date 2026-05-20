@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head><title>Getting Started with SQL: A Beginner's Guide</title></head>
+<body>
+<h1>Getting Started with SQL: A Beginner's Guide</h1>
+<p>SQL, which stands for Structured Query Language, is the standard language for working with
+relational databases. Whether you want to retrieve data, insert new records, update existing ones,
+or remove outdated entries, SQL is the tool you will use. This guide is written for beginners who
+have never written a database query before, using plain language and practical examples.</p>
+
+<h2>What is a Relational Database?</h2>
+<p>A relational database organizes data into tables. Each table is made up of rows and columns,
+similar to a spreadsheet. Each row represents a single record, such as a customer or an order.
+Each column represents a specific attribute of that record, such as a name or a date. Tables are
+related to one another through shared identifiers called keys, which is where the word "relational"
+comes from.</p>
+
+<h2>Your First Query: SELECT</h2>
+<p>The most common SQL statement is <code>SELECT</code>. It retrieves data from a table.
+A basic query looks like this: <code>SELECT first_name, last_name FROM customers;</code>.
+This fetches the first and last name columns from every row in the customers table.
+To retrieve all columns at once, use the asterisk wildcard: <code>SELECT * FROM customers;</code>.
+The semicolon at the end marks the end of the statement.</p>
+
+<h2>Filtering with WHERE</h2>
+<p>Most of the time you do not want every row in a table. The <code>WHERE</code> clause lets you
+filter rows by a condition. For example: <code>SELECT * FROM customers WHERE city = 'Atlanta';</code>
+returns only customers who live in Atlanta. You can combine conditions with <code>AND</code> and
+<code>OR</code>, and use comparison operators like <code>&lt;</code>, <code>&gt;</code>,
+<code>&lt;=</code>, <code>&gt;=</code>, and <code>!=</code> to express a wide range of filters.</p>
+
+<h2>Sorting with ORDER BY</h2>
+<p>The <code>ORDER BY</code> clause sorts the result set. By default it sorts in ascending order.
+Add <code>DESC</code> after the column name to sort in descending order.
+For example: <code>SELECT * FROM orders ORDER BY order_date DESC;</code> returns orders with the
+most recent dates first. You can sort by multiple columns by separating them with commas.</p>
+
+<h2>Inserting Data with INSERT</h2>
+<p>The <code>INSERT INTO</code> statement adds a new row to a table.
+You specify the table name, the columns you are filling in, and the corresponding values.
+For example: <code>INSERT INTO customers (first_name, last_name, city) VALUES ('Jane', 'Doe', 'Boston');</code>
+adds a new customer record. It is good practice to list the column names explicitly so your
+query remains correct even if someone later adds columns to the table.</p>
+
+<h2>Updating Existing Rows with UPDATE</h2>
+<p>The <code>UPDATE</code> statement modifies existing rows. Always include a <code>WHERE</code>
+clause when updating, or you will change every row in the table.
+For example: <code>UPDATE customers SET city = 'Chicago' WHERE customer_id = 42;</code> changes
+the city of only the customer whose ID is 42. After running an update, use a <code>SELECT</code>
+query to confirm the change looks correct before moving on.</p>
+
+<h2>Deleting Rows with DELETE</h2>
+<p>The <code>DELETE FROM</code> statement removes rows from a table. Like <code>UPDATE</code>, it
+requires a <code>WHERE</code> clause to avoid deleting everything.
+For example: <code>DELETE FROM orders WHERE status = 'cancelled';</code> removes all cancelled
+orders. Once rows are deleted they are gone, so it is worth running the equivalent
+<code>SELECT</code> statement first to double-check exactly which rows will be affected.</p>
+
+<h2>Joining Tables</h2>
+<p>One of the most powerful features of SQL is the ability to combine data from multiple tables.
+A <code>JOIN</code> links rows from two tables based on a shared column.
+For example, if orders reference customers by customer ID, you can join the two tables to see
+the customer's name alongside each order. The most common join type is the inner join, which
+returns only rows that have a matching value in both tables.</p>
+
+<h2>Summary</h2>
+<p>SQL is a concise and readable language designed specifically for working with structured data.
+The core statements, <code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code>, and
+<code>DELETE</code>, cover the fundamental operations you will use every day.
+Start by practicing on small tables, read your queries out loud to catch mistakes, and always
+preview your data before making changes. SQL rewards consistent practice, and the basics presented
+here are sufficient to interact with real databases on real projects.</p>
+</body>
+</html>

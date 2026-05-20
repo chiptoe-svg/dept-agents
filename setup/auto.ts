@@ -39,7 +39,9 @@ import { runTelegramChannel } from './channels/telegram.js';
 import { runWhatsAppChannel } from './channels/whatsapp.js';
 import { pingCliAgent, type PingResult } from './lib/agent-ping.js';
 import { brightSelect } from './lib/bright-select.js';
-import { offerClaudeOnFailure } from './lib/claude-handoff.js';
+import { offerAiCodingCliOnFailure } from './lib/cli-handoff.js';
+import { listAiCodingClis } from './lib/ai-coding-cli/index.js';
+import type { AiCodingCli } from './lib/ai-coding-cli/types.js';
 import {
   applyToEnv,
   parseFlags,
@@ -48,10 +50,10 @@ import {
 } from './lib/setup-config-parse.js';
 import { runAdvancedScreen } from './lib/setup-config-screen.js';
 import { runWindowedStep } from './lib/windowed-runner.js';
-import { detectRegisteredGroups, detectExistingDisplayName } from './environment.js';
+import { detectRegisteredGroups, detectExistingDisplayName, readEnvKey } from './environment.js';
 import { pollHealth } from './onecli.js';
 import { getLaunchdLabel, getSystemdUnit } from '../src/install-slug.js';
-import { claudeCliAvailable, resolveTimezoneViaClaude } from './lib/tz-from-claude.js';
+import { resolveTimezoneViaCli, aiCodingCliAvailable } from './lib/tz-from-cli.js';
 import * as setupLog from './logs.js';
 import { ensureAnswer, fail, runQuietChild, runQuietStep, spawnQuiet } from './lib/runner.js';
 import { emit as phEmit } from './lib/diagnostics.js';
@@ -74,7 +76,15 @@ async function main(): Promise<void> {
   // Parse CLI flags first — `--help` short-circuits before we render anything,
   // and flag values get folded into process.env so existing step code reading
   // NANOCLAW_* sees them unchanged.
-  const flagResult = parseFlags(process.argv.slice(2));
+  //
+  // `--reconfigure-cli` is a meta-mode that re-prompts for the setup-helper
+  // CLI (Claude Code or OpenAI Codex) and exits without running setup.
+  // We strip it before passing argv to parseFlags since it isn't in the
+  // config registry.
+  const rawArgv = process.argv.slice(2);
+  const reconfigureCli = rawArgv.includes('--reconfigure-cli');
+  const filteredArgv = rawArgv.filter((a) => a !== '--reconfigure-cli');
+  const flagResult = parseFlags(filteredArgv);
   if (flagResult.help) {
     printHelp();
     process.exit(0);
@@ -87,6 +97,13 @@ async function main(): Promise<void> {
   }
   let configValues = { ...readFromEnv(), ...flagResult.values };
   applyToEnv(configValues);
+
+  if (reconfigureCli) {
+    p.intro('Reconfigure setup-helper CLI');
+    await pickAiCodingCli({ force: true });
+    p.outro(brandBody('Done — your next setup run (or step failure) will use the chosen CLI.'));
+    process.exit(0);
+  }
 
   printIntro();
   initProgressionLog();
@@ -113,6 +130,12 @@ async function main(): Promise<void> {
     configValues = await runAdvancedScreen(configValues);
     applyToEnv(configValues);
   }
+
+  // Pick the AI-coding CLI helper (Claude Code or OpenAI Codex) before any
+  // step that might call into cli-handoff/cli-assist on failure. Once
+  // chosen the value is persisted to .env (NANOCLAW_AI_CODING_CLI=…) so
+  // subsequent runs skip the prompt.
+  await pickAiCodingCli();
 
   const skip = new Set(
     (process.env.NANOCLAW_SKIP ?? '')
@@ -175,7 +198,43 @@ async function main(): Promise<void> {
     maybeReexecUnderSg();
   }
 
-  if (!skip.has('onecli')) {
+  // Credential-mode choice: default to native credential proxy (this fork's
+  // preferred path — simpler, .env-based, no separate gateway). OneCLI is
+  // available for users who want centralized credential vaulting / per-call
+  // attribution / per-user OAuth tokens (Phase 2 master plan territory).
+  // The choice is persisted to .env as NANOCLAW_CREDENTIAL_MODE so re-runs
+  // skip the prompt.
+  let credentialMode: 'native' | 'onecli' =
+    (process.env.NANOCLAW_CREDENTIAL_MODE as 'native' | 'onecli' | undefined) ??
+    (readEnvKey('NANOCLAW_CREDENTIAL_MODE') as 'native' | 'onecli' | null) ??
+    'native';
+  if (!skip.has('credential-mode') && !process.env.NANOCLAW_CREDENTIAL_MODE && !readEnvKey('NANOCLAW_CREDENTIAL_MODE')) {
+    credentialMode = ensureAnswer(
+      await brightSelect<'native' | 'onecli'>({
+        message: 'How would you like to manage credentials?',
+        options: [
+          {
+            value: 'native',
+            label: 'Native credential proxy (recommended)',
+            hint: 'Simpler — keys live in .env, an HTTP proxy injects them at request time',
+          },
+          {
+            value: 'onecli',
+            label: 'OneCLI vault',
+            hint: 'Advanced — separate gateway service with centralized vaulting',
+          },
+        ],
+      }),
+    );
+    setupLog.userInput('credential_mode', credentialMode);
+    appendEnvLine(`NANOCLAW_CREDENTIAL_MODE=${credentialMode}`);
+  }
+
+  if (credentialMode === 'native') {
+    if (!skip.has('auth')) {
+      await runNativeAuthStep();
+    }
+  } else if (!skip.has('onecli')) {
     p.log.message(
       brandBody(
         dimWrap(
@@ -277,7 +336,7 @@ async function main(): Promise<void> {
     }
   }
 
-  if (!skip.has('auth')) {
+  if (credentialMode === 'onecli' && !skip.has('auth')) {
     await runAuthStep();
   }
 
@@ -416,7 +475,7 @@ async function main(): Promise<void> {
       } else {
         phEmit('first_chat_failed', { reason: ping });
         renderPingFailureNote(ping);
-        await offerClaudeOnFailure({
+        await offerAiCodingCliOnFailure({
           stepName: 'cli-agent',
           msg:
             ping === 'socket_error'
@@ -518,7 +577,7 @@ async function main(): Promise<void> {
         note(notes.join('\n'), "What's left");
       }
       // "What's left" is a soft failure — we don't abort like fail(), but the
-      // user is still stuck and a fix is exactly what claude-assist is for.
+      // user is still stuck and a fix is exactly what cli-assist is for.
       const summary = notes
         .map((n) => n.replace(/^•\s*/, '').split('\n')[0].trim())
         .filter(Boolean)
@@ -528,7 +587,7 @@ async function main(): Promise<void> {
         service_running: res.terminal?.fields.SERVICE === 'running',
         has_credentials: res.terminal?.fields.CREDENTIALS === 'configured',
       });
-      await offerClaudeOnFailure({
+      await offerAiCodingCliOnFailure({
         stepName: 'verify',
         msg: summary || 'Verification completed with unresolved issues.',
         hint: `Terminal block: ${JSON.stringify(res.terminal?.fields ?? {})}`,
@@ -568,6 +627,21 @@ async function main(): Promise<void> {
     // renders with a visible box, cyan-bold the directive line, and put it
     // as the last thing before outro.
     note(`${brandBold('→')} ${k.bold(`Check your ${dmTarget} — your assistant is saying hi.`)}`, 'Go say hi');
+  }
+
+  // Sidecar playbook detection — if this fork ships a `setup_classroom.md`
+  // at the repo root, print a pointer so the operator knows about the
+  // classroom-deploy follow-up. Generic single-agent installs don't ship
+  // the file and see no noise.
+  if (fs.existsSync(path.join(process.cwd(), 'setup_classroom.md'))) {
+    note(
+      `${brandBold('📚')} ${k.bold('Classroom playbook detected:')} ${k.cyan('setup_classroom.md')}\n` +
+        `   Run ${k.cyan('claude')} and ask it to "follow setup_classroom.md" to provision a class.`,
+      'Optional next step',
+    );
+  }
+
+  if (dmTarget) {
     p.outro(k.green("You're set."));
   } else {
     p.outro(k.green("You're ready! Chat with `pnpm run chat hi`."));
@@ -700,6 +774,141 @@ function sendChatMessage(message: string): Promise<void> {
     child.on('close', () => resolve());
     child.on('error', () => resolve());
   });
+}
+
+// ─── env-write helper (native credential mode) ─────────────────────────
+
+/**
+ * Extract the Claude Code subscription OAuth token, cross-platform.
+ *
+ *   macOS:  reads from the Keychain (`security find-generic-password`)
+ *   Linux:  reads from ~/.claude/.credentials.json
+ *
+ * Returns the access token string on success, null on any failure (no
+ * Keychain entry, no file, malformed JSON, missing field, exec failed).
+ *
+ * Both platforms store the same JSON shape — `{ claudeAiOauth: { accessToken, ... } }`.
+ * The Keychain entry's password value IS that JSON; macOS just persists it
+ * encrypted at rest via the system keyring instead of as a plain file.
+ */
+function extractClaudeCodeOAuthToken(): string | null {
+  // 1. macOS Keychain (preferred when available — newer Claude Code uses this).
+  if (process.platform === 'darwin') {
+    try {
+      const result = spawnSync('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      if (result.status === 0 && result.stdout) {
+        const creds = JSON.parse(result.stdout.trim());
+        const token = creds?.claudeAiOauth?.accessToken;
+        if (typeof token === 'string' && token.length > 0) return token;
+      }
+    } catch {
+      /* fall through to file path */
+    }
+  }
+  // 2. File path (Linux, or macOS installs that pre-date Keychain storage).
+  const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
+  if (!fs.existsSync(credPath)) return null;
+  try {
+    const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+    const token = creds?.claudeAiOauth?.accessToken;
+    return typeof token === 'string' && token.length > 0 ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+function appendEnvLine(line: string): void {
+  const envPath = path.join(process.cwd(), '.env');
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+  const key = line.split('=')[0]!;
+  // Idempotent: skip if any line for this key already exists.
+  if (new RegExp(`^${key}=`, 'm').test(existing)) return;
+  const sep = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+  fs.appendFileSync(envPath, `${sep}${line}\n`);
+}
+
+// ─── native auth step (writes credential to .env) ───────────────────────
+// For users on the native credential proxy path (NANOCLAW_CREDENTIAL_MODE=native).
+// Mirrors the OneCLI auth step's UX (subscription / OAuth / API key / skip)
+// but writes the credential to .env where the credential proxy reads it
+// at runtime, instead of storing in OneCLI's vault.
+async function runNativeAuthStep(): Promise<void> {
+  // Already-configured short-circuit.
+  if (readEnvKey('ANTHROPIC_API_KEY') || readEnvKey('CLAUDE_CODE_OAUTH_TOKEN') || readEnvKey('ANTHROPIC_AUTH_TOKEN')) {
+    p.log.success(brandBody('Your Claude credential is already in .env.'));
+    setupLog.step('auth', 'skipped', 0, { REASON: 'env-already-present' });
+    return;
+  }
+
+  // Pre-flight probe: detect which methods are available right now so the
+  // menu can hint accurately and pre-focus the most likely option. Catches
+  // platform-specific gaps (e.g. Claude Code creds in macOS Keychain vs
+  // Linux file) before the user picks an option that would fail.
+  const subscriptionAvailable = extractClaudeCodeOAuthToken() !== null;
+  const subscriptionHint = subscriptionAvailable
+    ? '✓ found in ' + (process.platform === 'darwin' ? 'macOS Keychain' : '~/.claude/.credentials.json')
+    : `✗ not detected — sign in to Claude Code first (\`claude\`), or use a different method below`;
+
+  const method = ensureAnswer(
+    await brightSelect({
+      message: 'How would you like to connect to Claude?',
+      // Order: available subscription first (the happy path); else lead with paste-OAuth.
+      options: subscriptionAvailable
+        ? [
+            { value: 'subscription', label: 'Use my Claude Code subscription', hint: subscriptionHint },
+            { value: 'oauth', label: 'Paste an OAuth token I already have', hint: 'sk-ant-oat…' },
+            { value: 'api', label: 'Paste an Anthropic API key', hint: 'pay-per-use via console.anthropic.com' },
+            { value: 'skip', label: "Skip — I'll add it to .env later", hint: 'agent containers will fail until you add the key' },
+          ]
+        : [
+            { value: 'oauth', label: 'Paste an OAuth token I already have', hint: 'sk-ant-oat…' },
+            { value: 'api', label: 'Paste an Anthropic API key', hint: 'pay-per-use via console.anthropic.com' },
+            { value: 'subscription', label: 'Use my Claude Code subscription', hint: subscriptionHint },
+            { value: 'skip', label: "Skip — I'll add it to .env later", hint: 'agent containers will fail until you add the key' },
+          ],
+      initialValue: subscriptionAvailable ? 'subscription' : 'oauth',
+    }),
+  ) as 'subscription' | 'oauth' | 'api' | 'skip';
+  setupLog.userInput('auth_method', method);
+  phEmit('auth_method_chosen', { method });
+
+  if (method === 'skip') {
+    p.log.message(brandBody(dimWrap('OK — add ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to .env when you have it. Then restart nanoclaw.', 4)));
+    setupLog.step('auth', 'skipped', 0, { REASON: 'user-skipped' });
+    return;
+  }
+
+  if (method === 'subscription') {
+    const token = extractClaudeCodeOAuthToken();
+    if (!token) {
+      p.log.warn(
+        brandBody(
+          "Couldn't find a Claude Code OAuth token. Make sure you've signed in to Claude Code (run `claude` in another terminal). On macOS, credentials live in the Keychain; on Linux, in ~/.claude/.credentials.json. If `security find-generic-password -s 'Claude Code-credentials' -w` (macOS) or `cat ~/.claude/.credentials.json` (Linux) fails, finish signing in and re-run setup.",
+        ),
+      );
+      setupLog.step('auth', 'failed', 0, { ERROR: 'no-claude-credentials' });
+      return runNativeAuthStep();
+    }
+    appendEnvLine(`CLAUDE_CODE_OAUTH_TOKEN=${token}`);
+    p.log.success(brandBody('Wrote CLAUDE_CODE_OAUTH_TOKEN to .env from your Claude Code subscription.'));
+    setupLog.step('auth', 'ok', 0, { METHOD: 'subscription' });
+    return;
+  }
+
+  const promptLabel = method === 'oauth' ? 'Paste your OAuth token (sk-ant-oat…):' : 'Paste your Anthropic API key (sk-ant-api…):';
+  const envKey = method === 'oauth' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY';
+  const value = ensureAnswer(
+    await p.password({
+      message: promptLabel,
+      validate: (v) => (v && v.trim().length > 10 ? undefined : 'Looks too short.'),
+    }),
+  );
+  appendEnvLine(`${envKey}=${value.trim()}`);
+  p.log.success(brandBody(`Wrote ${envKey} to .env.`));
+  setupLog.step('auth', 'ok', 0, { METHOD: method });
 }
 
 // ─── auth step (select → branch) ────────────────────────────────────────
@@ -930,6 +1139,122 @@ async function runCustomEndpointAuth(
   appendProviderImport('./claude.js');
 }
 
+/**
+ * Pick the setup-helper CLI (Claude Code or OpenAI Codex) and persist
+ * the choice to `.env` as `NANOCLAW_AI_CODING_CLI=<name>`. Three paths:
+ *
+ *   1. Already-configured: `NANOCLAW_AI_CODING_CLI` is set, the named
+ *      adapter exists, and the binary is installed → skip the prompt.
+ *      If the configured CLI is missing (env var stale, or the user
+ *      uninstalled it), fall through and re-pick with a warning.
+ *   2. Auto-pick: exactly one CLI installed → silently persist that
+ *      choice and continue.
+ *   3. Picker: zero or two-or-more installed. With ≥2 we ask which
+ *      one. With 0 we offer to install Claude Code via its install
+ *      script (Codex has no scriptable installer in this fork) and
+ *      bail if declined.
+ *
+ * `opts.force` skips path 1 (always re-prompt or auto-pick from current
+ * install state). Used by the `--reconfigure-cli` mode.
+ */
+async function pickAiCodingCli(opts: { force?: boolean } = {}): Promise<void> {
+  const installed = listAiCodingClis().filter((c) => c.isInstalled());
+  const configured = (process.env.NANOCLAW_AI_CODING_CLI ?? '').toLowerCase().trim();
+
+  // Path 1: already-configured + still installed (skipped under --force).
+  if (configured && !opts.force) {
+    const match = installed.find((c) => c.name === configured);
+    if (match) {
+      setupLog.userInput('setup_cli', `${match.name} (preconfigured)`);
+      return;
+    }
+    p.log.warn(
+      brandBody(
+        `NANOCLAW_AI_CODING_CLI is set to "${configured}" but that CLI isn't installed. Re-picking.`,
+      ),
+    );
+  }
+
+  // Path 3a: nothing installed — offer Claude Code's install script.
+  if (installed.length === 0) {
+    const claude = listAiCodingClis().find((c) => c.installScript);
+    if (!claude) {
+      p.log.warn(
+        brandBody(
+          'No setup-helper CLI is installed and none of the registered adapters has a scriptable installer. ' +
+            'Install Claude Code or OpenAI Codex manually, then re-run setup.',
+        ),
+      );
+      return;
+    }
+    const install = ensureAnswer(
+      await p.confirm({
+        message: `No setup-helper CLI found. Install ${claude.displayName} now?`,
+        initialValue: true,
+      }),
+    );
+    if (!install) {
+      p.log.warn(
+        brandBody(
+          `Continuing without a setup-helper. If a step fails I won't be able to hand you off — install ${claude.displayName} or OpenAI Codex and re-run setup to enable that.`,
+        ),
+      );
+      return;
+    }
+    if (!claude.installScript) return;
+    const code = spawnSync('bash', [claude.installScript], {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+    }).status;
+    if (code !== 0 || !claude.isInstalled()) {
+      p.log.error(`Couldn't install ${claude.displayName}.`);
+      return;
+    }
+    p.log.success(`${claude.displayName} installed.`);
+    persistAiCodingCli(claude);
+    return;
+  }
+
+  // Path 2: exactly one installed — auto-pick silently. Under --force
+  // we surface a one-line confirmation since the user explicitly asked
+  // to reconfigure and would otherwise see nothing happen.
+  if (installed.length === 1) {
+    persistAiCodingCli(installed[0]);
+    setupLog.userInput('setup_cli', `${installed[0].name} (auto-picked)`);
+    if (opts.force) {
+      p.log.success(
+        brandBody(`Only ${installed[0].displayName} is installed — keeping it as the setup-helper CLI.`),
+      );
+    }
+    return;
+  }
+
+  // Path 3b: ≥2 installed — ask which one. Default to the currently-
+  // configured CLI if it's still installed (so under --force the user
+  // can hit Enter to keep their existing pick).
+  const initial = installed.find((c) => c.name === configured)?.name ?? installed[0].name;
+  const pick = ensureAnswer(
+    await brightSelect<string>({
+      message: 'Which coding-assistant CLI should setup use for diagnostics?',
+      options: installed.map((c) => ({
+        value: c.name,
+        label: c.displayName,
+        hint: c.binary,
+      })),
+      initialValue: initial,
+    }),
+  ) as string;
+  const chosen = installed.find((c) => c.name === pick);
+  if (!chosen) return;
+  persistAiCodingCli(chosen);
+  setupLog.userInput('setup_cli', `${chosen.name} (picked)`);
+}
+
+function persistAiCodingCli(cli: AiCodingCli): void {
+  process.env.NANOCLAW_AI_CODING_CLI = cli.name;
+  writeEnvLine('NANOCLAW_AI_CODING_CLI', cli.name);
+}
+
 function writeEnvLine(key: string, value: string): void {
   const envFile = path.join(process.cwd(), '.env');
   const content = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf-8') : '';
@@ -1029,13 +1354,13 @@ async function runTimezoneStep(): Promise<void> {
 
   let tz: string | null = isValidTimezone(raw) ? raw : null;
   if (!tz) {
-    if (claudeCliAvailable()) {
-      tz = await resolveTimezoneViaClaude(raw);
+    if (aiCodingCliAvailable()) {
+      tz = await resolveTimezoneViaCli(raw);
     } else {
       p.log.warn(
         brandBody(
           wrapForGutter(
-            "That's not a standard IANA zone and I can't call Claude to interpret it here — try again with a zone like `America/New_York` or `Europe/London`.",
+            "That's not a standard IANA zone and I don't have a setup-helper CLI installed to interpret it here — try again with a zone like `America/New_York` or `Europe/London`.",
             4,
           ),
         ),
@@ -1092,29 +1417,65 @@ async function askDisplayName(fallback: string): Promise<string> {
 
 async function askChannelChoice(): Promise<ChannelChoice> {
   const isMac = process.platform === 'darwin';
+
+  // Probe .env so a channel that already has credentials gets a "✓ already
+  // configured" hint and pre-focused selection. Channels with QR/pair-code
+  // bootstraps (whatsapp; signal at first run) have no fixed pre-cred env
+  // var and are listed here only when their post-pair value lands.
+  const configured = {
+    telegram: !!readEnvKey('TELEGRAM_BOT_TOKEN'),
+    discord: !!readEnvKey('DISCORD_BOT_TOKEN'),
+    slack: !!readEnvKey('SLACK_BOT_TOKEN'),
+    teams: !!readEnvKey('TEAMS_APP_ID'),
+    signal: !!readEnvKey('SIGNAL_ACCOUNT'),
+    imessage: !!(readEnvKey('IMESSAGE_LOCAL') || readEnvKey('IMESSAGE_API_KEY')),
+  };
+  const configuredHint = '✓ already configured';
+
+  // Pre-focus the first configured channel, else the existing default.
+  const initialValue =
+    (Object.entries(configured).find(([, v]) => v)?.[0] as ChannelChoice | undefined) ?? 'telegram';
+
   const choice = ensureAnswer(
     await brightSelect<ChannelChoice>({
       message: 'Want to chat with your assistant from your phone?',
+      initialValue,
       options: [
-        { value: 'telegram', label: 'Yes, connect Telegram', hint: 'recommended' },
-        { value: 'discord', label: 'Yes, connect Discord' },
+        {
+          value: 'telegram',
+          label: 'Yes, connect Telegram',
+          hint: configured.telegram ? configuredHint : 'recommended',
+        },
+        {
+          value: 'discord',
+          label: 'Yes, connect Discord',
+          hint: configured.discord ? configuredHint : undefined,
+        },
         { value: 'whatsapp', label: 'Yes, connect WhatsApp' },
         {
           value: 'signal',
           label: 'Yes, connect Signal',
-          hint: 'needs signal-cli installed',
+          hint: configured.signal ? configuredHint : 'needs signal-cli installed',
         },
         {
           value: 'imessage',
           label: 'Yes, connect iMessage (experimental)',
-          hint: isMac ? 'local macOS mode' : 'remote Photon only',
+          hint: configured.imessage
+            ? configuredHint
+            : isMac
+              ? 'local macOS mode'
+              : 'remote Photon only',
         },
         {
           value: 'slack',
           label: 'Yes, connect Slack (experimental)',
-          hint: 'needs public URL',
+          hint: configured.slack ? configuredHint : 'needs public URL',
         },
-        { value: 'teams', label: 'Yes, connect Microsoft Teams', hint: 'complex setup' },
+        {
+          value: 'teams',
+          label: 'Yes, connect Microsoft Teams',
+          hint: configured.teams ? configuredHint : 'complex setup',
+        },
         { value: 'other', label: 'Other…', hint: 'install via /add-<name> after setup' },
         { value: 'skip', label: 'Skip for now', hint: "I'll just use the terminal" },
       ],

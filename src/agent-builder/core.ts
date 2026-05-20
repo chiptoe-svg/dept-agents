@@ -269,13 +269,17 @@ function readIfExists(p: string): string | null {
 // ── Channel-related (called by the playground adapter on session start) ────
 
 /**
- * Ensure a `messaging_groups` row exists for this draft's playground
- * session. Idempotent — returns the existing row if already created.
+ * Ensure a `messaging_groups` row exists for the playground session
+ * associated with this folder. Idempotent — returns the existing row if
+ * already created.
+ *
+ * The folder is unrestricted by intent: classroom students chat with their
+ * `student_NN` / `ta_NN` / `instructor_NN` agent groups directly through
+ * the playground, not through draft folders. The route handler in
+ * api-routes.ts is the auth gate (it checks membership before calling
+ * this), so we don't restrict by folder name here.
  */
 export function ensureDraftMessagingGroup(draftFolder: string): MessagingGroup {
-  if (!isDraftFolder(draftFolder)) {
-    throw new Error(`Not a draft folder: ${draftFolder}`);
-  }
   const platformId = platformIdFor(draftFolder);
   const existing = getMessagingGroupByPlatform(PLAYGROUND_CHANNEL, platformId);
   if (existing) return existing;
@@ -300,7 +304,7 @@ export function ensureDraftMessagingGroup(draftFolder: string): MessagingGroup {
  */
 export function ensureDraftWiring(draftFolder: string): void {
   const draft = getAgentGroupByFolder(draftFolder);
-  if (!draft) throw new Error(`Draft not found: ${draftFolder}`);
+  if (!draft) throw new Error(`Agent group not found: ${draftFolder}`);
   const mg = ensureDraftMessagingGroup(draftFolder);
 
   const existing = getMessagingGroupAgentByPair(mg.id, draft.id);

@@ -49,6 +49,32 @@ const deliveryAttempts = new Map<string, number>();
  */
 const inflightDeliveries = new Set<string>();
 
+export interface ChannelDeliveryMeta {
+  /**
+   * Token usage from the provider (best-effort).
+   * `input` is uncached new input tokens (billed at full input rate).
+   * `cacheCreation` (Anthropic only) is tokens written to prompt cache,
+   * billed at 1.25× full input rate.
+   * `cacheRead` is tokens served from prompt cache. Anthropic bills at
+   * 0.10× full input; OpenAI prefix-cache typically at 0.50×.
+   * For Anthropic these three fields are disjoint (sum = wire input).
+   * For OpenAI/codex `input` already includes any cached portion and
+   * `cacheRead` is the cached subset.
+   */
+  tokens?: {
+    input: number;
+    output: number;
+    cacheCreation?: number;
+    cacheRead?: number;
+  };
+  /** End-to-end turn latency in milliseconds. */
+  latencyMs?: number;
+  /** Provider id at completion ("claude" / "codex" / ...). */
+  provider?: string;
+  /** Model id used for the turn. */
+  model?: string;
+}
+
 export interface ChannelDeliveryAdapter {
   deliver(
     channelType: string,
@@ -57,6 +83,7 @@ export interface ChannelDeliveryAdapter {
     kind: string,
     content: string,
     files?: OutboundFile[],
+    meta?: ChannelDeliveryMeta,
   ): Promise<string | undefined>;
   setTyping?(channelType: string, platformId: string, threadId: string | null): Promise<void>;
 }
@@ -240,6 +267,11 @@ async function deliverMessage(
     thread_id: string | null;
     content: string;
     in_reply_to: string | null;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    latency_ms: number | null;
+    provider: string | null;
+    model: string | null;
   },
   session: Session,
   inDb: Database.Database,
@@ -254,6 +286,24 @@ async function deliverMessage(
   // System actions — handle internally (schedule_task, cancel_task, etc.)
   if (msg.kind === 'system') {
     await handleSystemAction(content, session, inDb);
+    return;
+  }
+
+  // Trace events — agent tool_use / tool_result blocks routed to the
+  // playground SSE only. Bypasses the messaging-group / agent_destinations
+  // permission checks because trace targets a non-persistent surface
+  // (in-memory SSE subscribers) and only ever lands on a `playground`
+  // channel_type. Dynamic import so trunk doesn't hard-link to playground.
+  if (msg.kind === 'trace') {
+    if (msg.channel_type !== 'playground' || !msg.platform_id) {
+      log.warn('trace message missing playground routing — dropping', { id: msg.id });
+      return;
+    }
+    const draftFolder = msg.platform_id.startsWith('playground:')
+      ? msg.platform_id.slice('playground:'.length)
+      : msg.platform_id;
+    const { pushToDraft } = await import('./channels/playground/sse.js');
+    pushToDraft(draftFolder, 'message', { kind: 'trace', content });
     return;
   }
 
@@ -353,6 +403,35 @@ async function deliverMessage(
       ? readOutboxFiles(session.agent_group_id, session.id, msg.id, content.files as string[])
       : undefined;
 
+  // Cache fields are smuggled inside `content` rather than getting their
+  // own DB columns (keeps session-DB schema stable across upgrades).
+  // The container's poll-loop.ts writes them in alongside { text }; we
+  // extract here and hoist into the meta block for the channel adapter.
+  const contentCacheCreation = typeof content.cacheCreation === 'number' ? content.cacheCreation : null;
+  const contentCacheRead = typeof content.cacheRead === 'number' ? content.cacheRead : null;
+  const meta: ChannelDeliveryMeta | undefined =
+    msg.tokens_in != null ||
+    msg.tokens_out != null ||
+    msg.latency_ms != null ||
+    msg.provider != null ||
+    msg.model != null
+      ? {
+          ...(msg.tokens_in != null && msg.tokens_out != null
+            ? {
+                tokens: {
+                  input: msg.tokens_in,
+                  output: msg.tokens_out,
+                  ...(contentCacheCreation != null ? { cacheCreation: contentCacheCreation } : {}),
+                  ...(contentCacheRead != null ? { cacheRead: contentCacheRead } : {}),
+                },
+              }
+            : {}),
+          ...(msg.latency_ms != null ? { latencyMs: msg.latency_ms } : {}),
+          ...(msg.provider != null ? { provider: msg.provider } : {}),
+          ...(msg.model != null ? { model: msg.model } : {}),
+        }
+      : undefined;
+
   const platformMsgId = await deliveryAdapter.deliver(
     msg.channel_type,
     msg.platform_id,
@@ -360,6 +439,7 @@ async function deliverMessage(
     msg.kind,
     msg.content,
     files,
+    meta,
   );
   log.info('Message delivered', {
     id: msg.id,

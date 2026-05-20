@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
-import { resolveProviderName } from './container-runner.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { assertDirectoryMounts, resolveProviderName } from './container-runner.js';
 
 describe('resolveProviderName', () => {
   it('prefers session over group and container.json', () => {
@@ -28,5 +32,41 @@ describe('resolveProviderName', () => {
   it('treats empty string as unset (falls through)', () => {
     expect(resolveProviderName('', 'codex', null)).toBe('codex');
     expect(resolveProviderName(null, '', 'opencode')).toBe('opencode');
+  });
+});
+
+describe('assertDirectoryMounts', () => {
+  let tmp: string;
+  let dir: string;
+  let file: string;
+
+  beforeAll(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-mount-test-'));
+    dir = path.join(tmp, 'a-dir');
+    file = path.join(tmp, 'a-file');
+    fs.mkdirSync(dir);
+    fs.writeFileSync(file, 'x');
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('accepts directory sources', () => {
+    expect(() => assertDirectoryMounts([{ hostPath: dir, containerPath: '/x', readonly: false }])).not.toThrow();
+  });
+
+  it('throws when any source is a file (the regression we keep catching)', () => {
+    expect(() =>
+      assertDirectoryMounts([
+        { hostPath: dir, containerPath: '/x', readonly: false },
+        { hostPath: file, containerPath: '/y', readonly: true },
+      ]),
+    ).toThrow(/Mount source is a file/);
+  });
+
+  it('ignores non-existent paths (legitimate staging slots created at spawn)', () => {
+    const ghost = path.join(tmp, 'does-not-exist');
+    expect(() => assertDirectoryMounts([{ hostPath: ghost, containerPath: '/x', readonly: false }])).not.toThrow();
   });
 });

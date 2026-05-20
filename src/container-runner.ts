@@ -14,6 +14,7 @@ import {
   CREDENTIAL_PROXY_PORT,
   DATA_DIR,
   GROUPS_DIR,
+  GWS_MCP_RELAY_PORT,
   TIMEZONE,
 } from './config.js';
 import { collectContainerEnv } from './container-env-registry.js';
@@ -137,6 +138,7 @@ async function spawnContainer(session: Session): Promise<void> {
   ensureRuntimeFields(containerConfig, agentGroup, provider);
 
   const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
+  assertDirectoryMounts(mounts);
   const containerName = `nanoclaw-v2-${agentGroup.folder}-${Date.now()}`;
   // OneCLI agent identifier is always the agent group id — stable across
   // sessions and reversible via getAgentGroup() for approval routing.
@@ -192,6 +194,27 @@ async function spawnContainer(session: Session): Promise<void> {
     stopTypingRefresh(session.id);
     log.error('Container spawn error', { sessionId: session.id, err });
   });
+}
+
+/**
+ * Apple Container can only do directory bind mounts. Throws if any mount
+ * source is an existing file — catches accidental reintroduction of nested
+ * file mounts (the Docker-era pattern that silently broke spawn under Apple
+ * Container with "path is not a directory"). Sources that don't exist yet
+ * are not flagged: those are legitimate staging slots that the spawn flow
+ * creates before the mount fires.
+ */
+export function assertDirectoryMounts(mounts: VolumeMount[]): void {
+  for (const m of mounts) {
+    if (!fs.existsSync(m.hostPath)) continue;
+    if (fs.statSync(m.hostPath).isFile()) {
+      throw new Error(
+        `Mount source is a file, not a directory: ${m.hostPath} → ${m.containerPath}. ` +
+          `Apple Container only supports directory bind mounts. ` +
+          `Stage the file into a directory and mount the directory instead.`,
+      );
+    }
+  }
 }
 
 /** Kill a container for a session. */
@@ -274,24 +297,15 @@ function buildMounts(
   // Agent group folder at /workspace/agent (RW for working files + CLAUDE.local.md)
   mounts.push({ hostPath: groupDir, containerPath: '/workspace/agent', readonly: false });
 
-  // container.json — nested RO mount on top of RW group dir so the agent
-  // can read its config but cannot modify it.
-  const containerJsonPath = path.join(groupDir, 'container.json');
-  if (fs.existsSync(containerJsonPath)) {
-    mounts.push({ hostPath: containerJsonPath, containerPath: '/workspace/agent/container.json', readonly: true });
-  }
+  // Apple Container only supports directory bind mounts, not file mounts.
+  // The previously-nested RO file mounts (container.json, composed CLAUDE.md)
+  // are accessible to the agent via the parent /workspace/agent dir mount
+  // (it's RW for CLAUDE.local.md). The RO protection is lost: an agent could
+  // overwrite its own container.json or composed CLAUDE.md, though the
+  // composed CLAUDE.md is regenerated from the shared base + fragments on
+  // every spawn so any agent writes are clobbered immediately. This is a
+  // regression vs the Docker setup — tracked in memory.
 
-  // Composer-managed CLAUDE.md artifacts — nested RO mounts. These are
-  // regenerated from the shared base + fragments on every spawn; any
-  // agent-side writes would be clobbered, so enforce read-only. Only
-  // CLAUDE.local.md (per-group memory) remains RW via the group-dir mount.
-  // `.claude-shared.md` is a symlink whose target (`/app/CLAUDE.md`) is
-  // already RO-mounted, so writes through it fail regardless — no need for
-  // a nested mount there.
-  const composedClaudeMd = path.join(groupDir, 'CLAUDE.md');
-  if (fs.existsSync(composedClaudeMd)) {
-    mounts.push({ hostPath: composedClaudeMd, containerPath: '/workspace/agent/CLAUDE.md', readonly: true });
-  }
   const fragmentsDir = path.join(groupDir, '.claude-fragments');
   if (fs.existsSync(fragmentsDir)) {
     mounts.push({ hostPath: fragmentsDir, containerPath: '/workspace/agent/.claude-fragments', readonly: true });
@@ -303,11 +317,15 @@ function buildMounts(
     mounts.push({ hostPath: globalDir, containerPath: '/workspace/global', readonly: true });
   }
 
-  // Shared CLAUDE.md — read-only, imported by the composed entry point via
-  // the `.claude-shared.md` symlink inside the group dir.
+  // Shared CLAUDE.md — stage into the session dir at spawn time so it can be
+  // exposed via a directory mount (Apple Container can't do file mounts).
+  // The session dir is already mounted RW at /workspace; the agent's
+  // `.claude-shared.md` symlink target is /workspace/.shared/CLAUDE.md.
   const sharedClaudeMd = path.join(process.cwd(), 'container', 'CLAUDE.md');
   if (fs.existsSync(sharedClaudeMd)) {
-    mounts.push({ hostPath: sharedClaudeMd, containerPath: '/app/CLAUDE.md', readonly: true });
+    const stagedSharedDir = path.join(sessDir, '.shared');
+    fs.mkdirSync(stagedSharedDir, { recursive: true });
+    fs.copyFileSync(sharedClaudeMd, path.join(stagedSharedDir, 'CLAUDE.md'));
   }
 
   // Per-group .claude-shared at /home/node/.claude (Claude state, settings,
@@ -335,8 +353,12 @@ function buildMounts(
     mounts.push(...providerContribution.mounts);
   }
 
-  // Mount web hosting directory so agents can create and deploy websites
-  const sitesDir = '/var/www/sites';
+  // Mount web hosting directory so agents can create and deploy websites.
+  // Host path lives under /opt/homebrew/var/www/sites — user-writable
+  // (no sudo needed), served by the user-level Homebrew Caddy on :8080.
+  // Container path stays /var/www/sites so the make-website skill keeps
+  // one canonical in-container path regardless of host OS conventions.
+  const sitesDir = '/opt/homebrew/var/www/sites';
   if (fs.existsSync(sitesDir)) {
     mounts.push({
       hostPath: sitesDir,
@@ -473,11 +495,25 @@ async function buildContainerArgs(
   // Native credential proxy: route container API calls to host:3001 with
   // placeholder credentials. Proxy substitutes real keys/OAuth tokens.
   args.push('-e', `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`);
-  args.push('-e', `OPENAI_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}/openai/v1`);
-  // Google APIs route — credential proxy refreshes the OAuth bearer
-  // from ~/.config/gws/credentials.json on the host. The container
-  // sees only this URL; no Google secrets ever cross the boundary.
-  args.push('-e', `GWS_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}/googleapis`);
+  // OpenAI traffic routes through one of two proxy prefixes per the group's
+  // active provider: `codex` (cloud OpenAI) → /openai/v1, `local`
+  // (mlx-omni-server) → /omlx/v1. The proxy strips the prefix and substitutes
+  // the appropriate API key per upstream.
+  const openaiPrefix = provider === 'local' ? '/omlx/v1' : '/openai/v1';
+  args.push('-e', `OPENAI_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}${openaiPrefix}`);
+
+  // Google Workspace MCP relay — host-side gateway that the container's
+  // gws.ts shims forward to. Per-call attribution header set by gws.ts.
+  args.push('-e', `GWS_MCP_RELAY_URL=http://${CONTAINER_HOST_GATEWAY}:${GWS_MCP_RELAY_PORT}`);
+
+  // Per-call attribution for the credential proxy. The container's
+  // proxy-fetch wrapper injects this as `X-NanoClaw-Agent-Group` on
+  // every outbound request to the proxy. Keystone primitive used by
+  // per-student credential resolvers (per-student GWS today; per-
+  // student Anthropic / OpenAI auth in Phase 4). Missing-header
+  // requests gracefully fall back to instructor / class-default
+  // credentials at the proxy.
+  args.push('-e', `X_NANOCLAW_AGENT_GROUP=${agentGroup.id}`);
 
   const authMode = detectAuthMode();
   if (authMode === 'api-key') {
@@ -491,6 +527,10 @@ async function buildContainerArgs(
   // SDK's env check; the proxy substitutes the real key in the
   // Authorization header before forwarding.
   args.push('-e', 'OPENAI_API_KEY=placeholder');
+  // OMLX_API_KEY — needed when provider=local so codex's config.toml
+  // env_key resolves; harmless on codex/claude containers since they
+  // don't read it. Proxy substitutes the real bearer on /omlx requests.
+  args.push('-e', 'OMLX_API_KEY=placeholder');
 
   // Provider-contributed env vars (e.g. XDG_DATA_HOME, OPENCODE_*, NO_PROXY).
   if (providerContribution.env) {

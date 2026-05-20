@@ -17,9 +17,31 @@ If you are a fresh install (you ran `git clone`, not `git pull`) and there are n
 
 Personal Claude assistant. See [README.md](README.md) for philosophy and setup. Architecture lives in `docs/`.
 
-## Workflow Rule: Plan Before Executing
+## Workflow Rules
+
+### 0. Plan Before Executing
 
 For any non-trivial task (multi-step features, multi-phase work, anything beyond a single localized edit): write the plan to `plans/<feature>.md` **before** starting implementation. The plan must enumerate all phases / steps with enough detail that a future session (or a different Claude) can resume mid-stream without guessing. Update the file as the plan evolves and tick phases off as they land. Conversation-only plans are not acceptable — they vanish when the session ends.
+
+### 1. Don't assume. Don't hide confusion. Surface tradeoffs.
+
+If you don't understand the request, the codebase, or which of several reasonable approaches the user wants — say so before you act. "I'm going to guess X" is fine; silently picking X and writing 200 lines around it is not. When there are tradeoffs, name them out loud rather than picking and hoping.
+
+### 2. Minimum code that solves the problem. Nothing speculative.
+
+No abstractions, helpers, configuration knobs, or feature flags built "in case we need them later." If a future task needs them, the future task can add them. Three similar lines beats a premature abstraction.
+
+### 3. Touch only what you must. Clean up only your own mess.
+
+Stay inside the scope the user asked for. Don't refactor adjacent code, don't reformat unrelated files, don't fix bugs you happen to notice unless the user told you to. If you make a mess (dead code, unused imports, half-written helpers) in the course of your work, clean *that* up. Other people's pre-existing mess is not your job.
+
+### 4. Define success criteria. Loop until verified.
+
+Before starting, state what "done" looks like in concrete, checkable terms (tests passing, build clean, specific behavior reproduced). After finishing, run those checks. If they fail, fix and re-run — don't declare done on the strength of "it looks right."
+
+### 5. Respect the small-trunk-with-skills philosophy.
+
+Before adding any new module, dependency, or capability to trunk: ask whether it belongs on a long-lived branch installed by a skill (the pattern used for channel adapters in the `channels` branch and non-default providers in the `providers` branch). Anything channel-specific, provider-specific, integration-specific, or category-specific (Google Workspace, classroom features, third-party services) defaults to a branch + install skill, not trunk. Trunk should be infrastructure that EVERY install needs, not features any subset uses. When in doubt, surface the choice up front before committing — discovering after-the-fact that trunk has accumulated GWS / classroom / integration code triggers expensive refactors.
 
 ## Quick Context
 

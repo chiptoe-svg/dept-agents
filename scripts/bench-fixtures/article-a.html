@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head><title>Introduction to Python Decorators</title></head>
+<body>
+<h1>Introduction to Python Decorators</h1>
+<p>Python decorators are one of the most elegant features of the language. They allow programmers
+to modify the behavior of functions or methods without changing their source code. At their core,
+decorators are simply functions that take another function as an argument and return a modified
+version of that function.</p>
+
+<h2>What is a Decorator?</h2>
+<p>A decorator is a design pattern in Python that allows you to add new functionality to an existing
+object without modifying its structure. Decorators are usually called before the definition of a
+function you want to decorate. In Python, everything is an object, including functions, so
+decorators leverage this to wrap functionality around other functions.</p>
+
+<p>The syntax for using a decorator is the <code>@</code> symbol followed by the decorator name,
+placed directly above the function definition. This is syntactic sugar for passing the decorated
+function to the decorator function and reassigning the result to the original name.</p>
+
+<h2>A Simple Example</h2>
+<p>Consider a decorator that logs whenever a function is called. Without decorators, you would
+need to add logging code inside every function you want to monitor. With decorators, you define
+the logging behavior once and apply it anywhere. The decorator receives the original function,
+defines a wrapper that adds the logging, and returns the wrapper.</p>
+
+<h2>Built-in Decorators</h2>
+<p>Python ships with several useful built-in decorators. The <code>@property</code> decorator lets
+you define class attributes that behave like methods, enabling computed attributes with getter and
+setter logic. The <code>@staticmethod</code> decorator marks a method that does not receive the
+implicit first argument, while <code>@classmethod</code> receives the class itself instead of an
+instance. These built-in decorators cover the most common metaprogramming needs without requiring
+external libraries.</p>
+
+<h2>Chaining Decorators</h2>
+<p>Multiple decorators can be stacked on a single function. They are applied from bottom to top,
+meaning the decorator closest to the function definition is applied first. Chaining is useful when
+you want to compose independent behaviors such as caching, authentication checking, and timing
+on the same function. Each decorator in the chain only needs to know about its own concern,
+keeping the code modular and testable.</p>
+
+<h2>Decorators with Arguments</h2>
+<p>Sometimes you want a decorator to accept its own arguments, such as a <code>@retry(times=3)</code>
+decorator that retries a function up to three times on failure. To accomplish this, you write a
+decorator factory: a function that accepts the arguments and returns an actual decorator. This
+adds one extra level of nesting but gives you full parameterization without sacrificing the clean
+<code>@</code> syntax at the call site.</p>
+
+<h2>Using functools.wraps</h2>
+<p>When you wrap a function, the wrapper obscures the original function's metadata such as its
+name, docstring, and signature. Python's <code>functools.wraps</code> decorator copies this
+metadata from the original function to the wrapper. Always use <code>@functools.wraps(func)</code>
+inside your decorator to preserve introspection compatibility with tools like <code>help()</code>,
+debuggers, and documentation generators.</p>
+
+<h2>Practical Use Cases</h2>
+<p>Decorators appear throughout the Python ecosystem. Web frameworks like Flask and Django use
+decorators to register URL routes and views. Testing libraries use them to mark test cases and
+parametrize inputs. Caching libraries provide decorators that memoize expensive computations.
+Authorization systems wrap protected endpoints. In every case the pattern is the same: add a
+cross-cutting concern without polluting the core logic of each function.</p>
+
+<h2>Summary</h2>
+<p>Python decorators are a powerful tool for writing clean, reusable, and modular code. They
+make it easy to separate concerns, add behaviors transparently, and keep functions focused on
+their primary responsibility. Whether you use built-in decorators or write your own, understanding
+how decorators work will make you a more effective Python programmer.</p>
+</body>
+</html>

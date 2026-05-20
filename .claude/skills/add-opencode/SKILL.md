@@ -42,6 +42,14 @@ git show origin/providers:container/agent-runner/src/providers/mcp-to-opencode.t
 git show origin/providers:container/agent-runner/src/providers/opencode.factory.test.ts > container/agent-runner/src/providers/opencode.factory.test.ts
 ```
 
+If this install has the AI-coding CLI picker (Phases A–F of `plans/ai-coding-cli-pick.md`), also copy the OpenCode setup-helper adapter so the picker offers OpenCode alongside Claude Code and Codex:
+
+```bash
+# Skip if `setup/lib/ai-coding-cli/` doesn't exist — older installs don't have the registry.
+[ -d setup/lib/ai-coding-cli ] && \
+  git show origin/providers:setup/lib/ai-coding-cli/opencode.ts > setup/lib/ai-coding-cli/opencode.ts
+```
+
 ### 3. Append the self-registration imports
 
 Each barrel gets one line appended at the end — skip if the line is already present.
@@ -57,6 +65,23 @@ import './opencode.js';
 ```typescript
 import './opencode.js';
 ```
+
+If you copied the AI-coding CLI adapter in step 2, also register it. Edit `setup/lib/ai-coding-cli/index.ts`:
+
+1. Add the import alongside the existing claude/codex imports (alphabetical):
+   ```typescript
+   import { opencodeCli } from './opencode.js';
+   ```
+2. Append `opencodeCli` to the `BUILTIN_CLIS` array:
+   ```typescript
+   const BUILTIN_CLIS: AiCodingCli[] = [claudeCli, codexCli, opencodeCli];
+   ```
+3. Append `opencodeCli` to the bottom-of-file re-export:
+   ```typescript
+   export { claudeCli, codexCli, opencodeCli };
+   ```
+
+The picker will show OpenCode automatically once the binary is on PATH.
 
 ### 4. Add the agent-runner dependency
 

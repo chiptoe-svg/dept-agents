@@ -5,6 +5,8 @@
  *
  * Routes by URL path prefix:
  *   /openai/*      → OpenAI API (strip prefix, inject Authorization)
+ *   /omlx/*        → Local OpenAI-compatible server (mlx-omni, Ollama, etc.)
+ *                    (strip prefix, inject Bearer OMLX_API_KEY)
  *   /googleapis/*  → Google APIs (strip prefix, inject OAuth Bearer
  *                    refreshed from ~/.config/gws/credentials.json)
  *   everything else → Anthropic API (default)
@@ -43,7 +45,61 @@ import { request as httpsRequest } from 'https';
 import { request as httpRequest, RequestOptions } from 'http';
 
 import { readEnvFile } from './env.js';
+import { getGoogleAccessTokenForAgentGroup } from './gws-token.js';
 import { log } from './log.js';
+
+/**
+ * Per-request credential resolution outcome returned by the
+ * studentCredsHook. The trunk proxy understands four shapes:
+ *   - apiKey / oauth: real creds; proxy injects them
+ *   - connect_required: 402 envelope (classroom-skill policy)
+ *   - forbidden:       403 envelope (classroom-skill policy)
+ *   - null:            no per-student creds; proxy falls through to
+ *                      the existing .env / file / keychain chain
+ */
+export type ResolvedCreds =
+  | { kind: 'apiKey'; value: string }
+  | { kind: 'oauth'; accessToken: string }
+  | { kind: 'connect_required'; provider: string; message: string; connect_url: string }
+  | { kind: 'forbidden'; provider: string }
+  | null;
+
+export type StudentCredsHook = (agentGroupId: string, providerId: string) => Promise<ResolvedCreds>;
+
+/**
+ * Trunk default — no-op. Solo installs see this and the proxy falls
+ * through to existing .env / file / keychain resolution. The classroom
+ * skill calls setStudentCredsHook() at startup to install its real
+ * resolver.
+ */
+export let studentCredsHook: StudentCredsHook = async () => null;
+
+export function setStudentCredsHook(fn: StudentCredsHook): void {
+  studentCredsHook = fn;
+}
+
+export function serializeResolvedCredsError(
+  result: Extract<ResolvedCreds, { kind: 'connect_required' | 'forbidden' }>,
+): { status: number; body: Record<string, unknown> } {
+  if (result.kind === 'connect_required') {
+    return {
+      status: 402,
+      body: {
+        type: 'connect_required',
+        provider: result.provider,
+        message: result.message,
+        connect_url: result.connect_url,
+      },
+    };
+  }
+  return {
+    status: 403,
+    body: { type: 'forbidden', provider: result.provider },
+  };
+}
+
+/** Header containers send to identify which agent group is calling. */
+const AGENT_GROUP_HEADER = 'x-nanoclaw-agent-group';
 
 /**
  * OAuth client id used by Claude Code CLI for the refresh-token grant.
@@ -66,118 +122,12 @@ interface ClaudeCredentials {
 }
 
 const CLAUDE_CREDENTIALS_PATH = path.join(process.env.HOME || '/home/node', '.claude', '.credentials.json');
-const GWS_CREDENTIALS_PATH = path.join(process.env.HOME || '/home/node', '.config', 'gws', 'credentials.json');
 
 // Buffer: refresh 5 minutes before expiry
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 let cachedOAuthToken: string | null = null;
 let cachedExpiresAt = 0;
-
-/** Google OAuth — cached access token + expiry. Refreshed on demand. */
-let cachedGoogleAccessToken: string | null = null;
-let cachedGoogleExpiresAt = 0;
-
-interface GwsCredentials {
-  type: string;
-  client_id: string;
-  client_secret: string;
-  refresh_token: string;
-  access_token?: string;
-  expiry_date?: number;
-}
-
-function readGwsCredentials(): GwsCredentials | null {
-  try {
-    if (!fs.existsSync(GWS_CREDENTIALS_PATH)) return null;
-    const raw = fs.readFileSync(GWS_CREDENTIALS_PATH, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<GwsCredentials>;
-    if (!parsed.client_id || !parsed.client_secret || !parsed.refresh_token) return null;
-    return parsed as GwsCredentials;
-  } catch (err) {
-    log.warn('Failed to read GWS credentials', { err: String(err) });
-    return null;
-  }
-}
-
-/**
- * Get a fresh Google OAuth access token. Returns null if no credentials
- * are configured. Caches the token until 5 minutes before its expiry.
- *
- * Refresh flow: POST to oauth2.googleapis.com/token with grant_type=
- * refresh_token. Standard Google OAuth — no library needed.
- */
-async function getGoogleAccessToken(): Promise<string | null> {
-  if (cachedGoogleAccessToken && Date.now() < cachedGoogleExpiresAt - REFRESH_BUFFER_MS) {
-    return cachedGoogleAccessToken;
-  }
-
-  const creds = readGwsCredentials();
-  if (!creds) return null;
-
-  // First-time path: if credentials.json has a fresh access_token + expiry, use it.
-  if (creds.access_token && creds.expiry_date && creds.expiry_date > Date.now() + REFRESH_BUFFER_MS) {
-    cachedGoogleAccessToken = creds.access_token;
-    cachedGoogleExpiresAt = creds.expiry_date;
-    return cachedGoogleAccessToken;
-  }
-
-  // Refresh: exchange refresh_token for a new access_token.
-  const body = new URLSearchParams({
-    client_id: creds.client_id,
-    client_secret: creds.client_secret,
-    refresh_token: creds.refresh_token,
-    grant_type: 'refresh_token',
-  }).toString();
-
-  return new Promise((resolve) => {
-    const req = httpsRequest(
-      {
-        hostname: 'oauth2.googleapis.com',
-        port: 443,
-        path: '/token',
-        method: 'POST',
-        headers: {
-          'content-type': 'application/x-www-form-urlencoded',
-          'content-length': Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (c) => chunks.push(c as Buffer));
-        res.on('end', () => {
-          if (res.statusCode !== 200) {
-            log.error('GWS OAuth refresh failed', {
-              status: res.statusCode,
-              body: Buffer.concat(chunks).toString('utf-8').slice(0, 500),
-            });
-            resolve(null);
-            return;
-          }
-          try {
-            const json = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as {
-              access_token: string;
-              expires_in: number;
-            };
-            cachedGoogleAccessToken = json.access_token;
-            cachedGoogleExpiresAt = Date.now() + json.expires_in * 1000;
-            log.debug('GWS OAuth refresh OK', { expiresInMin: Math.round(json.expires_in / 60) });
-            resolve(cachedGoogleAccessToken);
-          } catch (err) {
-            log.error('GWS OAuth refresh parse failed', { err: String(err) });
-            resolve(null);
-          }
-        });
-      },
-    );
-    req.on('error', (err) => {
-      log.error('GWS OAuth refresh request error', { err: String(err) });
-      resolve(null);
-    });
-    req.write(body);
-    req.end();
-  });
-}
 
 /**
  * Read the full OAuth credential object (accessToken + refreshToken +
@@ -391,6 +341,8 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
     'ANTHROPIC_BASE_URL',
     'OPENAI_API_KEY',
     'OPENAI_BASE_URL',
+    'OMLX_API_KEY',
+    'OMLX_BASE_URL',
   ]);
 
   const authMode: AuthMode = secrets.ANTHROPIC_API_KEY ? 'api-key' : 'oauth';
@@ -399,6 +351,10 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
   const anthropicUpstream = new URL(secrets.ANTHROPIC_BASE_URL || 'https://api.anthropic.com');
   const openaiUpstream = new URL(secrets.OPENAI_BASE_URL || 'https://api.openai.com');
   const googleUpstream = new URL('https://www.googleapis.com');
+  // Local OpenAI-compatible server (mlx-omni-server, Ollama, LM Studio).
+  // Routed via the /omlx/* prefix so agents on the `local` provider send
+  // codex traffic here while `codex` agents still hit cloud OpenAI.
+  const omlxUpstream = new URL(secrets.OMLX_BASE_URL || 'http://localhost:8000');
 
   const requestFor = (isHttps: boolean) => (isHttps ? httpsRequest : httpRequest);
 
@@ -415,14 +371,31 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
         //   everything else → Anthropic (existing behaviour)
         const rawUrl = req.url || '/';
         const isOpenAI = rawUrl.startsWith('/openai/') || rawUrl === '/openai';
+        const isOmlx = rawUrl.startsWith('/omlx/') || rawUrl === '/omlx';
         const isGoogle = rawUrl.startsWith('/googleapis/') || rawUrl === '/googleapis';
 
-        const upstreamUrl = isGoogle ? googleUpstream : isOpenAI ? openaiUpstream : anthropicUpstream;
+        // Per-call attribution: which agent group is calling? Used by the
+        // per-student GWS resolver below; per-student Anthropic / OpenAI
+        // resolvers (Phase 4) will consult the same primitive. Missing
+        // header is fine — every resolver gracefully falls back to the
+        // class-default credential.
+        const rawAgentGroup = req.headers[AGENT_GROUP_HEADER];
+        const agentGroupId = typeof rawAgentGroup === 'string' && rawAgentGroup.length > 0 ? rawAgentGroup : null;
+
+        const upstreamUrl = isGoogle
+          ? googleUpstream
+          : isOpenAI
+            ? openaiUpstream
+            : isOmlx
+              ? omlxUpstream
+              : anthropicUpstream;
         const upstreamPath = isGoogle
           ? rawUrl.replace(/^\/googleapis/, '') || '/'
           : isOpenAI
             ? rawUrl.replace(/^\/openai/, '') || '/'
-            : rawUrl;
+            : isOmlx
+              ? rawUrl.replace(/^\/omlx/, '') || '/'
+              : rawUrl;
         const isHttps = upstreamUrl.protocol === 'https:';
         const makeRequest = requestFor(isHttps);
 
@@ -436,12 +409,41 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
         delete headers['connection'];
         delete headers['keep-alive'];
         delete headers['transfer-encoding'];
+        // Don't leak the attribution header upstream — it's a NanoClaw-internal hint.
+        delete headers[AGENT_GROUP_HEADER];
+
+        // ── per-student-provider-auth:proxy-invocation START ──────────────────────
+        let studentCredsApplied = false;
+        if (agentGroupId && (isOpenAI || (!isGoogle && !isOmlx))) {
+          const providerId = isOpenAI ? 'codex' : 'claude';
+          const resolved = await studentCredsHook(agentGroupId, providerId);
+          if (resolved) {
+            if (resolved.kind === 'connect_required' || resolved.kind === 'forbidden') {
+              const err = serializeResolvedCredsError(resolved);
+              res.writeHead(err.status, { 'content-type': 'application/json' });
+              res.end(JSON.stringify(err.body));
+              return;
+            }
+            delete headers['authorization'];
+            delete headers['x-api-key'];
+            if (resolved.kind === 'apiKey') {
+              if (isOpenAI) headers['authorization'] = `Bearer ${resolved.value}`;
+              else headers['x-api-key'] = resolved.value;
+            } else {
+              headers['authorization'] = `Bearer ${resolved.accessToken}`;
+            }
+            studentCredsApplied = true;
+          }
+        }
+        // ── per-student-provider-auth:proxy-invocation END ────────────────────────
 
         if (isGoogle) {
           // Google APIs: refresh access token if needed, inject as Bearer.
           // Returns 502 with an actionable message if no creds configured.
-          const token = await getGoogleAccessToken();
-          if (!token) {
+          // Per-student token preferred when the agent group has one;
+          // instructor / class-default token otherwise.
+          const resolved = await getGoogleAccessTokenForAgentGroup(agentGroupId);
+          if (!resolved) {
             res.writeHead(502, { 'content-type': 'application/json' });
             res.end(
               JSON.stringify({
@@ -456,8 +458,8 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           }
           delete headers['authorization'];
           delete headers['x-goog-api-key'];
-          headers['authorization'] = `Bearer ${token}`;
-        } else if (isOpenAI) {
+          headers['authorization'] = `Bearer ${resolved.token}`;
+        } else if (isOpenAI && !studentCredsApplied) {
           // OpenAI mode: replace any placeholder Authorization with the
           // real key. If OPENAI_API_KEY isn't set on the host, 502 with
           // a clear message so the container-side error is actionable.
@@ -476,11 +478,19 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           delete headers['authorization'];
           delete headers['x-api-key'];
           headers['authorization'] = `Bearer ${secrets.OPENAI_API_KEY}`;
-        } else if (authMode === 'api-key') {
+        } else if (isOmlx) {
+          // Local OpenAI-compatible server. Container sends OPENAI_API_KEY=placeholder
+          // or OMLX_API_KEY=placeholder; we replace with OMLX_API_KEY here. Defaults
+          // to literal "local" if unset, since many local servers ignore auth entirely
+          // but the SDK still sends a header.
+          delete headers['authorization'];
+          delete headers['x-api-key'];
+          headers['authorization'] = `Bearer ${secrets.OMLX_API_KEY || 'local'}`;
+        } else if (authMode === 'api-key' && !studentCredsApplied) {
           // Anthropic API key mode: inject x-api-key on every request
           delete headers['x-api-key'];
           headers['x-api-key'] = secrets.ANTHROPIC_API_KEY;
-        } else {
+        } else if (!studentCredsApplied) {
           // Anthropic OAuth mode: replace placeholder Bearer token with
           // the real one only when the container actually sends an
           // Authorization header (exchange request + auth probes).
@@ -513,7 +523,7 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           log.error('Credential proxy upstream error', {
             err,
             url: req.url,
-            route: isGoogle ? 'google' : isOpenAI ? 'openai' : 'anthropic',
+            route: isGoogle ? 'google' : isOpenAI ? 'openai' : isOmlx ? 'omlx' : 'anthropic',
           });
           if (!res.headersSent) {
             res.writeHead(502);

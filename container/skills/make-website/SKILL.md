@@ -13,12 +13,12 @@ Read `groupName` from `/workspace/agent/container.json` once and cache it (e.g. 
 
 1. Pick a short, lowercase, hyphenated `<sitename>` (e.g. `kitehill-photos`, `gc-invite`).
 2. **Write every file first** — `index.html` plus any CSS, JS, and image assets — into `/var/www/sites/<groupName>/<sitename>/`. Verify with `ls`.
-3. **Verify the URL responds with content** before sending it: `curl -s -o /dev/null -w '%{http_code} %{size_download}\n' http://45.55.64.148/<groupName>/<sitename>/`. Expect `200` and a non-zero size. If it's `404` or `0`, your files aren't where you think they are.
+3. **Verify the URL responds with content** before sending it: `curl -s -o /dev/null -w '%{http_code} %{size_download}\n' http://130.127.162.180:8080/<groupName>/<sitename>/`. Expect `200` and a non-zero size. If it's `404` or `0`, your files aren't where you think they are.
 4. **Only after verification, send the URL** to the user.
 
 Order matters. Sending the URL before files are on disk gives the user a blank page. Sending it before assets are written gives them broken images. Do not send the URL optimistically.
 
-The host runs Caddy on port 80 serving `/var/www/sites/` directly. No deploy, no restart, no DNS — once the file is on disk, the URL is live.
+The host runs Caddy on port 8080 serving `/var/www/sites/` directly. No deploy, no restart, no DNS — once the file is on disk, the URL is live.
 
 Other groups (and class members, when applicable) own sibling subdirs at the same level. Don't write outside your own `<groupName>/` folder.
 
@@ -27,7 +27,7 @@ Other groups (and class members, when applicable) own sibling subdirs at the sam
 - Don't run `cloudflared`, `ngrok`, `localtunnel`, `serveo`, `pinggy`, or any other tunnel — not directly, not via `npx`, not via `npm exec`. The local Caddy already exposes the site publicly.
 - Don't spin up your own HTTP server (`node server.js`, `python -m http.server`, `npx serve`, etc.). Caddy is already serving.
 - Don't deploy to Cloudflare Pages, Vercel, Netlify, GitHub Pages, or anywhere else for a normal "make me a site" request. The user wants a URL fast; the local path delivers in one file write.
-- Don't send any URL that isn't `http://45.55.64.148/...`. If you're about to send something else, you've gone wrong — stop and rewrite under `/var/www/sites/`.
+- Don't send any URL that isn't `http://130.127.162.180:8080/...`. If you're about to send something else, you've gone wrong — stop and rewrite under `/var/www/sites/`.
 
 (If the user *explicitly* asks for Vercel/Netlify/Cloudflare, that's a different task — use the relevant skill, e.g. `vercel-cli`, instead of this one.)
 

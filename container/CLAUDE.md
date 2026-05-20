@@ -22,4 +22,4 @@ The `conversations/` folder in your workspace holds searchable transcripts of pa
 
 ## Websites
 
-Anything browser-loadable (website, landing page, dashboard, status page, one-pager) → your **first action** is `Skill: make-website`. Don't write HTML, start a server, or run any tunnel before invoking it. The only valid URL to send is `http://45.55.64.148/...` — sending anything else (e.g. `*.trycloudflare.com`, `*.ngrok.app`) is a failure, not a fallback.
+Anything browser-loadable (website, landing page, dashboard, status page, one-pager) → your **first action** is `Skill: make-website`. Don't write HTML, start a server, or run any tunnel before invoking it. The only valid URL to send is `http://130.127.162.180:8080/...` — sending anything else (e.g. `*.trycloudflare.com`, `*.ngrok.app`) is a failure, not a fallback.

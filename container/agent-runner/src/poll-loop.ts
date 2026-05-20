@@ -1,10 +1,11 @@
-import { findByName, getAllDestinations, type DestinationEntry } from './destinations.js';
+import { findByName, findByRouting, getAllDestinations, type DestinationEntry } from './destinations.js';
 import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } from './db/messages-in.js';
 import { writeMessageOut } from './db/messages-out.js';
 import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import { clearContinuation, migrateLegacyContinuation, setContinuation } from './db/session-state.js';
 import { clearCurrentInReplyTo, setCurrentInReplyTo } from './current-batch.js';
 import {
+  extractImagePaths,
   formatMessages,
   extractRouting,
   categorizeMessage,
@@ -163,6 +164,14 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
     // provider natively handles slash commands), others get XML.
     const prompt = formatMessagesWithCommands(keep, config.provider.supportsNativeSlashCommands);
 
+    // Pull container-visible paths for any image attachments stamped by the
+    // host's channel adapter. The Claude/Codex providers forward these to
+    // their upstream multimodal APIs; text-only providers ignore them.
+    const imagePaths = extractImagePaths(keep);
+    if (imagePaths.length > 0) {
+      log(`Forwarding ${imagePaths.length} image attachment(s) to provider: ${imagePaths.join(', ')}`);
+    }
+
     log(`Processing ${keep.length} message(s), kinds: ${[...new Set(keep.map((m) => m.kind))].join(',')}`);
 
     const query = config.provider.query({
@@ -170,6 +179,7 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
       continuation,
       cwd: config.cwd,
       systemContext: config.systemContext,
+      imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
     });
 
     // Process the query while concurrently polling for new messages
@@ -374,7 +384,16 @@ async function processQuery(
         // at all — either way the turn is finished.
         markCompleted(initialBatchIds);
         if (event.text) {
-          dispatchResultText(event.text, routing);
+          const cost: ResultCost = {
+            tokensIn: event.tokens?.input,
+            tokensOut: event.tokens?.output,
+            tokensCacheCreation: event.tokens?.cacheCreation,
+            tokensCacheRead: event.tokens?.cacheRead,
+            latencyMs: event.latencyMs,
+            provider: event.provider,
+            model: event.model,
+          };
+          dispatchResultText(event.text, routing, cost);
         }
       } else if (event.type === 'compacted') {
         // The SDK auto-compacted the conversation. After compaction the
@@ -403,7 +422,7 @@ async function processQuery(
   return { continuation: queryContinuation };
 }
 
-function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
+function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
   switch (event.type) {
     case 'init':
       log(`Session: ${event.continuation}`);
@@ -422,28 +441,107 @@ function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
     case 'compacted':
       log(`Compacted: ${event.text}`);
       break;
+    case 'tool_use':
+    case 'tool_result':
+    case 'model_call':
+      emitTraceToPlayground(event, routing);
+      break;
   }
+}
+
+/**
+ * Push a trace event toward the playground SSE stream — but only when
+ * the originating message came from a playground channel. Without a
+ * playground watching, the trace write would be dead weight in
+ * messages_out and would also surface as garbage on non-playground
+ * adapters (which would then drop it, but better not to write at all).
+ *
+ * Host-side, `src/delivery.ts` intercepts `kind: 'trace'` rows before
+ * the standard channel handoff and routes them to playground's
+ * pushToDraft. Telegram/Slack/etc. never see them.
+ */
+function emitTraceToPlayground(
+  event: ProviderEvent & { type: 'tool_use' | 'tool_result' | 'model_call' },
+  routing: RoutingContext,
+): void {
+  if (routing.channelType !== 'playground' || !routing.platformId) return;
+
+  let payload: Record<string, unknown>;
+  if (event.type === 'tool_use') {
+    payload = { type: 'tool_use', toolUseId: event.toolUseId, toolName: event.toolName, input: event.input };
+  } else if (event.type === 'tool_result') {
+    payload = { type: 'tool_result', toolUseId: event.toolUseId, content: event.content, isError: event.isError };
+  } else {
+    // model_call — per-response token deltas. The playground renderer
+    // pairs this with the agent group's current provider/model (already
+    // visible in the dropdown) to compute cost client-side.
+    payload = {
+      type: 'model_call',
+      tokensIn: event.tokensIn,
+      tokensCached: event.tokensCached,
+      tokensOut: event.tokensOut,
+      tokensReasoning: event.tokensReasoning,
+    };
+  }
+
+  writeMessageOut({
+    id: generateId(),
+    kind: 'trace',
+    platform_id: routing.platformId,
+    channel_type: 'playground',
+    thread_id: null,
+    content: JSON.stringify(payload),
+  });
+}
+
+interface ResultCost {
+  tokensIn?: number;
+  tokensOut?: number;
+  /** Anthropic only: tokens written to prompt cache, billed at 1.25× base input. */
+  tokensCacheCreation?: number;
+  /**
+   * Tokens served from prompt cache. Anthropic bills at 0.10× base input;
+   * OpenAI prefix-cache typically at 0.50×. Provider-specific rate applied
+   * client-side in chat.js computeAgentCallCost.
+   */
+  tokensCacheRead?: number;
+  latencyMs?: number;
+  provider?: string;
+  model?: string;
 }
 
 /**
  * Parse the agent's final text for <message to="name">...</message> blocks
  * and dispatch each one to its resolved destination. Text outside of blocks
- * (including <internal>...</internal>) is scratchpad — logged but not sent.
+ * (including <internal>...</internal>) is normally scratchpad — logged but
+ * not sent.
  *
- * The agent must always wrap output in <message to="name">...</message>
- * blocks, even with a single destination. Bare text is scratchpad only.
+ * Exception: single-destination groups have a bare-text fallback. When the
+ * group has exactly one destination wired and the agent emitted no valid
+ * <message> blocks, the bare text outside <internal> is delivered to that
+ * one destination. This lets smaller or less-instruction-following models
+ * (e.g. Qwen3.6 via the `local` provider) work as drop-in providers without
+ * the user seeing silent drops every time the model skips the wrapping.
+ * Multi-destination groups still require explicit wrapping — there's no
+ * sensible default when more than one destination is in play.
  */
-function dispatchResultText(text: string, routing: RoutingContext): void {
+export function dispatchResultText(text: string, routing: RoutingContext, cost?: ResultCost): void {
   const MESSAGE_RE = /<message\s+to="([^"]+)"\s*>([\s\S]*?)<\/message>/g;
 
   let match: RegExpExecArray | null;
   let sent = 0;
   let lastIndex = 0;
   const scratchpadParts: string[] = [];
+  // Bare text outside any <message> block, accumulated separately from
+  // scratchpadParts so the fallback can use it without including
+  // "[dropped: unknown destination …]" debug markers from rejected blocks.
+  const bareParts: string[] = [];
 
   while ((match = MESSAGE_RE.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      scratchpadParts.push(text.slice(lastIndex, match.index));
+      const between = text.slice(lastIndex, match.index);
+      scratchpadParts.push(between);
+      bareParts.push(between);
     }
     const toName = match[1];
     const body = match[2].trim();
@@ -455,11 +553,13 @@ function dispatchResultText(text: string, routing: RoutingContext): void {
       scratchpadParts.push(`[dropped: unknown destination "${toName}"] ${body}`);
       continue;
     }
-    sendToDestination(dest, body, routing);
+    sendToDestination(dest, body, routing, cost);
     sent++;
   }
   if (lastIndex < text.length) {
-    scratchpadParts.push(text.slice(lastIndex));
+    const tail = text.slice(lastIndex);
+    scratchpadParts.push(tail);
+    bareParts.push(tail);
   }
 
   const scratchpad = stripInternalTags(scratchpadParts.join(''));
@@ -469,11 +569,31 @@ function dispatchResultText(text: string, routing: RoutingContext): void {
   }
 
   if (sent === 0 && text.trim()) {
-    log(`WARNING: agent output had no <message to="..."> blocks — nothing was sent`);
+    const bareText = stripInternalTags(bareParts.join('')).trim();
+    if (bareText) {
+      const destinations = getAllDestinations();
+      // Prefer to reply on the channel the message came from, matching
+      // routing fields. Falls back to the lone destination only when
+      // routing is unset (system message, scheduler tick, etc.).
+      const replyDest =
+        findByRouting(routing.channelType, routing.platformId) ??
+        (destinations.length === 1 ? destinations[0] : undefined);
+      if (replyDest) {
+        log(`Bare-text fallback: delivering ${bareText.length}-char text to "${replyDest.name}"`);
+        sendToDestination(replyDest, bareText, routing, cost);
+        sent++;
+      } else {
+        log(
+          `WARNING: agent output had no <message to="..."> blocks and inbound routing didn't match any destination — nothing sent`,
+        );
+      }
+    } else {
+      log(`WARNING: agent output had no <message to="..."> blocks — nothing was sent`);
+    }
   }
 }
 
-function sendToDestination(dest: DestinationEntry, body: string, routing: RoutingContext): void {
+function sendToDestination(dest: DestinationEntry, body: string, routing: RoutingContext, cost?: ResultCost): void {
   const platformId = dest.type === 'channel' ? dest.platformId! : dest.agentGroupId!;
   const channelType = dest.type === 'channel' ? dest.channelType! : 'agent';
   // Resolve thread_id per-destination from the most recent inbound message
@@ -481,6 +601,19 @@ function sendToDestination(dest: DestinationEntry, body: string, routing: Routin
   // different destinations have different thread contexts — using a single
   // routing.threadId would stamp one channel's thread onto another.
   const destRouting = resolveDestinationThread(channelType, platformId);
+  // Cache token counts ride inside the content JSON rather than getting
+  // their own messages_out columns — keeps the session-DB schema stable
+  // across upgrades. delivery.ts on the host parses these back out and
+  // adds them to the channel-meta block so the playground trace can
+  // apply provider-specific cache rates (Anthropic 1.25×/0.10×, OpenAI
+  // prefix-cache 0.50×).
+  const contentObj: Record<string, unknown> = { text: body };
+  if (cost?.tokensCacheCreation != null && cost.tokensCacheCreation > 0) {
+    contentObj.cacheCreation = cost.tokensCacheCreation;
+  }
+  if (cost?.tokensCacheRead != null && cost.tokensCacheRead > 0) {
+    contentObj.cacheRead = cost.tokensCacheRead;
+  }
   writeMessageOut({
     id: generateId(),
     in_reply_to: destRouting?.inReplyTo ?? routing.inReplyTo,
@@ -488,7 +621,12 @@ function sendToDestination(dest: DestinationEntry, body: string, routing: Routin
     platform_id: platformId,
     channel_type: channelType,
     thread_id: destRouting?.threadId ?? null,
-    content: JSON.stringify({ text: body }),
+    content: JSON.stringify(contentObj),
+    tokens_in: cost?.tokensIn ?? null,
+    tokens_out: cost?.tokensOut ?? null,
+    latency_ms: cost?.latencyMs ?? null,
+    provider: cost?.provider ?? null,
+    model: cost?.model ?? null,
   });
 }
 

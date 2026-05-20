@@ -54,7 +54,7 @@ describe('openai adapter shape', () => {
     expect(openaiAdapter.modelsPath).toBe('/v1/models');
   });
 
-  it('staticFallback has 4 entries by alias', () => {
-    expect(STATIC_CODEX.map((m) => m.alias)).toEqual(['5.5', '5.4', '5.4mini', '5.3codex']);
+  it('staticFallback has 5 entries by alias', () => {
+    expect(STATIC_CODEX.map((m) => m.alias)).toEqual(['5.5', '5.4', '5.4mini', '5.3codex', '5.2']);
   });
 });

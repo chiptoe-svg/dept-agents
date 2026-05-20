@@ -98,6 +98,13 @@ export interface OutboundMessage {
   kind: string;
   content: unknown; // parsed JSON from messages_out
   files?: OutboundFile[]; // file attachments from the session outbox
+  /** Provider cost/speed annotations (present only for agent replies). */
+  meta?: {
+    tokens?: { input: number; output: number };
+    latencyMs?: number;
+    provider?: string;
+    model?: string;
+  };
 }
 
 /** Discovered conversation info (from syncConversations). */

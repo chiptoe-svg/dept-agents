@@ -1,4 +1,42 @@
+> **Superseded by v3 (2026-05-13).** See
+> [`docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html`](../docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html)
+> for the v3 redesign spec and
+> [`docs/superpowers/plans/2026-05-13-agent-playground-v3.html`](../docs/superpowers/plans/2026-05-13-agent-playground-v3.html)
+> for the implementation plan.
+> This file remains as the historical record of the v2 ship.
+
 # Agent Playground — v2 rebuild plan
+
+## Status: SHIPPED ✅
+
+Code lives on the `channels` branch and is installed locally via
+`/add-agent-playground`. This file is preserved as historical record of
+how the rebuild was scoped; current state of the code is the source of
+truth.
+
+| Surface | Where it lives now |
+|---|---|
+| Channel adapter | `src/channels/playground.ts` (~700 LoC) |
+| Core library | `src/agent-builder/core.ts` + `core.test.ts` |
+| UI | `src/channels/playground/public/{index.html,app.js,style.css}` |
+| Skills library | `src/channels/playground/library.ts` |
+| Role-aware lockdown extension point | `src/channels/playground-gate-registry.ts` |
+| Telegram command | `handlePlaygroundCommand` in `src/channels/telegram.ts` |
+| Install skill | `.claude/skills/add-agent-playground/SKILL.md` |
+
+## Divergences from this plan as it shipped
+
+- **Auth**: plan called for "no auth (loopback-only bind)". Shipped
+  reality is **magic-link + signed HTTP-only cookies + idle timeout**
+  because the default bind is `0.0.0.0` (for class deployments where
+  students hit it from their phones). Loopback-only is still supported
+  via `PLAYGROUND_BIND_HOST=127.0.0.1`.
+- **Transport**: plan called for WebSocket; shipped uses **Server-Sent
+  Events** (SSE) for server→client streaming + plain POST for
+  client→server. Simpler than full-duplex WS for this use case.
+- **Public-host detection**: shipped picks the first non-private IPv4
+  for the magic-link URL automatically. Override via
+  `PLAYGROUND_PUBLIC_HOST`.
 
 ## Why
 
@@ -9,14 +47,14 @@ for *rebuild* (not port) because the underlying session model changed:
 v1 spawned one-shot containers; v2 has a persistent two-DB session per
 agent group.
 
-This plan rebuilds it as a v2 channel adapter in 5 phases. Estimated
-total: 9–10 hours of focused work.
+This plan rebuilt it as a v2 channel adapter in 5 phases. Estimated
+total at planning time: 9–10 hours of focused work.
 
-## Decisions (locked)
+## Decisions (locked at planning time)
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| 1 | **No auth** (loopback-only bind) | If an attacker can hit 127.0.0.1 they're already inside. Drop `auth.ts` + `login.html` from v1. |
+| 1 | ~~**No auth** (loopback-only bind)~~ → **magic-link + cookie auth** (see Divergences) | Default bind is `0.0.0.0` for class deployments where students hit the URL from their phones; loopback-only mode still supported via env var. |
 | 2 | **Draft folders at `groups/draft_<target>/`** | Matches v1 convention; v2 group-folder layout is identical. |
 | 3 | **Chat-only inside playground** (no real-channel pairing) | Drafts test through the playground UI, not via Telegram/etc. Keeps the test session isolated. |
 | 4 | **Tool-call granularity in trace stream**, with verbosity slider | Strikes balance between "just final reply" and "every token". |
@@ -150,7 +188,7 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 
 ## Phased plan
 
-### Phase 0 — Core library  (2 hr)
+### Phase 0 — Core library  (2 hr)  ✅
 
 **Files:**
 - `src/agent-builder/core.ts` (new)
@@ -161,7 +199,7 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 - `pnpm test src/agent-builder/` passes
 - A small CLI smoke (`scripts/agent-builder-smoke.ts`) creates draft, applies, discards, with verifiable DB + filesystem side effects.
 
-### Phase 1 — Channel adapter scaffold + chat round-trip  (3 hr)
+### Phase 1 — Channel adapter scaffold + chat round-trip  (3 hr)  ✅
 
 **Files:**
 - `src/channels/playground.ts` (new) — registerChannelAdapter('playground', ...) with HTTP server, WS, deliver() callback
@@ -176,7 +214,7 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 - Live trace events appear in the chat pane (collapsible)
 - `/playground stop` cleanly closes the server, unregisters the adapter
 
-### Phase 2 — Persona editor + apply  (1 hr)
+### Phase 2 — Persona editor + apply  (1 hr)  ✅
 
 **Files:**
 - `src/channels/playground.ts` — add `/api/draft/:folder/{persona,diff,apply}` routes
@@ -187,7 +225,7 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 - Diff pane shows draft vs target
 - Apply writes to target group, ends session
 
-### Phase 3 — Provider override + trace verbosity + topbar  (1 hr)
+### Phase 3 — Provider override + trace verbosity + topbar  (1 hr)  ✅
 
 **Files:**
 - `src/channels/playground.ts` — `/api/draft/:folder/provider`, `/api/draft/:folder/trace-level`
@@ -198,7 +236,7 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 - Verbosity slider filters WebSocket pushes (final / tool-call / all)
 - Provider toggle disabled while a turn is in flight (avoid mid-turn restart)
 
-### Phase 4 — Skills + library  (2 hr)
+### Phase 4 — Skills + library  (2 hr)  ✅
 
 **Files:**
 - `src/channels/playground/library.ts` (port from v1)
@@ -211,7 +249,7 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 - Library pane lists `anthropic/skills` repo with compat badges
 - Refresh button git-pulls the cache
 
-### Phase 5b — Files + polish  (1-2 hr)
+### Phase 5b — Files + polish  (1-2 hr)  ✅
 
 **Files:**
 - `src/channels/playground.ts` — `/api/draft/:folder/files{,/:path}`
@@ -224,7 +262,7 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 - Error toasts on failed saves, network drops
 - Reasonable copy/empty states
 
-### Phase 6 — Skill packaging  (1 hr)
+### Phase 6 — Skill packaging  (1 hr)  ✅
 
 **Files:**
 - `.claude/skills/add-playground/SKILL.md` — install instructions (idempotent)
@@ -235,13 +273,30 @@ tools, emits compatibility badges. Swap v1's `logger` import for v2's
 - The skill is idempotent: re-running on an already-installed tree no-ops.
 - This install gets the skill registered locally so it appears in `/list-skills`.
 
-## Things deliberately deferred
+## Things deliberately deferred (still deferred)
 
 - **`/agent-builder` Bash skill** — Layer 1 is built so this can be added later.
 - **Multi-active drafts** — single-active lock matches v1.
 - **Standalone Live Trace page** — folded into main UI as a tab.
 - **Personas library** — defer until requested.
 - **Cost tracking** — outbound.db doesn't yet track cost; out of scope.
+
+## Added beyond plan
+
+- **Magic-link auth + signed cookies + idle timeout** — see Divergences.
+- **Public-host detection** for the magic-link URL on multi-homed hosts.
+- **Role-aware lockdown extension point** — `playground-gate-registry`
+  lets layered features (notably `/add-classroom`) deny mutations on
+  specific drafts based on the authenticated user_id. Originally added
+  for the class feature but generalizes; any future "rate-limit gate",
+  "read-only gate", etc. plugs in the same way.
+
+## Known follow-ups (not in original plan)
+
+- **Picker-side filtering by role** — today the classroom gate stops
+  *mutations* on others' drafts but the picker still *lists* every
+  agent group. Filtering the listing (so a student only sees their own
+  draft) would be a small follow-up.
 
 ## Risk register
 

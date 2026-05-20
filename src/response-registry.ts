@@ -43,3 +43,21 @@ export function onShutdown(cb: ShutdownCallback): void {
 export function getShutdownCallbacks(): readonly ShutdownCallback[] {
   return shutdownCallbacks;
 }
+
+/**
+ * Fires after host startup completes — DB ready, channels initialized,
+ * delivery polls running. Use for side-effects that need the full stack
+ * up (e.g. classroom auto-starting the playground HTTP server so students
+ * can click their class-token URLs without the instructor first nudging
+ * via /playground on Telegram). Mirrors `onShutdown` for symmetry.
+ */
+type HostReadyCallback = () => void | Promise<void>;
+const hostReadyCallbacks: HostReadyCallback[] = [];
+
+export function onHostReady(cb: HostReadyCallback): void {
+  hostReadyCallbacks.push(cb);
+}
+
+export function getHostReadyCallbacks(): readonly HostReadyCallback[] {
+  return hostReadyCallbacks;
+}

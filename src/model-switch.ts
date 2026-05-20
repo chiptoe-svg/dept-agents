@@ -10,6 +10,8 @@
  * with a 1-hour cache and a hardcoded fallback.
  */
 import { getAgentGroupByFolder, updateAgentGroup } from './db/agent-groups.js';
+import { getActiveSessions } from './db/sessions.js';
+import { isContainerRunning, killContainer } from './container-runner.js';
 
 export { expandAlias, hintsForProvider } from './model-discovery.js';
 export type { ModelHint } from './model-discovery.js';
@@ -41,5 +43,19 @@ export function setModel(folder: string, model: string | null): boolean {
   const group = getAgentGroupByFolder(folder);
   if (!group) return false;
   updateAgentGroup(group.id, { model });
+
+  // Stop any running session containers so the model change is visible on the
+  // next inbound message. The in-container provider reads model from the
+  // container.json snapshot at spawn time; a live container keeps using the
+  // old model until it exits. Mirrors the kill pattern in setProvider.
+  // Best-effort: errors are non-fatal — the next host sweep tick reaps stale
+  // containers anyway.
+  for (const session of getActiveSessions().filter((s) => s.agent_group_id === group.id)) {
+    try {
+      if (isContainerRunning(session.id)) killContainer(session.id, 'model change');
+    } catch {
+      /* best-effort */
+    }
+  }
   return true;
 }

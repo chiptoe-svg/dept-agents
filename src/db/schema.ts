@@ -229,7 +229,12 @@ CREATE TABLE IF NOT EXISTS messages_out (
   platform_id    TEXT,
   channel_type   TEXT,
   thread_id      TEXT,
-  content        TEXT NOT NULL
+  content        TEXT NOT NULL,
+  tokens_in      INTEGER,
+  tokens_out     INTEGER,
+  latency_ms     INTEGER,
+  provider       TEXT,
+  model          TEXT
 );
 
 -- Container tracks processing status here instead of updating messages_in.

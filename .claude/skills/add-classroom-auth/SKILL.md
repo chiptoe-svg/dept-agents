@@ -1,7 +1,27 @@
 ---
 name: add-classroom-auth
-description: Layer per-student Codex OAuth onto /add-classroom — students upload their own ChatGPT auth.json via a magic-link form so the agent burns their subscription quota instead of the instructor's. Adds /login command, request_reauth nudge, magic-link HTTP server.
+description: DEPRECATED — use /add-classroom-provider-auth instead. (Old per-student Codex OAuth via auth.json upload + magic-link form. Superseded 2026-05-17 by a proper per-provider registry, paste-back OAuth, instructor-controlled class-pool fallback, and a Home Providers card.)
 ---
+
+# Add Classroom — Per-Student Auth ⚠️ DEPRECATED
+
+**Superseded by `/add-classroom-provider-auth` (Phase X.7, 2026-05-17).**
+
+The new skill does everything this one did, plus:
+- Supports both Anthropic AND OpenAI as providers (this one was Codex-only)
+- Paste-back OAuth flow (matches the vendor CLIs' actual OAuth client redirect URIs)
+- Class Controls table for per-provider policy (`allow` / `provideDefault` / `allowByo`)
+- Active-method toggle (subscription vs API key) when a student has both connected
+- Trunk extension via `studentCredsHook` so the credential proxy resolves per-request
+- A Home Providers card students use to manage their own credentials
+
+If you've never run `/add-classroom-auth` on this install, **skip this skill entirely** and run `/add-classroom-provider-auth` instead.
+
+If you've already run this skill and have students using the auth.json upload flow, leave it in place; it still works. But future students should onboard via the new skill.
+
+---
+
+(Original instructions below for installations that still depend on this flow.)
 
 # Add Classroom — Per-Student Auth
 
@@ -147,3 +167,15 @@ yet against a real Codex refresh failure. If you observe the agent
 appearing broken after a token expires AND no nudge fires, check
 `logs/nanoclaw.log` for the actual error string and update the
 regex in auth-nudge.ts.
+
+## Where this fits in the deploy story
+
+This skill is the per-student-auth layer for the **per-person
+classroom** mode (master plan Phase 2). It assumes students will
+authorize their own ChatGPT subscriptions and the instructor's
+pool acts as a fallback.
+
+For the simpler **shared classroom** mode (one instructor key,
+shared by all students) you do NOT need this skill — just set
+`CLASS_OPENAI_API_KEY` in `.env` during `/add-classroom` step 5.
+See [`docs/shared-classroom.md`](../../../docs/shared-classroom.md).

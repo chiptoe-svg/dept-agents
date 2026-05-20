@@ -264,6 +264,96 @@ describe('mock provider', () => {
   });
 });
 
+describe('dispatchResultText single-destination fallback', () => {
+  function seedDestination(name: string, channelType: string, platformId: string): void {
+    getInboundDb()
+      .prepare(
+        `INSERT INTO destinations (name, display_name, type, channel_type, platform_id, agent_group_id)
+         VALUES (?, ?, 'channel', ?, ?, NULL)`,
+      )
+      .run(name, name, channelType, platformId);
+  }
+
+  it('delivers bare text to the sole destination when no <message> blocks present', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('Hello from the model', { inReplyTo: 'm1', platformId: null, channelType: null, threadId: null });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('Hello from the model');
+    expect(out[0].platform_id).toBe('telegram:user-1');
+  });
+
+  it('strips <internal> tags from bare-text fallback', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('<internal>thinking…</internal>Visible reply.', {
+      inReplyTo: 'm1',
+      platformId: null,
+      channelType: null,
+      threadId: null,
+    });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('Visible reply.');
+  });
+
+  it('strips <think> tags (reasoning-model chain-of-thought) from bare-text fallback', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText(
+      "<think>\nLet me try curl first.\nIf that fails I'll use the browser.\n</think>\nThe site is up — top story is X.",
+      {
+        inReplyTo: 'm1',
+        platformId: null,
+        channelType: null,
+        threadId: null,
+      },
+    );
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('The site is up — top story is X.');
+  });
+
+  it('routes bare text to the destination matching the inbound routing when multiple destinations exist', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    seedDestination('dm-with-chiptonkin', 'playground', 'playground:dm-with-chiptonkin');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('Hello', {
+      inReplyTo: 'm1',
+      platformId: 'telegram:user-1',
+      channelType: 'telegram',
+      threadId: null,
+    });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(out[0].platform_id).toBe('telegram:user-1');
+    expect(JSON.parse(out[0].content).text).toBe('Hello');
+  });
+
+  it('drops bare text when multiple destinations exist and routing is unknown', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    seedDestination('discord-main', 'discord', 'discord:chan-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('Hello', { inReplyTo: 'm1', platformId: null, channelType: null, threadId: null });
+    expect(getUndeliveredMessages()).toHaveLength(0);
+  });
+
+  it('does NOT fall back when valid <message to> blocks already routed', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('<message to="telegram-mg-17787">Wrapped reply</message>', {
+      inReplyTo: 'm1',
+      platformId: null,
+      channelType: null,
+      threadId: null,
+    });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('Wrapped reply');
+  });
+});
+
 describe('end-to-end with mock provider', () => {
   it('should read messages_in, process with mock provider, write messages_out', async () => {
     // Insert a chat message into inbound DB
