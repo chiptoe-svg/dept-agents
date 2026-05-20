@@ -498,7 +498,6 @@ function finalizeTurn(turnEl) {
   const modelCalls = turnEl.querySelectorAll('.trace-model-call');
   const agentCall = turnEl.querySelector('.trace-agent-call');
   let tokensIn = 0, tokensOut = 0, tokensCached = 0, tokensReasoning = 0, cost = 0;
-  let threadCumulative = null;
   if (modelCalls.length > 0) {
     // Codex-style turn — sum the per-call deltas.
     for (const li of modelCalls) {
@@ -507,16 +506,6 @@ function finalizeTurn(turnEl) {
       tokensCached   += parseFloat(li.dataset.tokensCached   || '0') || 0;
       tokensReasoning += parseFloat(li.dataset.tokensReasoning || '0') || 0;
       cost           += parseFloat(li.dataset.cost           || '0') || 0;
-    }
-    // Surface the thread-cumulative number too, so heavy threads have
-    // visible context for instructors planning class budgets.
-    if (agentCall) {
-      const tIn  = parseFloat(agentCall.dataset.tokensIn  || '0') || 0;
-      const tOut = parseFloat(agentCall.dataset.tokensOut || '0') || 0;
-      const tCost = parseFloat(agentCall.dataset.cost     || '0') || 0;
-      if (tIn > 0 || tOut > 0 || tCost > 0) {
-        threadCumulative = { tIn, tOut, tCost };
-      }
     }
   } else if (agentCall) {
     // Claude-style turn — agent_call IS the turn (single API call).
@@ -539,21 +528,7 @@ function finalizeTurn(turnEl) {
   if (tokensReasoning > 0) parts.push(`${tokensReasoning} reasoning`);
   if (tokensOut > 0) parts.push(`${tokensOut} out`);
   if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
-  let footText = `turn total: ${parts.join(' · ')}`;
-  if (threadCumulative) {
-    const tcParts = [];
-    if (threadCumulative.tIn > 0) tcParts.push(`${threadCumulative.tIn} in`);
-    if (threadCumulative.tOut > 0) tcParts.push(`${threadCumulative.tOut} out`);
-    if (threadCumulative.tCost > 0) {
-      tcParts.push(
-        threadCumulative.tCost < 0.001
-          ? `$${threadCumulative.tCost.toFixed(5)}`
-          : `$${threadCumulative.tCost.toFixed(4)}`,
-      );
-    }
-    if (tcParts.length > 0) footText += `\nthread cumulative: ${tcParts.join(' · ')}`;
-  }
-  foot.textContent = footText;
+  foot.textContent = `turn total: ${parts.join(' · ')}`;
 }
 
 /**
@@ -813,7 +788,7 @@ function escapeHtml(s) {
 function appendModelCallTrace(trace, data) {
   if (!trace) return;
   const li = document.createElement('li');
-  li.className = 'trace trace-model_call';
+  li.className = 'trace-event trace-model-call';
   const provSel = document.getElementById('provider-sel');
   const modelSel = document.getElementById('model-sel');
   const provider = provSel ? provSel.value : '';

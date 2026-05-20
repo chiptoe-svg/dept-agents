@@ -496,6 +496,9 @@ export async function* runOneTurn(
   const turnState: { error: Error | null } = { error: null };
   let resultText = '';
   let turnDone = false;
+  // Per-turn token totals — accumulated from each response's `last` delta
+  // (NOT codex's thread-cumulative `total`, which over-counts badly once
+  // summed into messages_out). Fed to the end-of-turn `result` event.
   let tokensIn = 0;
   let tokensOut = 0;
   let tokensCached = 0;
@@ -578,22 +581,16 @@ export async function* runOneTurn(
         //                         reasoningOutputTokens, totalTokens},
         //                 last:  {…same fields, scoped to most recent response},
         //                 modelContextWindow }
-        // We use `total` (cumulative for the turn) for the end-of-turn
-        // `result` event so the displayed count grows across tool iterations.
-        // We also emit a `model_call` trace ProviderEvent per LLM response
-        // by reading `last` (this call's delta) so the playground shows N
-        // discrete entries for an N-call turn rather than one cumulative
-        // summary. Deduped on last.totalTokens since the notification can
-        // fire twice with the same values.
-        const usage = params.tokenUsage as
-          | { total?: Record<string, number>; last?: Record<string, number> }
-          | undefined;
-        const tot = usage?.total;
-        if (tot) {
-          if (typeof tot.inputTokens === 'number') tokensIn = tot.inputTokens;
-          if (typeof tot.cachedInputTokens === 'number') tokensCached = tot.cachedInputTokens;
-          if (typeof tot.outputTokens === 'number') tokensOut = tot.outputTokens;
-        }
+        // `total` is THREAD-cumulative — it grows for the whole life of the
+        // codex thread, across every turn. Using it for per-turn accounting
+        // over-counts badly once messages_out rows are summed. So we ignore
+        // `total` entirely and accumulate `last` (this response's delta):
+        //   - one `model_call` trace event per distinct `last`, and
+        //   - tokensIn/Out/Cached summed across the turn for the `result`
+        //     event, which is therefore per-turn, not cumulative.
+        // Deduped on last.totalTokens since the notification can fire twice
+        // with the same values.
+        const usage = params.tokenUsage as { last?: Record<string, number> } | undefined;
         const last = usage?.last;
         if (
           last &&
@@ -602,13 +599,19 @@ export async function* runOneTurn(
           last.totalTokens !== lastSeenCallTotal
         ) {
           lastSeenCallTotal = last.totalTokens;
+          const callIn = typeof last.inputTokens === 'number' ? last.inputTokens : 0;
+          const callOut = typeof last.outputTokens === 'number' ? last.outputTokens : 0;
+          const callCached = typeof last.cachedInputTokens === 'number' ? last.cachedInputTokens : 0;
+          tokensIn += callIn;
+          tokensOut += callOut;
+          tokensCached += callCached;
           const preview = pendingResponsePreview;
           pendingResponsePreview = undefined;
           buffer.push({
             type: 'model_call',
-            tokensIn: typeof last.inputTokens === 'number' ? last.inputTokens : 0,
-            tokensCached: typeof last.cachedInputTokens === 'number' ? last.cachedInputTokens : 0,
-            tokensOut: typeof last.outputTokens === 'number' ? last.outputTokens : 0,
+            tokensIn: callIn,
+            tokensCached: callCached,
+            tokensOut: callOut,
             tokensReasoning:
               typeof last.reasoningOutputTokens === 'number' ? last.reasoningOutputTokens : 0,
             ...(preview ? { responsePreview: preview } : {}),
