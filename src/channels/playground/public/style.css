@@ -823,13 +823,19 @@ select.model-changed {
   border-radius: 3px;
 }
 .cost-rollup {
-  padding: 8px 10px;
+  padding: 5px 10px;
   border-top: 1px solid #eee;
   background: #fafafa;
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "+ New skill" lives in the editor header, pushed to the right edge. */
+.preview-header .btn {
+  margin-left: auto;
+  padding: 2px 8px;
 }
 
 /* ── Models tab ───────────────────────────────────────────────────────── */

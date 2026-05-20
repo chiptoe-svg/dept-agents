@@ -39,11 +39,7 @@ export function mountSkills(el) {
         <h3>Skills</h3>
         <input id="skill-filter" placeholder="filter…" autocomplete="off">
         <div id="skills-list"></div>
-        <button id="author-skill" class="btn btn-ghost">+ New skill…</button>
-        <footer class="cost-rollup" id="cost-rollup">
-          <div>Estimated cost: <strong id="rollup-tokens">—</strong></div>
-          <div>Latency: <strong id="rollup-latency">—</strong></div>
-        </footer>
+        <footer class="cost-rollup" id="cost-rollup"><span id="rollup-summary">—</span></footer>
       </aside>
 
       <section class="preview-panel">
@@ -60,7 +56,7 @@ export function mountSkills(el) {
       <section class="preview-panel skills-editor">
         <header class="preview-header">
           <span>Edit</span>
-          <span class="hint">saves as a custom skill for this agent</span>
+          <button id="author-skill" class="btn btn-ghost" type="button">+ New skill</button>
         </header>
         <textarea id="skill-edit" class="active-text" placeholder="Select a skill on the left to edit it, or click + New skill…"></textarea>
         <footer class="editor-footer">
@@ -411,14 +407,22 @@ function recomputeRollup(el) {
     else unknown = true;
     if (entry.latencyMs != null) latency += entry.latencyMs;
   }
-  el.querySelector('#rollup-tokens').textContent =
-    currentSkills === 'all'
-      ? 'depends on what gets used'
-      : skills.length === 0
-        ? 'none'
-        : `+~${tokens} tok/turn${unknown ? ' (some skills missing cost metadata)' : ''}`;
-  el.querySelector('#rollup-latency').textContent =
-    currentSkills === 'all' ? 'depends' : skills.length === 0 ? '—' : `+~${latency}ms/turn`;
+  const footer = el.querySelector('#cost-rollup');
+  const summary = el.querySelector('#rollup-summary');
+  if (currentSkills === 'all') {
+    summary.textContent = 'all skills active · cost depends on usage';
+    footer.removeAttribute('title');
+  } else if (skills.length === 0) {
+    summary.textContent = 'no skills active';
+    footer.removeAttribute('title');
+  } else {
+    summary.textContent = `${skills.length} active · +~${tokens} tok · +~${latency} ms / turn${unknown ? ' *' : ''}`;
+    if (unknown) {
+      footer.title = 'Some active skills have no cost metadata — estimate is a lower bound.';
+    } else {
+      footer.removeAttribute('title');
+    }
+  }
 }
 
 /** One draft banner for both dirty sources: the active set and the editor. */
