@@ -1083,6 +1083,16 @@ select.model-changed {
   flex-wrap: wrap;
 }
 
+/* ── Add-a-student card ──────────────────────────────────────────────────── */
+.home-form { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.home-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #555; }
+.home-form label.cc-check { flex-direction: row; align-items: center; gap: 6px; }
+.home-form input[type="text"],
+.home-form input[type="email"] { font-size: 13px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 4px; }
+.add-student-result { margin-top: 12px; padding: 10px 12px; background: #f0f7f1; border: 1px solid #cfe6d3; border-radius: 6px; font-size: 13px; }
+.as-link-row { display: flex; gap: 6px; margin: 4px 0; }
+.as-link { flex: 1; font-family: ui-monospace, monospace; font-size: 12px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
+
 /* ── classroom-provider-auth:class-controls-providers START ──────────────────── */
 .cc-banner-warn { padding: 8px 12px; background: #fff7e6; color: #b8741a; border: 1px solid #f0d49a; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
 /* ── classroom-provider-auth:class-controls-providers END ──────────────────── */

@@ -48,6 +48,7 @@ import {
   handleToggleDefaultModel,
 } from './api/models.js';
 import { handleGetClassControls, handlePutClassControls } from './api/class-controls.js';
+import { handleAddStudent, handleGetTunnel, handleStopTunnel } from './api/students-admin.js';
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
@@ -564,6 +565,24 @@ export async function route(
     if (!folder) return send(res, 400, { error: 'folder required' });
     const result = await handleGetStudentDetail(folder);
     return send(res, result.status, result.body);
+  }
+
+  // POST /api/admin/students — provision one new class student. Owner-only;
+  // the handler does its own role check.
+  if (method === 'POST' && url.pathname === '/api/admin/students') {
+    const body = await readJsonBody(req);
+    const r = await handleAddStudent(session, body);
+    return send(res, r.status, r.body);
+  }
+  // GET /api/admin/tunnel — current guest-tunnel status. Owner-only.
+  if (method === 'GET' && url.pathname === '/api/admin/tunnel') {
+    const r = handleGetTunnel(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/admin/tunnel/stop — tear down the guest tunnel. Owner-only.
+  if (method === 'POST' && url.pathname === '/api/admin/tunnel/stop') {
+    const r = handleStopTunnel(session);
+    return send(res, r.status, r.body);
   }
 
   // GET /api/drafts/:folder/stream — Server-Sent Events for outbound messages.

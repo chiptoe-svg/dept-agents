@@ -40,6 +40,16 @@ export function mountHome(el) {
       </section>`
     : '';
 
+  // Owner-only "Add a student" card — name + email provisions one student;
+  // the "external guest" checkbox also opens a 60-min cloudflared tunnel.
+  const addStudentCard = isOwner
+    ? `
+      <section class="home-card" id="add-student-card">
+        <h2>Add a student</h2>
+        <div id="add-student-body"></div>
+      </section>`
+    : '';
+
   el.innerHTML = `
     <div class="home-layout">
       <section class="home-card">
@@ -57,6 +67,8 @@ export function mountHome(el) {
       ${classControlsCard}
 
       ${studentsRosterCard}
+
+      ${addStudentCard}
 
       <section class="home-card">
         <h2>Settings</h2>
@@ -142,6 +154,7 @@ export function mountHome(el) {
   if (isOwner) {
     renderClassControlsCard(el.querySelector('#class-controls-body'));
     renderStudentsRosterCard(el.querySelector('#students-roster-body'));
+    renderAddStudentCard(el.querySelector('#add-student-body'));
     // class-enrollment-passcode:home-card START
     renderEnrollmentPasscodeCard(el.querySelector('#enrollment-passcode-body'));
     // class-enrollment-passcode:home-card END
@@ -213,6 +226,114 @@ async function renderStudentsRosterCard(body) {
     });
   } catch (err) {
     body.innerHTML = `<p class="muted">Couldn't load roster: ${escapeHtml(String(err))}</p>`;
+  }
+}
+
+function renderAddStudentCard(body) {
+  if (!body) return;
+  body.innerHTML = `
+    <p class="muted">Provisions a new student agent + roster entry. Tick "external guest" to also open a 60-minute public tunnel and get an off-campus login link.</p>
+    <div class="home-form">
+      <label>Name<input id="as-name" type="text" autocomplete="off" placeholder="Jane Doe"></label>
+      <label>Email<input id="as-email" type="email" autocomplete="off" placeholder="jane@example.edu"></label>
+      <label class="cc-check"><input id="as-external" type="checkbox"> External guest (start 60-min tunnel)</label>
+    </div>
+    <div class="home-actions">
+      <button id="as-submit" class="btn btn-primary">Add student</button>
+      <span class="muted" id="as-status"></span>
+    </div>
+    <div id="as-result" hidden></div>
+  `;
+
+  const nameInput = body.querySelector('#as-name');
+  const emailInput = body.querySelector('#as-email');
+  const externalInput = body.querySelector('#as-external');
+  const submitBtn = body.querySelector('#as-submit');
+  const status = body.querySelector('#as-status');
+  const result = body.querySelector('#as-result');
+
+  submitBtn.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    const email = emailInput.value.trim();
+    const external = externalInput.checked;
+    if (!name || !email) {
+      status.textContent = 'Name and email are required.';
+      return;
+    }
+    submitBtn.disabled = true;
+    status.textContent = external ? 'Provisioning + starting tunnel…' : 'Provisioning…';
+    result.hidden = true;
+    try {
+      const res = await fetch('/api/admin/students', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ name, email, external }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = `Failed: ${data.error || res.status}`;
+        return;
+      }
+      status.textContent = '';
+      nameInput.value = '';
+      emailInput.value = '';
+      externalInput.checked = false;
+      renderAddStudentResult(result, data);
+    } catch (err) {
+      status.textContent = `Failed: ${escapeHtml(String(err))}`;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+function renderAddStudentResult(result, data) {
+  result.hidden = false;
+  let tunnelBlock = '';
+  if (data.external && data.tunnel) {
+    const until = new Date(data.tunnel.expiresAt).toLocaleTimeString();
+    tunnelBlock = `<p class="muted small">🌐 Public tunnel live until <strong>${escapeHtml(until)}</strong>. <button class="btn" id="as-stop-tunnel">Stop tunnel</button></p>`;
+  } else if (data.external && !data.tunnel) {
+    tunnelBlock = `<p class="cc-banner-warn">Tunnel didn't start (${escapeHtml(data.tunnelError || 'unknown error')}). The link below uses the campus address — only works on-campus.</p>`;
+  }
+  result.innerHTML = `
+    <div class="add-student-result">
+      <p>✅ Added <strong>${escapeHtml(data.name)}</strong> as <code>${escapeHtml(data.folder)}</code> <span class="muted">(${escapeHtml(data.email)})</span>.</p>
+      <p class="muted small">Send this login link to the student:</p>
+      <div class="as-link-row">
+        <input type="text" class="as-link" readonly value="${escapeHtml(data.loginUrl)}">
+        <button class="btn" id="as-copy">Copy</button>
+      </div>
+      ${tunnelBlock}
+      <p class="muted small">Reload the page to see them in the Students roster above.</p>
+    </div>
+  `;
+  const linkInput = result.querySelector('.as-link');
+  result.querySelector('#as-copy').addEventListener('click', async () => {
+    linkInput.select();
+    try {
+      await navigator.clipboard.writeText(linkInput.value);
+    } catch {
+      document.execCommand('copy');
+    }
+    const btn = result.querySelector('#as-copy');
+    btn.textContent = 'Copied';
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+    }, 1500);
+  });
+  const stopBtn = result.querySelector('#as-stop-tunnel');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', async () => {
+      stopBtn.disabled = true;
+      try {
+        await fetch('/api/admin/tunnel/stop', { method: 'POST', credentials: 'same-origin' });
+      } catch {
+        /* ignore */
+      }
+      stopBtn.textContent = 'Tunnel stopped';
+    });
   }
 }
 
