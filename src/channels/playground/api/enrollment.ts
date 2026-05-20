@@ -61,10 +61,7 @@ export interface EnrollResponse {
   redirect: string;
 }
 
-export function handleEnroll(body: {
-  email?: unknown;
-  passcode?: unknown;
-}): ApiResult<EnrollResponse> {
+export function handleEnroll(body: { email?: unknown; passcode?: unknown }): ApiResult<EnrollResponse> {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const passcode = typeof body.passcode === 'string' ? body.passcode.trim() : '';
 
@@ -90,14 +87,10 @@ export function handleEnroll(body: {
   //    in-memory-only until we confirm the DB write succeeds.
   const session = mintSessionForUser(rosterEntry.user_id);
 
-  // 4. First-come-first-served claim.
-  const won = markEnrolled(email, session.cookieValue);
-  if (!won) {
-    // Already enrolled — check if this is a returning student with a valid
-    // existing session. Since we can't re-issue to a different device here,
-    // just reject. Instructor can reset via CLI.
-    return { status: 409, body: { error: 'This email address has already been enrolled. Contact your instructor if you need to re-enroll.' } };
-  }
+  // 4. First-come-first-served claim. If already enrolled, the valid passcode
+  // is enough to issue a fresh session — this is a returning student on a
+  // new device or after clearing cookies. Don't block them.
+  markEnrolled(email, session.cookieValue);
 
   return {
     status: 200,

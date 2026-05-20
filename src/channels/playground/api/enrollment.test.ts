@@ -52,7 +52,12 @@ describe('enrollment API', () => {
         formatSessionCookie: (v: string) => `nc_playground=${v}`,
       }));
       const { handleGetClassPasscode } = await import('./enrollment.js');
-      const result = handleGetClassPasscode({ cookieValue: 'x', userId: 'class:student_01', createdAt: 0, lastActivityAt: 0 });
+      const result = handleGetClassPasscode({
+        cookieValue: 'x',
+        userId: 'class:student_01',
+        createdAt: 0,
+        lastActivityAt: 0,
+      });
       expect(result.status).toBe(403);
     });
 
@@ -154,7 +159,12 @@ describe('enrollment API', () => {
         formatSessionCookie: (v: string) => `nc_playground=${v}`,
       }));
       const { handleRotateClassPasscode } = await import('./enrollment.js');
-      const result = handleRotateClassPasscode({ cookieValue: 'x', userId: 'owner:1', createdAt: 0, lastActivityAt: 0 });
+      const result = handleRotateClassPasscode({
+        cookieValue: 'x',
+        userId: 'owner:1',
+        createdAt: 0,
+        lastActivityAt: 0,
+      });
       expect(result.status).toBe(200);
       expect((result.body as { passcode: string }).passcode).toBe('9999');
     });
@@ -236,7 +246,7 @@ describe('enrollment API', () => {
       expect(result.status).toBe(401);
     });
 
-    it('returns 409 when already enrolled (first-come-first-served)', async () => {
+    it('returns 200 + fresh session when already enrolled (returning device)', async () => {
       vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
         isOwner: () => false,
         isGlobalAdmin: () => false,
@@ -248,7 +258,7 @@ describe('enrollment API', () => {
       }));
       vi.doMock('../../../db/classroom-roster.js', () => ({
         lookupRosterByEmail: () => ({ email: 'a@b.com', user_id: 'class:s1', agent_group_id: null, added_at: 0 }),
-        markEnrolled: () => false, // already claimed
+        markEnrolled: () => false, // already claimed by a prior session
         isEnrolled: () => true,
       }));
       vi.doMock('../auth-store.js', () => ({
@@ -257,7 +267,8 @@ describe('enrollment API', () => {
       }));
       const { handleEnroll } = await import('./enrollment.js');
       const result = await handleEnroll({ email: 'a@b.com', passcode: '1234' });
-      expect(result.status).toBe(409);
+      expect(result.status).toBe(200);
+      expect(result.setCookie).toContain('nc_playground=cook2');
     });
 
     it('returns 200 + Set-Cookie on successful enrollment', async () => {
@@ -271,12 +282,22 @@ describe('enrollment API', () => {
         verifyPasscode: () => true,
       }));
       vi.doMock('../../../db/classroom-roster.js', () => ({
-        lookupRosterByEmail: () => ({ email: 'alice@school.edu', user_id: 'class:alice', agent_group_id: null, added_at: 0 }),
+        lookupRosterByEmail: () => ({
+          email: 'alice@school.edu',
+          user_id: 'class:alice',
+          agent_group_id: null,
+          added_at: 0,
+        }),
         markEnrolled: () => true, // won the race
         isEnrolled: () => false,
       }));
       vi.doMock('../auth-store.js', () => ({
-        mintSessionForUser: () => ({ cookieValue: 'cookie-alice', userId: 'class:alice', createdAt: 0, lastActivityAt: 0 }),
+        mintSessionForUser: () => ({
+          cookieValue: 'cookie-alice',
+          userId: 'class:alice',
+          createdAt: 0,
+          lastActivityAt: 0,
+        }),
         formatSessionCookie: (v: string) => `nc_playground=${v}; HttpOnly`,
       }));
       const { handleEnroll } = await import('./enrollment.js');
