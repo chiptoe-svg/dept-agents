@@ -42,12 +42,19 @@ export interface ModelsResponse {
 }
 
 async function probeLocalServer(): Promise<boolean> {
-  const env = readEnvFile(['OMLX_BASE_URL']);
+  const env = readEnvFile(['OMLX_BASE_URL', 'OMLX_API_KEY']);
   const baseUrl = (process.env.OMLX_BASE_URL ?? env.OMLX_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+  // The local server (mlx-omni-server etc.) may require a bearer key —
+  // an unauthenticated probe would 401 and falsely read as offline.
+  // Mirror the omlx adapter's auth: OMLX_API_KEY, falling back to 'local'.
+  const key = process.env.OMLX_API_KEY ?? env.OMLX_API_KEY ?? 'local';
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 1500);
   try {
-    const res = await fetch(`${baseUrl}/v1/models`, { signal: ctl.signal });
+    const res = await fetch(`${baseUrl}/v1/models`, {
+      signal: ctl.signal,
+      headers: { authorization: `Bearer ${key}` },
+    });
     return res.ok;
   } catch {
     return false;
