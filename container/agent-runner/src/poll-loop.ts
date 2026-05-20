@@ -481,6 +481,7 @@ function emitTraceToPlayground(
       tokensCached: event.tokensCached,
       tokensOut: event.tokensOut,
       tokensReasoning: event.tokensReasoning,
+      ...(event.responsePreview ? { responsePreview: event.responsePreview } : {}),
     };
   }
 

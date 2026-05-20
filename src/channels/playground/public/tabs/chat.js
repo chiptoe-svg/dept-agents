@@ -828,14 +828,42 @@ function appendModelCallTrace(trace, data) {
   // bill cached input at the cheaper rate (mirrors direct-chat.ts:priceFor).
   const cost = computeAgentCallCost(provider, model, tokensIn, tokensOut, cached);
   const costText = cost != null ? (cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`) : '';
-  const summary = `${tokensIn} in${cachedNote} · ${outBreakdown}${costText ? ` · ${costText}` : ''}`;
-  li.innerHTML = `
-    <div class="trace-event-head">
-      <span class="trace-event-kind">model call</span>
-      <code>${escapeHtml(provider)}/${escapeHtml(model)}</code>
-    </div>
-    <div class="trace-event-body">${escapeHtml(summary)}</div>
-  `;
+  const summaryText = `${tokensIn} in${cachedNote} · ${outBreakdown}${costText ? ` · ${costText}` : ''}`;
+
+  const head = document.createElement('div');
+  head.className = 'trace-event-head';
+  const kindSpan = document.createElement('span');
+  kindSpan.className = 'trace-event-kind';
+  kindSpan.textContent = 'model call';
+  const codeEl = document.createElement('code');
+  codeEl.textContent = `${provider}/${model}`;
+  head.appendChild(kindSpan);
+  head.appendChild(codeEl);
+  li.appendChild(head);
+
+  const responseText = typeof data.responsePreview === 'string' ? data.responsePreview : null;
+  if (responseText) {
+    const details = document.createElement('details');
+    details.className = 'trace-details';
+    const summaryEl = document.createElement('summary');
+    summaryEl.className = 'trace-summary';
+    const bodySpan = document.createElement('span');
+    bodySpan.className = 'trace-event-body';
+    bodySpan.textContent = summaryText;
+    summaryEl.appendChild(bodySpan);
+    details.appendChild(summaryEl);
+    const bodyEl = document.createElement('pre');
+    bodyEl.className = 'trace-body';
+    bodyEl.textContent = responseText;
+    details.appendChild(bodyEl);
+    li.appendChild(details);
+  } else {
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'trace-event-body';
+    bodyDiv.textContent = summaryText;
+    li.appendChild(bodyDiv);
+  }
+
   li.dataset.tokensIn = tokensIn;
   li.dataset.tokensOut = tokensOut;
   li.dataset.tokensCached = cached;
@@ -869,14 +897,49 @@ function appendAgentTraceCall(trace, data) {
   if (typeof data.latencyMs === 'number') parts.push(`${(data.latencyMs / 1000).toFixed(1)}s`);
   const cost = computeAgentCallCost(data.provider, data.model, tokensIn, tokensOut, cacheRead, cacheCreation);
   if (cost != null) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
-  const body = parts.length > 0 ? parts.join(' · ') : '(no usage reported)';
-  li.innerHTML = `
-    <div class="trace-event-head">
-      <span class="trace-event-kind">agent call</span>
-      <code>${escapeHtml(data.provider)}/${escapeHtml(data.model)}</code>
-    </div>
-    <div class="trace-event-body">${escapeHtml(body)}</div>
-  `;
+  const summaryText = parts.length > 0 ? parts.join(' · ') : '(no usage reported)';
+
+  const head = document.createElement('div');
+  head.className = 'trace-event-head';
+  const kindSpan = document.createElement('span');
+  kindSpan.className = 'trace-event-kind';
+  kindSpan.textContent = 'agent call';
+  const codeEl = document.createElement('code');
+  codeEl.textContent = `${data.provider || ''}/${data.model || ''}`;
+  head.appendChild(kindSpan);
+  head.appendChild(codeEl);
+  li.appendChild(head);
+
+  // Response text rides in the same SSE payload as the chat bubble — the
+  // turn's final assistant text. Disclose it so the trace pane can show
+  // what the model actually produced, not just the token/cost summary.
+  let responseText = null;
+  if (typeof data.content === 'string') responseText = data.content;
+  else if (data.content && typeof data.content === 'object' && typeof data.content.text === 'string') {
+    responseText = data.content.text;
+  }
+  if (responseText) {
+    const details = document.createElement('details');
+    details.className = 'trace-details';
+    const summaryEl = document.createElement('summary');
+    summaryEl.className = 'trace-summary';
+    const bodySpan = document.createElement('span');
+    bodySpan.className = 'trace-event-body';
+    bodySpan.textContent = summaryText;
+    summaryEl.appendChild(bodySpan);
+    details.appendChild(summaryEl);
+    const bodyEl = document.createElement('pre');
+    bodyEl.className = 'trace-body';
+    bodyEl.textContent = responseText;
+    details.appendChild(bodyEl);
+    li.appendChild(details);
+  } else {
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'trace-event-body';
+    bodyDiv.textContent = summaryText;
+    li.appendChild(bodyDiv);
+  }
+
   if (tokensIn != null) li.dataset.tokensIn = tokensIn;
   if (tokensOut != null) li.dataset.tokensOut = tokensOut;
   if (cacheCreation > 0) li.dataset.tokensCacheCreation = cacheCreation;

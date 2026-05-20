@@ -6,6 +6,7 @@ import { describe, it, expect } from 'bun:test';
 
 import type { ProviderEvent } from './types.js';
 
+import type { AppServer, JsonRpcNotification } from './codex-app-server.js';
 import { createProvider } from './factory.js';
 import {
   CodexProvider,
@@ -13,6 +14,7 @@ import {
   composeRuntimeIdentity,
   resolveClaudeImports,
   resolveCodexModel,
+  runOneTurn,
 } from './codex.js';
 
 describe('ProviderEvent result extensions (codex)', () => {
@@ -214,5 +216,116 @@ describe('composeRuntimeIdentity', () => {
 
   it('returns undefined when model is undefined', () => {
     expect(composeRuntimeIdentity('codex', undefined)).toBeUndefined();
+  });
+});
+
+describe('runOneTurn — model_call responsePreview', () => {
+  // Minimal AppServer stand-in: any request written to stdin is immediately
+  // acknowledged with an empty result, so the generator clears `turn/start`
+  // and advances into its notification loop — where the test drives the
+  // codex app-server notification stream by hand.
+  function fakeServer(): AppServer {
+    const server = {
+      process: {
+        stdin: {
+          write: (line: string): boolean => {
+            const msg = JSON.parse(line) as { id?: number };
+            if (typeof msg.id === 'number') {
+              const id = msg.id;
+              queueMicrotask(() => server.pending.get(id)?.resolve({ id }));
+            }
+            return true;
+          },
+        },
+      },
+      pending: new Map(),
+      notificationHandlers: [],
+      serverRequestHandlers: [],
+    } as unknown as AppServer;
+    return server;
+  }
+
+  async function drive(
+    notifications: Array<{ method: string; params: Record<string, unknown> }>,
+  ): Promise<ProviderEvent[]> {
+    const server = fakeServer();
+    const gen = runOneTurn(
+      server,
+      'thread-1',
+      'hello',
+      'gpt-5-mini',
+      '/tmp',
+      undefined,
+      'medium',
+      () => true,
+      () => {},
+    );
+    const events: ProviderEvent[] = [];
+    const consumed = (async () => {
+      for await (const ev of gen) events.push(ev);
+    })();
+    // Give the generator time to register its handler and resolve turn/start;
+    // a macrotask flushes every pending microtask first.
+    await new Promise((r) => setTimeout(r, 10));
+    for (const n of notifications) {
+      server.notificationHandlers[0]!(n as JsonRpcNotification);
+    }
+    await consumed;
+    return events;
+  }
+
+  function tokenUsage(last: Record<string, number>): Record<string, unknown> {
+    return { tokenUsage: { total: { ...last }, last } };
+  }
+
+  it('attaches the agentMessage text to the model_call that follows it', async () => {
+    const events = await drive([
+      { method: 'item/completed', params: { item: { type: 'agentMessage', text: 'Hello there!' } } },
+      { method: 'thread/tokenUsage/updated', params: tokenUsage({ inputTokens: 80, outputTokens: 20, totalTokens: 100 }) },
+      { method: 'turn/completed', params: {} },
+    ]);
+    const modelCall = events.find((e) => e.type === 'model_call');
+    expect(modelCall).toBeDefined();
+    if (modelCall?.type === 'model_call') {
+      expect(modelCall.responsePreview).toBe('Hello there!');
+    }
+  });
+
+  it('omits responsePreview on a tool-use-only call (no agentMessage)', async () => {
+    const events = await drive([
+      { method: 'thread/tokenUsage/updated', params: tokenUsage({ inputTokens: 50, outputTokens: 10, totalTokens: 60 }) },
+      { method: 'turn/completed', params: {} },
+    ]);
+    const modelCall = events.find((e) => e.type === 'model_call');
+    expect(modelCall).toBeDefined();
+    if (modelCall?.type === 'model_call') {
+      expect(modelCall.responsePreview).toBeUndefined();
+    }
+  });
+
+  it('does not carry a consumed preview onto a later tool-use call', async () => {
+    const events = await drive([
+      { method: 'item/completed', params: { item: { type: 'agentMessage', text: 'first answer' } } },
+      { method: 'thread/tokenUsage/updated', params: tokenUsage({ inputTokens: 80, outputTokens: 20, totalTokens: 100 }) },
+      { method: 'thread/tokenUsage/updated', params: tokenUsage({ inputTokens: 90, outputTokens: 25, totalTokens: 130 }) },
+      { method: 'turn/completed', params: {} },
+    ]);
+    const modelCalls = events.filter((e) => e.type === 'model_call');
+    expect(modelCalls.length).toBe(2);
+    if (modelCalls[0]?.type === 'model_call') expect(modelCalls[0].responsePreview).toBe('first answer');
+    if (modelCalls[1]?.type === 'model_call') expect(modelCalls[1].responsePreview).toBeUndefined();
+  });
+
+  it('truncates an oversized agentMessage to 5000 chars', async () => {
+    const events = await drive([
+      { method: 'item/completed', params: { item: { type: 'agentMessage', text: 'x'.repeat(6000) } } },
+      { method: 'thread/tokenUsage/updated', params: tokenUsage({ inputTokens: 80, outputTokens: 20, totalTokens: 100 }) },
+      { method: 'turn/completed', params: {} },
+    ]);
+    const modelCall = events.find((e) => e.type === 'model_call');
+    expect(modelCall).toBeDefined();
+    if (modelCall?.type === 'model_call') {
+      expect(modelCall.responsePreview?.length).toBe(5000);
+    }
   });
 });

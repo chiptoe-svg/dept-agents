@@ -479,7 +479,7 @@ function toolResultFromItem(item: ThreadItemAny | undefined): ProviderEvent | nu
 // and because it's a natural seam for future unit tests that drive it with
 // a fake notification stream.
 
-async function* runOneTurn(
+export async function* runOneTurn(
   server: AppServer,
   threadId: string,
   inputText: string,
@@ -503,6 +503,9 @@ async function* runOneTurn(
   // response (we saw consecutive identical totals in the empirical capture).
   // Emit a model_call ProviderEvent only when `last.totalTokens` advances.
   let lastSeenCallTotal = 0;
+  // Set by item/completed(agentMessage) and consumed once by the next model_call
+  // emission so tool-use calls (which produce no agentMessage) don't carry stale text.
+  let pendingResponsePreview: string | undefined;
 
   // Buffered event queue so we can `yield` across the async notification
   // callback. Each notification pushes zero or more ProviderEvents; the
@@ -557,7 +560,10 @@ async function* runOneTurn(
         // for tool ThreadItems so the playground trace can render
         // completion alongside the tool_use event from item/started.
         const item = params.item as { type?: string; text?: string; id?: string; [k: string]: unknown } | undefined;
-        if (item?.type === 'agentMessage' && item.text) resultText = item.text;
+        if (item?.type === 'agentMessage' && item.text) {
+          resultText = item.text;
+          pendingResponsePreview = item.text.slice(0, 5000);
+        }
         const ev = toolResultFromItem(item);
         if (ev) buffer.push(ev);
         break;
@@ -596,6 +602,8 @@ async function* runOneTurn(
           last.totalTokens !== lastSeenCallTotal
         ) {
           lastSeenCallTotal = last.totalTokens;
+          const preview = pendingResponsePreview;
+          pendingResponsePreview = undefined;
           buffer.push({
             type: 'model_call',
             tokensIn: typeof last.inputTokens === 'number' ? last.inputTokens : 0,
@@ -603,6 +611,7 @@ async function* runOneTurn(
             tokensOut: typeof last.outputTokens === 'number' ? last.outputTokens : 0,
             tokensReasoning:
               typeof last.reasoningOutputTokens === 'number' ? last.reasoningOutputTokens : 0,
+            ...(preview ? { responsePreview: preview } : {}),
           });
         }
         break;
