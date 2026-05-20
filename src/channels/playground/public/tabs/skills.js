@@ -62,11 +62,9 @@ export function mountSkills(el) {
           <span>Edit</span>
           <span class="hint">saves as a custom skill for this agent</span>
         </header>
-        <div class="editor-name-row">
-          <label>name <input id="skill-name" placeholder="select a skill, or + New skill…" autocomplete="off"></label>
-        </div>
         <textarea id="skill-edit" class="active-text" placeholder="Select a skill on the left to edit it, or click + New skill…"></textarea>
         <footer class="editor-footer">
+          <label class="editor-name">name <input id="skill-name" placeholder="name your custom skill" autocomplete="off"></label>
           <button id="skill-save" class="btn btn-primary" disabled>Save custom skill</button>
           <button id="skill-delete" class="btn btn-ghost" hidden>Delete</button>
         </footer>

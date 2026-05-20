@@ -794,36 +794,33 @@ select.model-changed {
   white-space: pre-wrap;
   background: #fff;
 }
-/* Right panel — the SKILL.md editor. */
-.editor-name-row {
+/* Right panel — the SKILL.md editor. Name input sits in the footer
+   alongside Save / Delete. */
+.editor-footer {
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 6px 10px;
-  border-bottom: 1px solid #eee;
+  border-top: 1px solid #eee;
   background: #fafafa;
-  font-size: 12px;
 }
-.editor-name-row label {
+.editor-name {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
   color: #555;
 }
-.editor-name-row input {
+.editor-name input {
   flex: 1;
+  min-width: 0;
   font: inherit;
   font-size: 12px;
   padding: 3px 6px;
   border: 1px solid #ccc;
   border-radius: 3px;
-}
-.editor-footer {
-  display: flex;
-  gap: 8px;
-  padding: 6px 10px;
-  border-top: 1px solid #eee;
-  background: #fafafa;
 }
 .cost-rollup {
   padding: 8px 10px;
