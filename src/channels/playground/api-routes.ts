@@ -288,7 +288,14 @@ export async function route(
     }
   }
 
-  // PUT /api/drafts/:folder/persona — write CLAUDE.local.md
+  // PUT /api/drafts/:folder/persona — write CLAUDE.local.md, then recycle
+  // any running container for the agent group so the change actually
+  // reaches the agent. The persona is composed into the system prompt
+  // (codex `baseInstructions`) at container spawn and bound to the codex
+  // thread, so a file write alone never reaches a live session — the
+  // container must respawn. Mirrors the provider-switch recycle above;
+  // the codex thread continuation lives in the container-owned
+  // outbound.db, so a host-side respawn is the only clean lever.
   if (method === 'PUT' && personaGet) {
     const draftFolder = personaGet[1]!;
     const body = await readJsonBody(req);
@@ -298,7 +305,21 @@ export async function route(
       const personaPath = path.join(GROUPS_DIR, draftFolder, 'CLAUDE.local.md');
       fs.mkdirSync(path.dirname(personaPath), { recursive: true });
       fs.writeFileSync(personaPath, text);
-      return send(res, 200, { ok: true, bytes: Buffer.byteLength(text) });
+      let containersRecycled = 0;
+      const group = getAgentGroupByFolder(draftFolder);
+      if (group) {
+        for (const s of getActiveSessions()) {
+          if (s.agent_group_id !== group.id) continue;
+          if (!isContainerRunning(s.id)) continue;
+          try {
+            killContainer(s.id, 'persona updated');
+            containersRecycled += 1;
+          } catch {
+            /* best-effort — a stale container is reaped by the next sweep */
+          }
+        }
+      }
+      return send(res, 200, { ok: true, bytes: Buffer.byteLength(text), containersRecycled });
     } catch (err) {
       return send(res, 500, { error: (err as Error).message });
     }
