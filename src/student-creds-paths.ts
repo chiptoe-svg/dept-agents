@@ -24,3 +24,8 @@ export function sanitizeUserIdForPath(userId: string): string {
 export function studentGwsCredentialsPath(userId: string): string {
   return path.join(DATA_DIR, 'student-google-auth', sanitizeUserIdForPath(userId), 'credentials.json');
 }
+
+/** `data/student-provider-creds/<sanitized>/<providerId>.json` */
+export function studentProviderCredsPath(userId: string, providerId: string): string {
+  return path.join(DATA_DIR, 'student-provider-creds', sanitizeUserIdForPath(userId), `${providerId}.json`);
+}

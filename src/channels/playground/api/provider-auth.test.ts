@@ -2,10 +2,25 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+
+// Capture tmpDir before the mock factory runs so the factory closure can
+// close over it. Reassigned per-test in beforeEach; the factory reads
+// `tmpDir` at call time. Same pattern as student-google-auth.test.ts —
+// student-creds-paths.ts resolves DATA_DIR at module load, so the path
+// helper must be mocked rather than chdir'd around.
+let tmpDir = '';
+
+vi.mock('../../../student-creds-paths.js', () => ({
+  sanitizeUserIdForPath: (userId: string) => userId.replace(/[^A-Za-z0-9_-]/g, '_'),
+  studentProviderCredsPath: (userId: string, providerId: string) => {
+    const sanitized = userId.replace(/[^A-Za-z0-9_-]/g, '_');
+    return path.join(tmpDir, 'student-provider-creds', sanitized, `${providerId}.json`);
+  },
+}));
 
 import { registerProvider, resetRegistryForTests } from '../../../providers/auth-registry.js';
-import { hasStudentProviderCreds, loadStudentProviderCreds } from '../../../student-provider-auth.js';
+import { addOAuth, hasStudentProviderCreds, loadStudentProviderCreds } from '../../../student-provider-auth.js';
 import {
   handleProviderAuthStart,
   handleProviderAuthExchange,
@@ -16,9 +31,9 @@ import {
   handleSetActive,
   handleDisconnect,
 } from './provider-auth.js';
-import { addOAuth } from '../../../student-provider-auth.js';
 
 beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-auth-test-'));
   resetRegistryForTests();
   getOAuthStateStoreForTests().clear();
   registerProvider({
@@ -42,6 +57,10 @@ beforeEach(() => {
       connectInstructions: 'Sign in then paste the code.',
     },
   });
+});
+
+afterEach(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('handleProviderAuthStart (paste-back)', () => {
@@ -89,13 +108,7 @@ describe('handleProviderAuthStart (paste-back)', () => {
 });
 
 describe('handleProviderAuthExchange (paste-back)', () => {
-  let tmpRoot: string;
-  let originalCwd: string;
-
   beforeEach(() => {
-    originalCwd = process.cwd();
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'exchange-test-'));
-    process.chdir(tmpRoot);
     setTokenExchangerForTests(async (_spec, code, _verifier, _redirectUri) => {
       if (code === 'good-code') {
         return {
@@ -107,11 +120,6 @@ describe('handleProviderAuthExchange (paste-back)', () => {
       }
       return null;
     });
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 
   it('rejects unknown state', async () => {
@@ -180,20 +188,6 @@ describe('handleProviderAuthExchange (paste-back)', () => {
 });
 
 describe('GET /api/me/providers/:id', () => {
-  let tmpRoot: string;
-  let originalCwd: string;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'crud-test-'));
-    process.chdir(tmpRoot);
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  });
-
   it('returns connected:false when no creds', () => {
     const r = handleGetProviderStatus('claude', { userId: 'fresh@x.edu' });
     expect(r.body).toEqual({ hasApiKey: false, hasOAuth: false, active: null });
@@ -217,20 +211,6 @@ describe('GET /api/me/providers/:id', () => {
 });
 
 describe('POST /api/me/providers/:id/api-key', () => {
-  let tmpRoot: string;
-  let originalCwd: string;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'crud-test-'));
-    process.chdir(tmpRoot);
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  });
-
   it('rejects empty key', () => {
     const r = handlePostApiKey('claude', { apiKey: '' }, { userId: 'alice@x.edu' });
     expect(r.status).toBe(400);
@@ -251,20 +231,6 @@ describe('POST /api/me/providers/:id/api-key', () => {
 });
 
 describe('POST /api/me/providers/:id/active', () => {
-  let tmpRoot: string;
-  let originalCwd: string;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'crud-test-'));
-    process.chdir(tmpRoot);
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  });
-
   it('switches active when both methods present', () => {
     handlePostApiKey('claude', { apiKey: 'sk-ant-1' }, { userId: 'alice@x.edu' });
     addOAuth('alice@x.edu', 'claude', { accessToken: 'at', refreshToken: 'rt', expiresAt: Date.now() + 1000 });
@@ -283,20 +249,6 @@ describe('POST /api/me/providers/:id/active', () => {
 });
 
 describe('DELETE /api/me/providers/:id', () => {
-  let tmpRoot: string;
-  let originalCwd: string;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'crud-test-'));
-    process.chdir(tmpRoot);
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  });
-
   it('clears named method', () => {
     handlePostApiKey('claude', { apiKey: 'sk-ant-1' }, { userId: 'alice@x.edu' });
     addOAuth('alice@x.edu', 'claude', { accessToken: 'at', refreshToken: 'rt', expiresAt: Date.now() + 1000 });
