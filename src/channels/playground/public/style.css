@@ -926,6 +926,45 @@ select.model-changed {
 .roster-table th.num, .roster-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .roster-table th.centered, .roster-table td.centered { text-align: center; }
 .roster-table tr:hover { background: #f6f9ff; }
+.roster-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--brand-blue);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.roster-name-btn:hover, .roster-name-btn.active {
+  color: var(--brand-blue-hover);
+}
+.roster-detail-row td {
+  background: var(--brand-teal-soft);
+  padding: 0.75rem 1rem;
+}
+.roster-detail-body { max-width: 600px; }
+.roster-detail-dl {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+.roster-detail-dl dt { font-weight: 600; color: var(--text-muted); }
+.roster-detail-dl dd { margin: 0; }
+.roster-detail-persona {
+  font-size: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+  margin: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
 .role-ta {
   display: inline-block;
   padding: 1px 6px;

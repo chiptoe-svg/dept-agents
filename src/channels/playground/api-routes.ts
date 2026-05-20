@@ -49,7 +49,7 @@ import {
 } from './api/models.js';
 import { handleGetClassControls, handlePutClassControls } from './api/class-controls.js';
 import { handleDirectChat } from './api/direct-chat.js';
-import { handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
+import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
 import { handleGetEntry, handleListLibrary, handleSaveMyEntry } from './api/library.js';
 import {
@@ -554,6 +554,16 @@ export async function route(
     const providers = providersParam ? providersParam.split(',').filter(Boolean) : undefined;
     const r = handleGetStudentsUsage(providers);
     return send(res, r.status, r.body);
+  }
+  // GET /api/admin/students/:folder — per-student detail. Owner-only.
+  if (method === 'GET' && url.pathname.startsWith('/api/admin/students/')) {
+    if (!session.userId || !isOwner(session.userId)) {
+      return send(res, 403, { error: 'owner role required' });
+    }
+    const folder = url.pathname.slice('/api/admin/students/'.length);
+    if (!folder) return send(res, 400, { error: 'folder required' });
+    const result = await handleGetStudentDetail(folder);
+    return send(res, result.status, result.body);
   }
 
   // GET /api/drafts/:folder/stream — Server-Sent Events for outbound messages.

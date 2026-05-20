@@ -20,6 +20,7 @@ import Database from 'better-sqlite3';
 
 import { getAgentGroup, getAgentGroupByFolder } from '../../../db/agent-groups.js';
 import { lookupRosterByUserId } from '../../../db/classroom-roster.js';
+import { getDb } from '../../../db/connection.js';
 import { readClassConfig } from '../../../class-config.js';
 import { getActiveSessions } from '../../../db/sessions.js';
 import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
@@ -239,4 +240,93 @@ export function handleGetStudentsUsage(
   }
   students.sort((a, b) => a.agentGroup.folder.localeCompare(b.agentGroup.folder));
   return { status: 200, body: { students } };
+}
+
+export async function handleGetStudentDetail(folder: string): Promise<
+  ApiResult<{
+    email: string | null;
+    enrolledAt: string | null;
+    persona: string | null;
+    skills: string[];
+    telegram: boolean;
+    google: boolean;
+    providers: Record<string, { hasApiKey: boolean; hasOAuth: boolean; active: string | null }>;
+  }>
+> {
+  const group = getAgentGroupByFolder(folder);
+  if (!group) return { status: 404, body: { error: `no agent group for folder ${folder}` } };
+
+  const userId = `class:${folder}`;
+  const rosterRow = lookupRosterByUserId(userId);
+
+  // Persona: CLAUDE.local.md from the group folder
+  let persona: string | null = null;
+  const personaPath = path.join(process.cwd(), 'groups', folder, 'CLAUDE.local.md');
+  if (fs.existsSync(personaPath)) {
+    try {
+      const raw = fs.readFileSync(personaPath, 'utf8').trim();
+      persona = raw.length > 400 ? raw.slice(0, 400) + '…' : raw;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Skills: subdirectories of groups/<folder>/skills/
+  const skillsPath = path.join(process.cwd(), 'groups', folder, 'skills');
+  let skills: string[] = [];
+  if (fs.existsSync(skillsPath)) {
+    try {
+      skills = fs
+        .readdirSync(skillsPath, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Telegram: check user_dms for this userId
+  const db = getDb();
+  const telegramRow = db
+    .prepare(`SELECT 1 FROM user_dms WHERE user_id = ? AND channel_type = 'telegram' LIMIT 1`)
+    .get(userId);
+  const telegram = telegramRow != null;
+
+  // Google: check optional module
+  let google = false;
+  try {
+    const { hasStudentCredentials } = await import('../../../student-google-auth.js');
+    google = hasStudentCredentials(userId);
+  } catch {
+    /* module not installed */
+  }
+
+  // Providers: check optional module
+  const providers: Record<string, { hasApiKey: boolean; hasOAuth: boolean; active: string | null }> = {};
+  try {
+    const { loadStudentProviderCreds } = await import('../../../student-provider-auth.js');
+    for (const pid of ['claude', 'codex']) {
+      const creds = loadStudentProviderCreds(userId, pid);
+      providers[pid] = {
+        hasApiKey: (creds as { apiKey?: unknown } | null)?.apiKey != null,
+        hasOAuth: (creds as { oauth?: unknown } | null)?.oauth != null,
+        active: (creds as { active?: string } | null)?.active ?? null,
+      };
+    }
+  } catch {
+    /* module not installed */
+  }
+
+  return {
+    status: 200,
+    body: {
+      email: rosterRow?.email ?? null,
+      enrolledAt: rosterRow?.enrolled_at ?? null,
+      persona,
+      skills,
+      telegram,
+      google,
+      providers,
+    },
+  };
 }

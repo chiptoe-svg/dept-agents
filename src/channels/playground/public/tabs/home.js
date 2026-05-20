@@ -161,29 +161,90 @@ async function renderStudentsRosterCard(body) {
       body.innerHTML = `<p class="muted">No student agents yet. Add students via the classroom flow.</p>`;
       return;
     }
-    const rows = data.students
-      .map(
-        (s) => `
-          <tr>
-            <td>${escapeHtml(s.agentGroup.name || '?')}</td>
-            <td class="centered">${s.role === 'ta' ? '<span class="role-ta" title="Teaching Assistant">TA</span>' : ''}</td>
-            <td class="num">${fmtUsd(s.thisMonth.costUsd)}</td>
-            <td class="num">${fmtUsd(s.total.costUsd)}</td>
-            <td class="centered">${s.enrolled ? '<span class="roster-enrolled" title="Has signed in">✅</span>' : '<span class="roster-not-enrolled" title="Not yet signed in">⚪</span>'}</td>
-          </tr>`,
-      )
-      .join('');
+    const tbodyRows = data.students.map((s) => `
+      <tr>
+        <td><button class="roster-name-btn" data-folder="${escapeHtml(s.agentGroup.folder)}">${escapeHtml(s.agentGroup.name || '?')}</button></td>
+        <td class="centered">${s.role === 'ta' ? '<span class="role-ta" title="Teaching Assistant">TA</span>' : ''}</td>
+        <td class="num">${fmtUsd(s.thisMonth.costUsd)}</td>
+        <td class="num">${fmtUsd(s.total.costUsd)}</td>
+        <td class="centered">${s.enrolled ? '<span class="roster-enrolled" title="Has signed in">✅</span>' : '<span class="roster-not-enrolled" title="Not yet signed in">⚪</span>'}</td>
+      </tr>
+      <tr class="roster-detail-row" id="detail-${escapeHtml(s.agentGroup.folder)}" hidden>
+        <td colspan="5"><div class="roster-detail-body"><p class="muted small">Loading…</p></div></td>
+      </tr>
+    `).join('');
     const enrolledCount = data.students.filter((s) => s.enrolled).length;
     body.innerHTML = `
       <table class="roster-table">
         <thead><tr><th>Name</th><th class="centered">TA</th><th class="num">This month</th><th class="num">Total $</th><th class="centered">Activated</th></tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${tbodyRows}</tbody>
       </table>
       <p class="muted small">${enrolledCount} of ${data.students.length} have activated their account. Cost computed from token counts × per-model rate.</p>
     `;
+    body.querySelectorAll('.roster-name-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const folder = btn.dataset.folder;
+        const detailRow = body.querySelector(`#detail-${folder}`);
+        if (!detailRow) return;
+        const isOpen = !detailRow.hidden;
+        if (isOpen) {
+          detailRow.hidden = true;
+          btn.classList.remove('active');
+          return;
+        }
+        detailRow.hidden = false;
+        btn.classList.add('active');
+        const detailBody = detailRow.querySelector('.roster-detail-body');
+        if (detailBody.dataset.loaded) return;
+        detailBody.dataset.loaded = '1';
+        fetch(`/api/admin/students/${encodeURIComponent(folder)}`, { credentials: 'same-origin' })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.error) {
+              detailBody.innerHTML = `<p class="muted small">Error: ${escapeHtml(d.error)}</p>`;
+              return;
+            }
+            detailBody.innerHTML = renderStudentDetail(d);
+          })
+          .catch((err) => {
+            detailBody.innerHTML = `<p class="muted small">Failed: ${escapeHtml(String(err))}</p>`;
+          });
+      });
+    });
   } catch (err) {
     body.innerHTML = `<p class="muted">Couldn't load roster: ${escapeHtml(String(err))}</p>`;
   }
+}
+
+function renderStudentDetail(d) {
+  const fmtDate = (s) => s ? new Date(s).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+  const providerLines = Object.entries(d.providers || {}).map(([id, p]) => {
+    const methods = [];
+    if (p.hasOAuth) methods.push(`subscription${p.active === 'oauth' ? ' ★' : ''}`);
+    if (p.hasApiKey) methods.push(`API key${p.active === 'apiKey' ? ' ★' : ''}`);
+    const status = methods.length ? `✅ ${methods.join(', ')}` : '⚪ not connected';
+    return `<div><strong>${escapeHtml(id)}:</strong> ${status}</div>`;
+  }).join('');
+
+  const skillsList = d.skills && d.skills.length
+    ? d.skills.map((s) => `<code>${escapeHtml(s)}</code>`).join(', ')
+    : '<span class="muted">none</span>';
+
+  const personaBlock = d.persona
+    ? `<pre class="roster-detail-persona">${escapeHtml(d.persona)}</pre>`
+    : `<span class="muted">—</span>`;
+
+  return `
+    <dl class="roster-detail-dl">
+      <dt>Email</dt><dd>${d.email ? escapeHtml(d.email) : '—'}</dd>
+      <dt>Enrolled</dt><dd>${fmtDate(d.enrolledAt)}</dd>
+      <dt>Telegram</dt><dd>${d.telegram ? '✅ paired' : '⚪ not paired'}</dd>
+      <dt>Google</dt><dd>${d.google ? '✅ connected' : '⚪ not connected'}</dd>
+      <dt>Providers</dt><dd>${providerLines || '<span class="muted">—</span>'}</dd>
+      <dt>Skills</dt><dd>${skillsList}</dd>
+      <dt>Persona</dt><dd>${personaBlock}</dd>
+    </dl>
+  `;
 }
 
 function fmtUsd(n) {
