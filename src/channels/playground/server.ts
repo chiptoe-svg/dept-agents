@@ -37,11 +37,13 @@ import {
   revokeAllSessions,
   startIdleSweep,
   stopIdleSweep,
+  mintSessionForUser,
 } from './auth-store.js';
 import { handleIssue as handleLoginPinIssue, handleVerify as handleLoginPinVerify } from './api/login-pin.js';
 import { handleGoogleAuthCallback, handleGoogleAuthStart } from './api/google-auth.js';
 import { handleOAuthCallback, handleOAuthStart } from './google-oauth.js';
 import { parseCookie, readJsonBody, send } from './http-helpers.js';
+import { readEnvFile } from '../../env.js';
 // ── class-enrollment-passcode:imports START ────────────────────────────────
 import { handleGetClassPasscode, handleRotateClassPasscode, handleEnroll } from './api/enrollment.js';
 // ── class-enrollment-passcode:imports END ──────────────────────────────────
@@ -284,6 +286,22 @@ function isHtmlPagePath(pathname: string): boolean {
 function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
   const url = new URL(req.url || '/', 'http://localhost');
   const method = req.method || 'GET';
+
+  // BENCH_MODE auth bypass — only active when BENCH_MODE=1 is set in .env or process.env.
+  // Mints a fresh anonymous session and returns it as a Set-Cookie header.
+  // Never enabled in production; the env var is only set by operators running the bench suite.
+  if (method === 'GET' && url.pathname === '/api/bench/session') {
+    const benchMode = process.env.BENCH_MODE ?? readEnvFile(['BENCH_MODE']).BENCH_MODE;
+    if (benchMode === '1') {
+      const benchSession = mintSessionForUser(null);
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'set-cookie': formatSessionCookie(benchSession.cookieValue),
+      });
+      res.end(JSON.stringify({ ok: true, cookieValue: benchSession.cookieValue }));
+      return;
+    }
+  }
 
   // Public endpoints — no auth required.
   if (method === 'GET' && handleAuthExchange(url, res)) return;
