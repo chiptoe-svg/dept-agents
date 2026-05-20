@@ -21,6 +21,7 @@ import { createAgentGroup, getAgentGroupByFolder } from './db/agent-groups.js';
 import { upsertRosterEntry } from './db/classroom-roster.js';
 import { getDb } from './db/connection.js';
 import { addMember } from './modules/permissions/db/agent-group-members.js';
+import { upsertUser } from './modules/permissions/db/users.js';
 import { readContainerConfig, writeContainerConfig, type ContainerConfig } from './container-config.js';
 import { collectSkeletonMounts } from './skeleton-mount-registry.js';
 import type { AgentGroup } from './types.js';
@@ -229,10 +230,15 @@ export interface ProvisionStudentResult {
 }
 
 /**
- * Provision one new student — agent_groups row, on-disk folder scaffold,
- * `container.json`, `classroom_roster` row, and `agent_group_members`
- * row. Writes exactly one `container.json` (the new folder's), so unlike
- * a re-run of `class-skeleton.ts` it never disturbs existing students.
+ * Provision one new student — agent_groups row, the student's `users`
+ * row, on-disk folder scaffold, `container.json`, `classroom_roster`
+ * row, and `agent_group_members` row. Writes exactly one
+ * `container.json` (the new folder's), so unlike a re-run of
+ * `class-skeleton.ts` it never disturbs existing students.
+ *
+ * All four DB rows go in one transaction — `agent_group_members.user_id`
+ * has a FK to `users(id)`, so the `users` row must land first, and a
+ * failure must not leave a half-provisioned agent group behind.
  *
  * The caller is responsible for rejecting duplicate emails — this
  * upserts the roster row unconditionally.
@@ -245,8 +251,6 @@ export function provisionStudent(opts: {
   const folder = nextStudentFolder();
   const userId = `class:${folder}`;
   const now = new Date().toISOString();
-
-  // 1. agent_groups row.
   const group: AgentGroup = {
     id: `ag_${crypto.randomBytes(6).toString('hex')}`,
     name: opts.name,
@@ -255,7 +259,17 @@ export function provisionStudent(opts: {
     model: 'gpt-5.4-mini',
     created_at: now,
   };
-  createAgentGroup(group);
+
+  // 1. All DB rows in one transaction. Order matters: the agent group
+  //    and the student's users row must exist before the membership
+  //    row (which FKs both). A throw here commits nothing, so a retry
+  //    starts clean instead of tripping the duplicate-email guard.
+  getDb().transaction(() => {
+    createAgentGroup(group);
+    upsertUser({ id: userId, kind: 'class', display_name: opts.email, created_at: now });
+    upsertRosterEntry({ email: opts.email, user_id: userId, agent_group_id: group.id });
+    addMember({ user_id: userId, agent_group_id: group.id, added_by: opts.addedBy, added_at: now });
+  })();
 
   // 2. on-disk group dir — persona + composed CLAUDE.md.
   const groupDir = path.join(GROUPS_DIR, folder);
@@ -297,13 +311,7 @@ export function provisionStudent(opts: {
     }),
   );
 
-  // 5. roster row — email → user_id, bound to the agent group.
-  upsertRosterEntry({ email: opts.email, user_id: userId, agent_group_id: group.id });
-
-  // 6. membership row — what getPlaygroundAgentForUser resolves through.
-  addMember({ user_id: userId, agent_group_id: group.id, added_by: opts.addedBy, added_at: now });
-
-  // 7. keep class-config.json's roster in sync.
+  // 5. keep class-config.json's roster in sync.
   appendStudentToClassConfig({ name: opts.name, folder });
 
   return { folder, agentGroupId: group.id, userId, name: opts.name, email: opts.email };
