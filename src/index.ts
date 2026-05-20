@@ -12,7 +12,12 @@ import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
 import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
 import { ensureContainerRuntimeRunning, cleanupOrphans, PROXY_BIND_HOST } from './container-runtime.js';
-import { startCredentialProxy } from './credential-proxy.js';
+import { startCredentialProxy, setStudentCredsHook } from './credential-proxy.js';
+// ── classroom-provider-auth:hook-registration START ───────────────────────
+import { resolveStudentCreds } from './classroom-provider-resolver.js';
+import './providers/claude-spec.js'; // registers claude
+import './providers/codex-spec.js'; // registers codex
+// ── classroom-provider-auth:hook-registration END ─────────────────────────
 import { startGwsMcpRelay, stopGwsMcpRelay } from './gws-mcp-relay.js';
 import { startActiveDeliveryPoll, startSweepDeliveryPoll, setDeliveryAdapter, stopDeliveryPolls } from './delivery.js';
 import { startHostSweep, stopHostSweep } from './host-sweep.js';
@@ -109,6 +114,7 @@ async function main(): Promise<void> {
     throw new Error('CREDENTIAL_PROXY_HOST is not set in .env. Run /convert-to-apple-container to configure.');
   }
   proxyServer = await startCredentialProxy(CREDENTIAL_PROXY_PORT, PROXY_BIND_HOST);
+  setStudentCredsHook(resolveStudentCreds);
 
   // 2c. GWS MCP relay — host-side Google Workspace tools. Containers reach
   // it via the same host-gateway pattern as the credential proxy; per-call

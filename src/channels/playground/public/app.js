@@ -46,10 +46,21 @@ async function init() {
   // later). Owner always sees every tab. Other roles see only what the
   // instructor authorized — empty/missing config falls back to "everything"
   // so installs that never touched the file behave as before.
+  // v2 shape: { classes: { default: { tabsVisibleToStudents, authModesAvailable,
+  //   providers: { [id]: { allow, provideDefault, allowByo } } } } }
+  const DEFAULT_CLASS_ID = 'default';
   let classControls = {
-    tabsVisibleToStudents: ['home', 'chat', 'persona', 'skills', 'models'],
-    providersAvailable: ['claude', 'codex', 'local'],
-    authModesAvailable: ['api-key', 'oauth', 'claude-code-oauth'],
+    classes: {
+      [DEFAULT_CLASS_ID]: {
+        tabsVisibleToStudents: ['home', 'chat', 'persona', 'skills', 'models'],
+        authModesAvailable: ['api-key', 'oauth', 'claude-code-oauth'],
+        providers: {
+          codex:  { allow: true, provideDefault: true,  allowByo: true  },
+          claude: { allow: true, provideDefault: false, allowByo: true  },
+          local:  { allow: true, provideDefault: true,  allowByo: false },
+        },
+      },
+    },
   };
   try {
     const r = await fetch('/api/class-controls', { credentials: 'same-origin' });
@@ -57,14 +68,15 @@ async function init() {
   } catch {
     /* default stands */
   }
+  const activeClass = classControls.classes[DEFAULT_CLASS_ID];
 
-  window.__pg = { agent, user, classControls };
+  window.__pg = { agent, user, classControls, activeClass, DEFAULT_CLASS_ID };
   document.getElementById('active-agent-name').textContent = agent.name;
   document.getElementById('who').textContent = user.email || user.id;
 
   // Hide tabs the student isn't authorized to see. Owner sees everything.
   const allowedTabs =
-    user.role === 'owner' ? TABS : TABS.filter((t) => classControls.tabsVisibleToStudents.includes(t));
+    user.role === 'owner' ? TABS : TABS.filter((t) => activeClass.tabsVisibleToStudents.includes(t));
   for (const t of TABS) {
     const btn = document.querySelector(`[data-tab="${t}"]`);
     if (!btn) continue;

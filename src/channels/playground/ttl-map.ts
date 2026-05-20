@@ -83,4 +83,11 @@ export class TtlMap<K, V> {
   get size(): number {
     return this.entries.size;
   }
+
+  /** Test-only: iterate (key, value) pairs without honoring TTL. */
+  *entriesForTest(): Iterable<[K, V]> {
+    for (const [key, entry] of this.entries) {
+      yield [key, entry.value];
+    }
+  }
 }

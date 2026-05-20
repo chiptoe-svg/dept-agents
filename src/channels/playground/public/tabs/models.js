@@ -50,28 +50,100 @@ function loadModels(el, folder) {
         ? r.json()
         : { catalog: [], discovered: [], allowedModels: [], activeModel: null, localServerOnline: null },
     )
-    .then((data) => {
+    .then(async (data) => {
       catalogCache = data.catalog || [];
       discoveredCache = data.discovered || [];
       allowedModelsCache = data.allowedModels || [];
       activeModel = data.activeModel || null;
       originalAllowed = JSON.parse(JSON.stringify(allowedModelsCache));
-      renderSections(el);
+      await renderSections(el);
       renderLocalServerStatus(el, data.localServerOnline);
     });
 }
 
-function renderSections(el) {
+async function renderSections(el) {
   // Class-controls gates which provider sections render for non-owners.
   // Owner always sees every section so they can curate.
-  const cc = window.__pg && window.__pg.classControls;
+  const ac = window.__pg && window.__pg.activeClass;
   const isOwner = window.__pg && window.__pg.user && window.__pg.user.role === 'owner';
-  const allowedProviders = isOwner || !cc ? null : new Set(cc.providersAvailable || []);
+  // v2 shape: providers is a map of { allow, provideDefault, allowByo }.
+  // A provider is allowed if its `allow` flag is true. Null = no gating.
+  const providerAllowed = isOwner || !ac
+    ? null
+    : (p) => !!(ac.providers && ac.providers[p] && ac.providers[p].allow);
+
+  // ── classroom-provider-auth:models-status-pill START ──────────────────────
+
+  let ccPolicies = {};
+  try {
+    const ccRes = await fetch('/api/class-controls', { credentials: 'same-origin' });
+    const cc = await ccRes.json();
+    ccPolicies = cc.classes?.default?.providers || {};
+  } catch (err) {
+    console.warn('[models] class-controls fetch failed', err);
+  }
+
+  async function providerStatusPill(providerId, policy) {
+    try {
+      const statusRes = await fetch(`/api/me/providers/${providerId}`, { credentials: 'same-origin' });
+      const status = await statusRes.json();
+
+      if (status.active === 'oauth') return { label: 'Your subscription', tone: 'good' };
+      if (status.active === 'apiKey') return { label: 'Your API key', tone: 'good' };
+      if (policy.provideDefault) return { label: 'Provided by instructor', tone: 'subtle' };
+      if (policy.allowByo) return { label: 'Connect to use', tone: 'warn', action: 'goto:home' };
+      return { label: 'Unavailable', tone: 'forbidden' };
+    } catch (err) {
+      console.warn('[models] providerStatusPill fetch failed', err);
+      return { label: 'Unknown', tone: 'subtle' };
+    }
+  }
+
+  function renderPill(pill) {
+    const cls = `pill pill-${pill.tone}`;
+    if (pill.action === 'goto:home') {
+      return `<button type="button" class="${cls} pill-link" data-pg-goto-tab="home">${escapeHtml(pill.label)} →</button>`;
+    }
+    return `<span class="${cls}">${escapeHtml(pill.label)}</span>`;
+  }
+
+  const [claudePill, codexPill] = await Promise.all([
+    ccPolicies.claude !== undefined ? providerStatusPill('claude', ccPolicies.claude) : Promise.resolve(null),
+    ccPolicies.codex  !== undefined ? providerStatusPill('codex',  ccPolicies.codex)  : Promise.resolve(null),
+  ]);
+
+  const pillByProvider = { claude: claudePill, codex: codexPill };
+
+  // ── classroom-provider-auth:models-status-pill END ────────────────────────
+
   for (const provider of ['claude', 'codex', 'local']) {
     const grid = el.querySelector(`[data-grid="${provider}"]`);
     if (!grid) continue;
     const section = grid.closest('.model-section');
-    if (section) section.hidden = !!(allowedProviders && !allowedProviders.has(provider));
+
+    // Forbidden provider sections are hidden entirely.
+    const pill = pillByProvider[provider];
+    const isForbidden = pill && pill.tone === 'forbidden';
+    if (section) section.hidden = isForbidden || !!(providerAllowed && !providerAllowed(provider));
+    if (isForbidden) continue;
+
+    // Inject status pill into the section title for cloud providers.
+    if (pill && section) {
+      const titleEl = section.querySelector('.models-section-title');
+      if (titleEl) {
+        titleEl.querySelectorAll('.pill').forEach((p) => p.remove());
+        titleEl.insertAdjacentHTML('beforeend', renderPill(pill));
+        const pillBtn = titleEl.querySelector('button[data-pg-goto-tab]');
+        if (pillBtn && !pillBtn.dataset.bound) {
+          pillBtn.dataset.bound = '1';
+          pillBtn.addEventListener('click', () => {
+            const dest = pillBtn.dataset.pgGotoTab;
+            document.querySelector(`[data-tab="${dest}"]`)?.click();
+          });
+        }
+      }
+    }
+
     grid.innerHTML = '';
 
     const curated = catalogCache.filter((m) => m.provider === provider);
