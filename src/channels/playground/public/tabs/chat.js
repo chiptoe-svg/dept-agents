@@ -139,10 +139,15 @@ function loadModelDropdowns(el, folder) {
           renderModels();
           return;
         }
-        const ok = await showProviderSwitchModal(lastProvider, newProvider);
-        if (!ok) {
-          provSel.value = lastProvider;
-          return;
+        const log = el.querySelector('#chat-log');
+        // Only warn when there's a live conversation to lose — switching on
+        // a fresh chat costs nothing, so don't pop a modal for it.
+        if (log && log.querySelector('.msg.user, .msg.agent')) {
+          const ok = await showProviderSwitchModal(lastProvider, newProvider);
+          if (!ok) {
+            provSel.value = lastProvider;
+            return;
+          }
         }
         try {
           const r = await fetch(`/api/drafts/${folder}/provider`, {
@@ -179,10 +184,13 @@ function loadModelDropdowns(el, folder) {
         // persisted state changes and no container involved.
         const isAgentMode = el.querySelector('#mode-agent')?.classList.contains('active');
         if (isAgentMode) {
-          const ok = await showModelSwitchModal(lastModel, newModel);
-          if (!ok) {
-            modelSel.value = lastModel;
-            return;
+          // Only warn when there's a live conversation to lose.
+          if (log.querySelector('.msg.user, .msg.agent')) {
+            const ok = await showModelSwitchModal(lastModel, newModel);
+            if (!ok) {
+              modelSel.value = lastModel;
+              return;
+            }
           }
           try {
             const r = await fetch(`/api/drafts/${folder}/active-model`, {
@@ -525,8 +533,11 @@ function finalizeTurn(turnEl) {
   const parts = [];
   if (tokensIn > 0) parts.push(`${tokensIn} in`);
   if (tokensCached > 0) parts.push(`${tokensCached} cached`);
-  if (tokensReasoning > 0) parts.push(`${tokensReasoning} reasoning`);
-  if (tokensOut > 0) parts.push(`${tokensOut} out`);
+  // Reasoning is a subset of output tokens, not a separate bucket — show it
+  // in parens after `out`, matching how each model-call row renders it.
+  if (tokensOut > 0) {
+    parts.push(tokensReasoning > 0 ? `${tokensOut} out (${tokensReasoning} reasoning)` : `${tokensOut} out`);
+  }
   if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
   foot.textContent = `turn total: ${parts.join(' · ')}`;
 }
@@ -878,7 +889,7 @@ function appendAgentTraceCall(trace, data) {
   head.className = 'trace-event-head';
   const kindSpan = document.createElement('span');
   kindSpan.className = 'trace-event-kind';
-  kindSpan.textContent = 'agent call';
+  kindSpan.textContent = 'agent turn sum';
   const codeEl = document.createElement('code');
   codeEl.textContent = `${data.provider || ''}/${data.model || ''}`;
   head.appendChild(kindSpan);
