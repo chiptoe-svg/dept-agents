@@ -6,8 +6,8 @@ This is NanoClaw v2, a ground-up rewrite with breaking changes throughout. It ca
 
 **Do this instead:**
 1. Abort the merge: `git merge --abort` (or `git reset --hard ORIG_HEAD` if the merge already completed).
-2. Tell the user, verbatim: *"This is the v2 rewrite — it can't be merged into your existing install. Run `bash migrate-v2.sh` to migrate instead."*
-3. Wait for the user to confirm before doing anything else. Do not attempt the migration yourself.
+2. Tell the user, verbatim: *"This is the v2 rewrite — it can't be merged into your existing install. Exit Claude Code (or open a separate terminal) and run `bash migrate-v2.sh` from the shell."*
+3. Wait for the user to confirm before doing anything else. Do not run the migration script yourself — it requires an interactive terminal and cannot be run from within Claude Code.
 
 If you are a fresh install (you ran `git clone`, not `git pull`) and there are no conflicts, ignore this banner and continue below.
 
@@ -16,6 +16,32 @@ If you are a fresh install (you ran `git clone`, not `git pull`) and there are n
 # NanoClaw
 
 Personal Claude assistant. See [README.md](README.md) for philosophy and setup. Architecture lives in `docs/`.
+
+## Workflow Rules
+
+### 0. Plan Before Executing
+
+For any non-trivial task (multi-step features, multi-phase work, anything beyond a single localized edit): write the plan to `plans/<feature>.md` **before** starting implementation. The plan must enumerate all phases / steps with enough detail that a future session (or a different Claude) can resume mid-stream without guessing. Update the file as the plan evolves and tick phases off as they land. Conversation-only plans are not acceptable — they vanish when the session ends.
+
+### 1. Don't assume. Don't hide confusion. Surface tradeoffs.
+
+If you don't understand the request, the codebase, or which of several reasonable approaches the user wants — say so before you act. "I'm going to guess X" is fine; silently picking X and writing 200 lines around it is not. When there are tradeoffs, name them out loud rather than picking and hoping.
+
+### 2. Minimum code that solves the problem. Nothing speculative.
+
+No abstractions, helpers, configuration knobs, or feature flags built "in case we need them later." If a future task needs them, the future task can add them. Three similar lines beats a premature abstraction.
+
+### 3. Touch only what you must. Clean up only your own mess.
+
+Stay inside the scope the user asked for. Don't refactor adjacent code, don't reformat unrelated files, don't fix bugs you happen to notice unless the user told you to. If you make a mess (dead code, unused imports, half-written helpers) in the course of your work, clean *that* up. Other people's pre-existing mess is not your job.
+
+### 4. Define success criteria. Loop until verified.
+
+Before starting, state what "done" looks like in concrete, checkable terms (tests passing, build clean, specific behavior reproduced). After finishing, run those checks. If they fail, fix and re-run — don't declare done on the strength of "it looks right."
+
+### 5. Respect the small-trunk-with-skills philosophy.
+
+Before adding any new module, dependency, or capability to trunk: ask whether it belongs on a long-lived branch installed by a skill (the pattern used for channel adapters in the `channels` branch and non-default providers in the `providers` branch). Anything channel-specific, provider-specific, integration-specific, or category-specific (Google Workspace, classroom features, third-party services) defaults to a branch + install skill, not trunk. Trunk should be infrastructure that EVERY install needs, not features any subset uses. When in doubt, surface the choice up front before committing — discovering after-the-fact that trunk has accumulated GWS / classroom / integration code triggers expensive refactors.
 
 ## Quick Context
 
@@ -53,6 +79,8 @@ Exactly one writer per file — no cross-mount lock contention. Heartbeat is a f
 
 `data/v2.db` holds everything that isn't per-session: users, user_roles, agent_groups, messaging_groups, wiring, pending_approvals, user_dms, chat_sdk_* (for the Chat SDK bridge), schema_version. Migrations live at `src/db/migrations/`.
 
+For ad-hoc queries from skills or scripts, use the in-tree wrapper rather than the `sqlite3` CLI: `pnpm exec tsx scripts/q.ts <db> "<sql>"`. The host setup intentionally avoids depending on the `sqlite3` binary (`setup/verify.ts:5`); the wrapper goes through the `better-sqlite3` dep that setup already installs and verifies. Default-output format matches `sqlite3 -list` (pipe-separated, no header) so existing skill text reads identically.
+
 ## Key Files
 
 | File | Purpose |
@@ -62,21 +90,48 @@ Exactly one writer per file — no cross-mount lock contention. Heartbeat is a f
 | `src/delivery.ts` | Polls `outbound.db`, delivers via adapter, handles system actions (schedule, approvals, etc.) |
 | `src/host-sweep.ts` | 60s sweep: `processing_ack` sync, stale detection, due-message wake, recurrence |
 | `src/session-manager.ts` | Resolves sessions; opens `inbound.db` / `outbound.db`; manages heartbeat path |
-| `src/container-runner.ts` | Spawns per-agent-group Docker containers with session DB + outbox mounts, OneCLI `ensureAgent` |
+| `src/container-runner.ts` | Spawns per-agent-group Docker containers with session DB + outbox mounts, injects credential-proxy env vars |
+| `src/credential-proxy.ts` | Local HTTP proxy on port 3001 — containers send placeholder credentials, proxy substitutes real keys/OAuth tokens, forwards to api.anthropic.com (default path) or api.openai.com (`/openai/*` prefix) |
 | `src/container-runtime.ts` | Runtime selection (Docker vs Apple containers), orphan cleanup |
 | `src/modules/permissions/access.ts` | `canAccessAgentGroup` — owner / global admin / scoped admin / member resolution against `user_roles` + `agent_group_members` |
 | `src/modules/approvals/primitive.ts` | `pickApprover`, `pickApprovalDelivery`, `requestApproval`, approval-handler registry |
 | `src/command-gate.ts` | Router-side admin command gate — queries `user_roles` directly (no env var, no container-side check) |
-| `src/onecli-approvals.ts` | OneCLI credentialed-action approval bridge |
 | `src/user-dm.ts` | Cold-DM resolution + `user_dms` cache |
 | `src/group-init.ts` | Per-agent-group filesystem scaffold (CLAUDE.md, skills, agent-runner-src overlay) |
 | `src/db/` | DB layer — agent_groups, messaging_groups, sessions, user_roles, user_dms, pending_*, migrations |
 | `src/channels/` | Channel adapter infra (registry, Chat SDK bridge); specific channel adapters are skill-installed from the `channels` branch |
 | `src/providers/` | Host-side provider container-config (`claude` baked in; `opencode` etc. installed from the `providers` branch) |
 | `container/agent-runner/src/` | Agent-runner: poll loop, formatter, provider abstraction, MCP tools, destinations |
-| `container/skills/` | Container skills mounted into every agent session |
+| `container/skills/` | Container skills mounted into every agent session (`onecli-gateway`, `welcome`, `self-customize`, `agent-browser`, `slack-formatting`) |
 | `groups/<folder>/` | Per-agent-group filesystem (CLAUDE.md, skills, per-group `agent-runner-src/` overlay) |
 | `scripts/init-first-agent.ts` | Bootstrap the first DM-wired agent (used by `/init-first-agent` skill) |
+| `migrate-v2.sh` + `setup/migrate-v2/` | v1→v2 migration. Standalone script: `bash migrate-v2.sh`. Seeds DB, copies groups/sessions, installs channels, builds container, offers service switchover, then hands off to `/migrate-from-v1` skill for owner setup and CLAUDE.md cleanup. See [docs/migration-dev.md](docs/migration-dev.md). |
+
+## Admin CLI (`ncl`)
+
+`ncl` queries and modifies the central DB — agent groups, messaging groups, wirings, users, roles, and more. On the host it connects via Unix socket (`src/cli/socket-server.ts`); inside containers it uses the session DB transport (`container/agent-runner/src/cli/ncl.ts`).
+
+```
+ncl <resource> <verb> [<id>] [--flags]
+ncl <resource> help
+ncl help
+```
+
+| Resource | Verbs | What it is |
+|----------|-------|------------|
+| groups | list, get, create, update, delete | Agent groups (workspace, personality, container config) |
+| messaging-groups | list, get, create, update, delete | A single chat/channel on one platform |
+| wirings | list, get, create, update, delete | Links a messaging group to an agent group (session mode, triggers) |
+| users | list, get, create, update | Platform identities (`<channel>:<handle>`) |
+| roles | list, grant, revoke | Owner / admin privileges (global or scoped to an agent group) |
+| members | list, add, remove | Unprivileged access gate for an agent group |
+| destinations | list, add, remove | Where an agent group can send messages |
+| sessions | list, get | Active sessions (read-only) |
+| user-dms | list | Cold-DM cache (read-only) |
+| dropped-messages | list | Messages from unregistered senders (read-only) |
+| approvals | list, get | Pending approval requests (read-only) |
+
+Key files: `src/cli/dispatch.ts` (dispatcher + approval handler), `src/cli/crud.ts` (generic CRUD registration), `src/cli/resources/` (per-resource definitions).
 
 ## Channels and Providers (skill-installed)
 
@@ -95,42 +150,23 @@ One tier of agent self-modification today:
 
 A second tier (direct source-level self-edits via a draft/activate flow) is planned but not yet implemented.
 
-## Secrets / Credentials / OneCLI
+## Secrets / Credentials
 
-API keys, OAuth tokens, and auth credentials are managed by the OneCLI gateway. Secrets are injected into per-agent containers at request time — none are passed in env vars or through chat context. `src/onecli-approvals.ts`, `ensureAgent()` in `container-runner.ts`. Run `onecli --help`.
+Credentials live on the host in `.env`. Containers receive placeholder values only; the local credential proxy at `127.0.0.1:3001` (bound to docker0 IP on Linux so containers can reach it) substitutes real keys/tokens at request time. None of these secrets ever sit in container env vars or chat context.
 
-### Gotcha: auto-created agents start in `selective` secret mode
+**Wiring:** `src/credential-proxy.ts` (the proxy), `src/container-runner.ts` `buildContainerArgs` (sets container env). On startup the proxy reads from `.env`: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_AUTH_TOKEN`, `OPENAI_API_KEY`, plus optional `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` overrides.
 
-When the host first spawns a session for a new agent group, `container-runner.ts:385` calls `onecli.ensureAgent({ name, identifier })`. The OneCLI `POST /api/agents` endpoint creates the agent in **`selective`** secret mode — meaning **no secrets are assigned to it by default**, even if the secrets exist in the vault and have host patterns that would otherwise match.
+**Container env at spawn time:**
+- `ANTHROPIC_BASE_URL=http://host.docker.internal:3001` — Anthropic SDK target
+- `OPENAI_BASE_URL=http://host.docker.internal:3001/openai/v1` — OpenAI SDK target (the `/openai` prefix is how the proxy multiplexes providers; `/v1` is OpenAI's own API version)
+- `ANTHROPIC_API_KEY=placeholder` *or* `CLAUDE_CODE_OAUTH_TOKEN=placeholder` (depending on host's auth mode)
+- `OPENAI_API_KEY=placeholder` (always — SDKs refuse to init without it)
 
-Symptom: container starts, the proxy + CA cert are wired correctly, but the agent gets `401 Unauthorized` (or similar) from APIs whose credentials *are* in the vault. The credential just isn't in this agent's allow-list.
+**OAuth handling:** when the host runs in OAuth mode, the proxy exchanges the placeholder for the real Claude OAuth token (auto-refreshed from `~/.claude/.credentials.json`). For Anthropic API key mode, the proxy simply rewrites the `x-api-key` header. For OpenAI, the proxy injects `Authorization: Bearer <real key>`.
 
-The SDK does not expose `setSecretMode` — the only fix is the CLI (or the web UI at `http://127.0.0.1:10254`).
+**Rotation:** edit `.env`, restart the host (`systemctl --user restart nanoclaw`). No container rebuild — every future spawn picks up the new key on its next request.
 
-```bash
-# Find the agent (identifier is the agent group id)
-onecli agents list
-
-# Flip to "all" so every vault secret with a matching host pattern gets injected
-onecli agents set-secret-mode --id <agent-id> --mode all
-
-# Or, stay selective and assign specific secrets
-onecli secrets list                                    # find secret ids
-onecli agents set-secrets --id <agent-id> --secret-ids <id1>,<id2>
-
-# Inspect what an agent currently has
-onecli agents secrets --id <agent-id>                  # secrets assigned to this agent
-onecli secrets list                                    # all vault secrets (with host patterns)
-```
-
-If you've just enabled `mode all`, no container restart is needed — the gateway looks up secrets per request, so the next API call from the running container will see the new credentials.
-
-### Requiring approval for credential use
-
-Approval-gating credentialed actions is a **two-sided** flow:
-
-- **Server-side** (OneCLI gateway): decides *when* to hold a request and emit a pending approval. As of `onecli@1.3.0`, the CLI does **not** expose this — `rules create --action` only accepts `block` or `rate_limit`, and `secrets create` has no approval flag. Approval policies must be configured via the OneCLI web UI at `http://127.0.0.1:10254`. If/when the CLI grows an `approve` action, this section needs updating.
-- **Host-side** (nanoclaw): receives pending approvals and routes them to a human. `src/modules/approvals/onecli-approvals.ts` registers a callback via `onecli.configureManualApproval(cb)` (long-polls `GET /api/approvals/pending`). The callback uses `pickApprover` + `pickApprovalDelivery` from `src/modules/approvals/primitive.ts` to DM an approver. Approvers are resolved from the `user_roles` table — preference order: scoped admins for the agent group → global admins → owners. There is no env var like `NANOCLAW_ADMIN_USER_IDS`; roles are persisted in the central DB only.
+**Adding a new provider:** add the key to `readEnvFile()` in `credential-proxy.ts`, add a routing branch (path prefix or host match), set the corresponding `*_BASE_URL=http://host:3001/<prefix>/...` in `container-runner.ts`'s `buildContainerArgs`. Mirror the OpenAI pattern.
 
 If approvals are configured server-side but the host callback isn't running (or throws), every credentialed call hangs until the gateway times out. Conversely, if the gateway has no rule asking for approval, the host callback never fires regardless of how it's wired.
 
@@ -140,7 +176,7 @@ Four types of skills. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full taxono
 
 - **Channel/provider install skills** — copy the relevant module(s) in from the `channels` or `providers` branch, wire imports, install pinned deps (e.g. `/add-discord`, `/add-slack`, `/add-whatsapp`, `/add-opencode`).
 - **Utility skills** — ship code files alongside `SKILL.md` (e.g. `/claw`).
-- **Operational skills** — instruction-only workflows (`/setup`, `/debug`, `/customize`, `/init-first-agent`, `/manage-channels`, `/init-onecli`, `/update-nanoclaw`).
+- **Operational skills** — instruction-only workflows (`/setup`, `/debug`, `/customize`, `/init-first-agent`, `/manage-channels`, `/update-nanoclaw`).
 - **Container skills** — loaded inside agent containers at runtime (`container/skills/`: `welcome`, `self-customize`, `agent-browser`, `slack-formatting`).
 
 | Skill | When to Use |
@@ -151,11 +187,21 @@ Four types of skills. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full taxono
 | `/customize` | Adding channels, integrations, behavior changes |
 | `/debug` | Container issues, logs, troubleshooting |
 | `/update-nanoclaw` | Bring upstream updates into a customized install |
-| `/init-onecli` | Install OneCLI Agent Vault and migrate `.env` credentials |
 
 ## Contributing
 
 Before creating a PR, adding a skill, or preparing any contribution, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md). It covers accepted change types, the four skill types and their guidelines, `SKILL.md` format rules, and the pre-submission checklist.
+
+## PR Hygiene
+
+Before creating a PR, run these checks:
+
+```bash
+git diff upstream/main --stat HEAD
+git log upstream/main..HEAD --oneline
+```
+
+Show the output and wait for approval. Installation-specific files (group files, .claude/settings.json, local configs) should not be included.
 
 ## Development
 
@@ -186,7 +232,17 @@ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # restart
 systemctl --user start|stop|restart nanoclaw
 ```
 
-Host logs: `logs/nanoclaw.log` (normal) and `logs/nanoclaw.error.log` (errors only — some delivery/approval failures only show up here).
+## Troubleshooting
+
+Check these first when something goes wrong:
+
+| What | Where |
+|------|-------|
+| Host logs | `logs/nanoclaw.error.log` first (delivery failures, crash-loop backoff, warnings), then `logs/nanoclaw.log` for the full routing chain |
+| Setup logs | `logs/setup.log` (overall), `logs/setup-steps/*.log` (per-step: bootstrap, environment, container, onecli, mounts, service, etc.) |
+| Session DBs | `data/v2-sessions/<agent-group>/<session>/` — `inbound.db` (`messages_in`: did the message reach the container?), `outbound.db` (`messages_out`: did the agent produce a response?) |
+
+Note: container logs are lost after the container exits (`--rm` flag). If the agent silently failed inside the container, there's no persistent log to inspect.
 
 ## Supply Chain Security (pnpm)
 
@@ -211,6 +267,8 @@ This project uses pnpm with `minimumReleaseAge: 4320` (3 days) in `pnpm-workspac
 | [docs/setup-wiring.md](docs/setup-wiring.md) | What's wired, what's open in the setup flow |
 | [docs/architecture-diagram.md](docs/architecture-diagram.md) | Diagram version of the architecture |
 | [docs/build-and-runtime.md](docs/build-and-runtime.md) | Runtime split (Node host + Bun container), lockfiles, image build surface, CI, key invariants |
+| [docs/v1-to-v2-changes.md](docs/v1-to-v2-changes.md) | v1→v2 architecture diff — vocabulary for where v1 things moved |
+| [docs/migration-dev.md](docs/migration-dev.md) | Migration development guide — testing, debugging, dev loop |
 
 ## Container Build Cache
 

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NanoClaw — verify your sign-in</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <style>
+    body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: #fafafa; color: #222; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 24px 28px; max-width: 420px; width: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-weight: 600; }
+    .brand img { width: 28px; height: 28px; }
+    h1 { margin: 0 0 4px 0; font-size: 18px; }
+    p { margin: 8px 0; color: #444; font-size: 14px; }
+    .muted { color: #888; font-size: 13px; }
+    label { display: block; font-size: 12px; color: #555; margin-top: 14px; margin-bottom: 4px; }
+    input[type="text"] {
+      width: 100%; box-sizing: border-box; font: inherit; font-size: 22px; letter-spacing: 0.3em; text-align: center;
+      padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; font-family: ui-monospace, Menlo, monospace;
+    }
+    input[type="text"]:focus { border-color: #4a90e2; outline: 2px solid rgba(74,144,226,0.2); }
+    button { display: block; width: 100%; margin-top: 16px; padding: 10px 12px; font: inherit; font-size: 14px; font-weight: 600;
+             background: #4a90e2; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+    button:disabled { background: #aaa; cursor: not-allowed; }
+    .error { color: #a44; font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+    .ok { color: #2a7; font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><img src="/nanoclaw-icon.png" alt=""> NanoClaw</div>
+    <h1>Check your school email</h1>
+    <p>We sent a 6-digit code to your school email address. Enter it below to finish signing in.</p>
+    <p class="muted" id="meta"></p>
+
+    <form id="pin-form">
+      <label for="pin">6-digit code</label>
+      <input type="text" id="pin" inputmode="numeric" maxlength="6" pattern="\d{6}" autocomplete="one-time-code" autofocus>
+      <button type="submit" id="submit">Sign in</button>
+      <div class="error" id="error"></div>
+      <div class="ok" id="ok"></div>
+    </form>
+  </div>
+
+  <script>
+    (async function () {
+      const url = new URL(window.location.href);
+      const token = url.searchParams.get('token');
+      const pendingFromUrl = url.searchParams.get('p');
+
+      const errorEl = document.getElementById('error');
+      const okEl = document.getElementById('ok');
+      const submitBtn = document.getElementById('submit');
+      const pinInput = document.getElementById('pin');
+
+      let pendingId = pendingFromUrl;
+
+      // If we arrived with ?token=..., issue a PIN first.
+      if (token && !pendingId) {
+        try {
+          const r = await fetch('/login/pin/issue', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ token }),
+          });
+          if (!r.ok) {
+            errorEl.textContent = 'Could not start sign-in. Ask your instructor for a fresh link.';
+            submitBtn.disabled = true;
+            return;
+          }
+          const data = await r.json();
+          pendingId = data.pendingId;
+          okEl.textContent = 'Code sent. Check your inbox.';
+          // Replace the URL so a refresh doesn't re-issue (would mint a fresh PIN, invalidating the one in the email).
+          history.replaceState(null, '', `/login/pin?p=${encodeURIComponent(pendingId)}`);
+        } catch (err) {
+          errorEl.textContent = 'Network error. Try again in a moment.';
+          submitBtn.disabled = true;
+          return;
+        }
+      } else if (!pendingId) {
+        errorEl.textContent = 'No sign-in in progress. Click your bookmark URL again.';
+        submitBtn.disabled = true;
+        return;
+      }
+
+      document.getElementById('meta').textContent = `Reference: ${pendingId.slice(0, 8)}…`;
+
+      document.getElementById('pin-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorEl.textContent = '';
+        const pin = pinInput.value.trim();
+        if (!/^\d{6}$/.test(pin)) {
+          errorEl.textContent = 'PIN must be 6 digits.';
+          return;
+        }
+        submitBtn.disabled = true;
+        try {
+          const r = await fetch('/login/pin/verify', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ pendingId, pin }),
+          });
+          const data = await r.json();
+          if (r.ok) {
+            okEl.textContent = 'Signed in. Redirecting…';
+            window.location.href = data.redirect || '/playground/';
+            return;
+          }
+          if (data.error === 'wrong-pin') errorEl.textContent = "That PIN didn't match. Try again.";
+          else if (data.error === 'expired') errorEl.textContent = 'PIN expired. Click your bookmark URL again to get a fresh one.';
+          else if (data.error === 'rate-limited') errorEl.textContent = 'Too many wrong attempts. Click your bookmark URL again to get a fresh PIN.';
+          else if (data.error === 'used') errorEl.textContent = 'PIN already used. Click your bookmark URL again to get a fresh one.';
+          else errorEl.textContent = `Sign-in failed: ${data.error || 'unknown error'}`;
+          submitBtn.disabled = false;
+        } catch (err) {
+          errorEl.textContent = 'Network error. Try again in a moment.';
+          submitBtn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

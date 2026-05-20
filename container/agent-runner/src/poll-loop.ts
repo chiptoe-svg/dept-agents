@@ -1,13 +1,19 @@
-import { findByName, getAllDestinations, type DestinationEntry } from './destinations.js';
+import { findByName, findByRouting, getAllDestinations, type DestinationEntry } from './destinations.js';
 import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } from './db/messages-in.js';
 import { writeMessageOut } from './db/messages-out.js';
-import { touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
+import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
+import { clearContinuation, migrateLegacyContinuation, setContinuation } from './db/session-state.js';
+import { clearCurrentInReplyTo, setCurrentInReplyTo } from './current-batch.js';
 import {
-  clearContinuation,
-  migrateLegacyContinuation,
-  setContinuation,
-} from './db/session-state.js';
-import { formatMessages, extractRouting, categorizeMessage, isClearCommand, stripInternalTags, type RoutingContext } from './formatter.js';
+  extractImagePaths,
+  formatMessages,
+  extractRouting,
+  categorizeMessage,
+  isClearCommand,
+  isRunnerCommand,
+  stripInternalTags,
+  type RoutingContext,
+} from './formatter.js';
 import type { AgentProvider, AgentQuery, ProviderEvent } from './providers/types.js';
 
 const POLL_INTERVAL_MS = 1000;
@@ -158,6 +164,14 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
     // provider natively handles slash commands), others get XML.
     const prompt = formatMessagesWithCommands(keep, config.provider.supportsNativeSlashCommands);
 
+    // Pull container-visible paths for any image attachments stamped by the
+    // host's channel adapter. The Claude/Codex providers forward these to
+    // their upstream multimodal APIs; text-only providers ignore them.
+    const imagePaths = extractImagePaths(keep);
+    if (imagePaths.length > 0) {
+      log(`Forwarding ${imagePaths.length} image attachment(s) to provider: ${imagePaths.join(', ')}`);
+    }
+
     log(`Processing ${keep.length} message(s), kinds: ${[...new Set(keep.map((m) => m.kind))].join(',')}`);
 
     const query = config.provider.query({
@@ -165,11 +179,15 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
       continuation,
       cwd: config.cwd,
       systemContext: config.systemContext,
+      imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
     });
 
     // Process the query while concurrently polling for new messages
     const skippedSet = new Set(skipped);
     const processingIds = ids.filter((id) => !commandIds.includes(id) && !skippedSet.has(id));
+    // Publish the batch's in_reply_to so MCP tools (send_message, send_file)
+    // can stamp it on outbound rows — needed for a2a return-path routing.
+    setCurrentInReplyTo(routing.inReplyTo);
     try {
       const result = await processQuery(query, routing, processingIds, config.providerName);
       if (result.continuation && result.continuation !== continuation) {
@@ -198,6 +216,8 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
         thread_id: routing.threadId,
         content: JSON.stringify({ text: `Error: ${errMsg}` }),
       });
+    } finally {
+      clearCurrentInReplyTo();
     }
 
     // Ensure completed even if processQuery ended without a result event
@@ -255,36 +275,90 @@ async function processQuery(
   let done = false;
 
   // Concurrent polling: push follow-ups into the active query as they arrive.
-  // We do NOT force-end the stream on silence — keeping the query open is
-  // strictly cheaper than close+reopen (no cold prompt cache, no reconnect).
+  // We do NOT force-end the stream on silence — keeping the query open avoids
+  // re-spawning the SDK subprocess (~few seconds) and re-loading the .jsonl
+  // transcript on every turn. The Anthropic prompt cache is server-side with
+  // a 5-min TTL keyed on prefix hash, so stream lifecycle does NOT affect
+  // cache lifetime — close+reopen within 5 min still gets cache hits.
   // Stream liveness is decided host-side via the heartbeat file + processing
   // claim age (see src/host-sweep.ts); if something is truly stuck, the host
   // will kill the container and messages get reset to pending.
+  let pollInFlight = false;
+  let endedForCommand = false;
   const pollHandle = setInterval(() => {
-    if (done) return;
+    if (done || pollInFlight || endedForCommand) return;
+    pollInFlight = true;
 
-    // Skip system messages (MCP tool responses) and /clear (needs fresh query).
-    // Thread routing is the router's concern — if a message landed in this
-    // session, the agent should see it. Per-thread sessions already isolate
-    // threads into separate containers; shared sessions intentionally merge
-    // everything. Filtering on thread_id here caused deadlocks when the
-    // initial batch and follow-ups had mismatched thread_ids (e.g. a
-    // host-generated welcome trigger with null thread vs a Discord DM reply).
-    const newMessages = getPendingMessages().filter((m) => {
-      if (m.kind === 'system') return false;
-      if ((m.kind === 'chat' || m.kind === 'chat-sdk') && isClearCommand(m)) return false;
-      return true;
-    });
-    if (newMessages.length > 0) {
-      const newIds = newMessages.map((m) => m.id);
-      markProcessing(newIds);
+    void (async () => {
+      try {
+        const pending = getPendingMessages();
 
-      const prompt = formatMessages(newMessages);
-      log(`Pushing ${newMessages.length} follow-up message(s) into active query`);
-      query.push(prompt);
+        // Slash commands need a fresh query: /clear resets the SDK's
+        // resume id (fixed at sdkQuery() time); admin/passthrough commands
+        // (/compact, /cost, …) only dispatch when they're the first input
+        // of a query — pushed mid-stream they arrive as plain text and
+        // the SDK never runs them. End the stream and leave the rows
+        // pending; the outer loop handles them on next iteration via the
+        // canonical command path + formatMessagesWithCommands.
+        if (pending.some((m) => isRunnerCommand(m))) {
+          log('Pending slash command — ending stream so outer loop can process');
+          endedForCommand = true;
+          query.end();
+          return;
+        }
 
-      markCompleted(newIds);
-    }
+        // Skip system messages (MCP tool responses).
+        // Thread routing is the router's concern — if a message landed in this
+        // session, the agent should see it. Per-thread sessions already isolate
+        // threads into separate containers; shared sessions intentionally merge
+        // everything. Filtering on thread_id here caused deadlocks when the
+        // initial batch and follow-ups had mismatched thread_ids (e.g. a
+        // host-generated welcome trigger with null thread vs a Discord DM reply).
+        const newMessages = pending.filter((m) => m.kind !== 'system');
+        if (newMessages.length === 0) return;
+
+        const newIds = newMessages.map((m) => m.id);
+        markProcessing(newIds);
+
+        // Run pre-task scripts on follow-ups too — without this, a task that
+        // arrives during an active query (e.g. a */10 monitoring cron) bypasses
+        // its script gate and always wakes the agent, defeating the gate.
+        // Mirrors the initial-batch hook above.
+        let keep = newMessages;
+        let skipped: string[] = [];
+        // MODULE-HOOK:scheduling-pre-task-followup:start
+        const { applyPreTaskScripts } = await import('./scheduling/task-script.js');
+        const preTask = await applyPreTaskScripts(newMessages);
+        keep = preTask.keep;
+        skipped = preTask.skipped;
+        if (skipped.length > 0) {
+          markCompleted(skipped);
+          log(`Pre-task script skipped ${skipped.length} follow-up task(s): ${skipped.join(', ')}`);
+        }
+        // MODULE-HOOK:scheduling-pre-task-followup:end
+
+        if (keep.length === 0) return;
+        // Re-check done — the outer query may have finished while the script
+        // was awaited. Pushing into a closed stream is wasted work; the
+        // claimed messages get released by the host's processing-claim sweep.
+        if (done) return;
+
+        const keptIds = keep.map((m) => m.id);
+        const prompt = formatMessages(keep);
+        log(`Pushing ${keep.length} follow-up message(s) into active query`);
+        query.push(prompt);
+        markCompleted(keptIds);
+      } catch (err) {
+        // Without this catch the rejection escapes the void IIFE and Node
+        // terminates the container on unhandled-rejection. The initial-batch
+        // path is wrapped by processQuery's outer try/catch; the follow-up
+        // path is not, so it needs its own.
+        const errMsg = err instanceof Error ? err.message : String(err);
+        log(`Follow-up poll error: ${errMsg}`);
+      } finally {
+        pollInFlight = false;
+      }
+    })();
   }, ACTIVE_POLL_INTERVAL_MS);
 
   try {
@@ -310,7 +384,33 @@ async function processQuery(
         // at all — either way the turn is finished.
         markCompleted(initialBatchIds);
         if (event.text) {
-          dispatchResultText(event.text, routing);
+          const cost: ResultCost = {
+            tokensIn: event.tokens?.input,
+            tokensOut: event.tokens?.output,
+            tokensCacheCreation: event.tokens?.cacheCreation,
+            tokensCacheRead: event.tokens?.cacheRead,
+            latencyMs: event.latencyMs,
+            provider: event.provider,
+            model: event.model,
+          };
+          dispatchResultText(event.text, routing, cost);
+        }
+      } else if (event.type === 'compacted') {
+        // The SDK auto-compacted the conversation. After compaction the
+        // model often drops the learned `<message to="…">` wrapping
+        // discipline (the destinations are still in the system prompt,
+        // but the behavioral pattern is summarized away). Inject a
+        // reminder back into the live query so the next turn re-anchors
+        // on the destination model. Only do this when there's >1
+        // destination — single-destination groups have a fallback that
+        // works without wrapping. See qwibitai/nanoclaw#2325.
+        const destinations = getAllDestinations();
+        if (destinations.length > 1) {
+          const names = destinations.map((d) => d.name).join(', ');
+          query.push(
+            `[system] Context was just compacted. Reminder: you have ${destinations.length} destinations (${names}). ` +
+              `Use <message to="name"> blocks to address them. Bare text goes to the scratchpad fallback only.`,
+          );
         }
       }
     }
@@ -322,7 +422,7 @@ async function processQuery(
   return { continuation: queryContinuation };
 }
 
-function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
+function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
   switch (event.type) {
     case 'init':
       log(`Session: ${event.continuation}`);
@@ -331,12 +431,83 @@ function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
       log(`Result: ${event.text ? event.text.slice(0, 200) : '(empty)'}`);
       break;
     case 'error':
-      log(`Error: ${event.message} (retryable: ${event.retryable}${event.classification ? `, ${event.classification}` : ''})`);
+      log(
+        `Error: ${event.message} (retryable: ${event.retryable}${event.classification ? `, ${event.classification}` : ''})`,
+      );
       break;
     case 'progress':
       log(`Progress: ${event.message}`);
       break;
+    case 'compacted':
+      log(`Compacted: ${event.text}`);
+      break;
+    case 'tool_use':
+    case 'tool_result':
+    case 'model_call':
+      emitTraceToPlayground(event, routing);
+      break;
   }
+}
+
+/**
+ * Push a trace event toward the playground SSE stream — but only when
+ * the originating message came from a playground channel. Without a
+ * playground watching, the trace write would be dead weight in
+ * messages_out and would also surface as garbage on non-playground
+ * adapters (which would then drop it, but better not to write at all).
+ *
+ * Host-side, `src/delivery.ts` intercepts `kind: 'trace'` rows before
+ * the standard channel handoff and routes them to playground's
+ * pushToDraft. Telegram/Slack/etc. never see them.
+ */
+function emitTraceToPlayground(
+  event: ProviderEvent & { type: 'tool_use' | 'tool_result' | 'model_call' },
+  routing: RoutingContext,
+): void {
+  if (routing.channelType !== 'playground' || !routing.platformId) return;
+
+  let payload: Record<string, unknown>;
+  if (event.type === 'tool_use') {
+    payload = { type: 'tool_use', toolUseId: event.toolUseId, toolName: event.toolName, input: event.input };
+  } else if (event.type === 'tool_result') {
+    payload = { type: 'tool_result', toolUseId: event.toolUseId, content: event.content, isError: event.isError };
+  } else {
+    // model_call — per-response token deltas. The playground renderer
+    // pairs this with the agent group's current provider/model (already
+    // visible in the dropdown) to compute cost client-side.
+    payload = {
+      type: 'model_call',
+      tokensIn: event.tokensIn,
+      tokensCached: event.tokensCached,
+      tokensOut: event.tokensOut,
+      tokensReasoning: event.tokensReasoning,
+    };
+  }
+
+  writeMessageOut({
+    id: generateId(),
+    kind: 'trace',
+    platform_id: routing.platformId,
+    channel_type: 'playground',
+    thread_id: null,
+    content: JSON.stringify(payload),
+  });
+}
+
+interface ResultCost {
+  tokensIn?: number;
+  tokensOut?: number;
+  /** Anthropic only: tokens written to prompt cache, billed at 1.25× base input. */
+  tokensCacheCreation?: number;
+  /**
+   * Tokens served from prompt cache. Anthropic bills at 0.10× base input;
+   * OpenAI prefix-cache typically at 0.50×. Provider-specific rate applied
+   * client-side in chat.js computeAgentCallCost.
+   */
+  tokensCacheRead?: number;
+  latencyMs?: number;
+  provider?: string;
+  model?: string;
 }
 
 /**
@@ -345,23 +516,32 @@ function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
  * (including <internal>...</internal>) is normally scratchpad — logged but
  * not sent.
  *
- * Single-destination shortcut: if the agent has exactly one configured
- * destination AND the output contains zero <message> blocks, the entire
- * cleaned text (with <internal> tags stripped) is sent to that destination.
- * This preserves the simple case of one user on one channel — the agent
- * doesn't need to know about wrapping syntax at all.
+ * Exception: single-destination groups have a bare-text fallback. When the
+ * group has exactly one destination wired and the agent emitted no valid
+ * <message> blocks, the bare text outside <internal> is delivered to that
+ * one destination. This lets smaller or less-instruction-following models
+ * (e.g. Qwen3.6 via the `local` provider) work as drop-in providers without
+ * the user seeing silent drops every time the model skips the wrapping.
+ * Multi-destination groups still require explicit wrapping — there's no
+ * sensible default when more than one destination is in play.
  */
-function dispatchResultText(text: string, routing: RoutingContext): void {
+export function dispatchResultText(text: string, routing: RoutingContext, cost?: ResultCost): void {
   const MESSAGE_RE = /<message\s+to="([^"]+)"\s*>([\s\S]*?)<\/message>/g;
 
   let match: RegExpExecArray | null;
   let sent = 0;
   let lastIndex = 0;
   const scratchpadParts: string[] = [];
+  // Bare text outside any <message> block, accumulated separately from
+  // scratchpadParts so the fallback can use it without including
+  // "[dropped: unknown destination …]" debug markers from rejected blocks.
+  const bareParts: string[] = [];
 
   while ((match = MESSAGE_RE.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      scratchpadParts.push(text.slice(lastIndex, match.index));
+      const between = text.slice(lastIndex, match.index);
+      scratchpadParts.push(between);
+      bareParts.push(between);
     }
     const toName = match[1];
     const body = match[2].trim();
@@ -373,63 +553,105 @@ function dispatchResultText(text: string, routing: RoutingContext): void {
       scratchpadParts.push(`[dropped: unknown destination "${toName}"] ${body}`);
       continue;
     }
-    sendToDestination(dest, body, routing);
+    sendToDestination(dest, body, routing, cost);
     sent++;
   }
   if (lastIndex < text.length) {
-    scratchpadParts.push(text.slice(lastIndex));
+    const tail = text.slice(lastIndex);
+    scratchpadParts.push(tail);
+    bareParts.push(tail);
   }
 
   const scratchpad = stripInternalTags(scratchpadParts.join(''));
-
-  // Single-destination shortcut: the agent wrote plain text — send to
-  // the session's originating channel (from session_routing) if available,
-  // otherwise fall back to the single destination.
-  if (sent === 0 && scratchpad) {
-    if (routing.channelType && routing.platformId) {
-      // Reply to the channel/thread the message came from
-      writeMessageOut({
-        id: generateId(),
-        in_reply_to: routing.inReplyTo,
-        kind: 'chat',
-        platform_id: routing.platformId,
-        channel_type: routing.channelType,
-        thread_id: routing.threadId,
-        content: JSON.stringify({ text: scratchpad }),
-      });
-      return;
-    }
-    const all = getAllDestinations();
-    if (all.length === 1) {
-      sendToDestination(all[0], scratchpad, routing);
-      return;
-    }
-  }
 
   if (scratchpad) {
     log(`[scratchpad] ${scratchpad.slice(0, 500)}${scratchpad.length > 500 ? '…' : ''}`);
   }
 
   if (sent === 0 && text.trim()) {
-    log(`WARNING: agent output had no <message to="..."> blocks — nothing was sent`);
+    const bareText = stripInternalTags(bareParts.join('')).trim();
+    if (bareText) {
+      const destinations = getAllDestinations();
+      // Prefer to reply on the channel the message came from, matching
+      // routing fields. Falls back to the lone destination only when
+      // routing is unset (system message, scheduler tick, etc.).
+      const replyDest =
+        findByRouting(routing.channelType, routing.platformId) ??
+        (destinations.length === 1 ? destinations[0] : undefined);
+      if (replyDest) {
+        log(`Bare-text fallback: delivering ${bareText.length}-char text to "${replyDest.name}"`);
+        sendToDestination(replyDest, bareText, routing, cost);
+        sent++;
+      } else {
+        log(
+          `WARNING: agent output had no <message to="..."> blocks and inbound routing didn't match any destination — nothing sent`,
+        );
+      }
+    } else {
+      log(`WARNING: agent output had no <message to="..."> blocks — nothing was sent`);
+    }
   }
 }
 
-function sendToDestination(dest: DestinationEntry, body: string, routing: RoutingContext): void {
+function sendToDestination(dest: DestinationEntry, body: string, routing: RoutingContext, cost?: ResultCost): void {
   const platformId = dest.type === 'channel' ? dest.platformId! : dest.agentGroupId!;
   const channelType = dest.type === 'channel' ? dest.channelType! : 'agent';
-  // Inherit thread_id from the inbound routing context so replies land in the
-  // same thread the conversation is in. For non-threaded adapters the router
-  // strips thread_id at ingest, so this will already be null.
+  // Resolve thread_id per-destination from the most recent inbound message
+  // that came from this same channel+platform. In agent-shared sessions,
+  // different destinations have different thread contexts — using a single
+  // routing.threadId would stamp one channel's thread onto another.
+  const destRouting = resolveDestinationThread(channelType, platformId);
+  // Cache token counts ride inside the content JSON rather than getting
+  // their own messages_out columns — keeps the session-DB schema stable
+  // across upgrades. delivery.ts on the host parses these back out and
+  // adds them to the channel-meta block so the playground trace can
+  // apply provider-specific cache rates (Anthropic 1.25×/0.10×, OpenAI
+  // prefix-cache 0.50×).
+  const contentObj: Record<string, unknown> = { text: body };
+  if (cost?.tokensCacheCreation != null && cost.tokensCacheCreation > 0) {
+    contentObj.cacheCreation = cost.tokensCacheCreation;
+  }
+  if (cost?.tokensCacheRead != null && cost.tokensCacheRead > 0) {
+    contentObj.cacheRead = cost.tokensCacheRead;
+  }
   writeMessageOut({
     id: generateId(),
-    in_reply_to: routing.inReplyTo,
+    in_reply_to: destRouting?.inReplyTo ?? routing.inReplyTo,
     kind: 'chat',
     platform_id: platformId,
     channel_type: channelType,
-    thread_id: routing.threadId,
-    content: JSON.stringify({ text: body }),
+    thread_id: destRouting?.threadId ?? null,
+    content: JSON.stringify(contentObj),
+    tokens_in: cost?.tokensIn ?? null,
+    tokens_out: cost?.tokensOut ?? null,
+    latency_ms: cost?.latencyMs ?? null,
+    provider: cost?.provider ?? null,
+    model: cost?.model ?? null,
   });
+}
+
+/**
+ * Find the thread_id and message id from the most recent inbound message
+ * matching the given channel+platform. Returns null if no match found.
+ */
+function resolveDestinationThread(
+  channelType: string,
+  platformId: string,
+): { threadId: string | null; inReplyTo: string | null } | null {
+  try {
+    const db = getInboundDb();
+    const row = db
+      .prepare(
+        `SELECT thread_id, id FROM messages_in
+         WHERE channel_type = ? AND platform_id = ?
+         ORDER BY seq DESC LIMIT 1`,
+      )
+      .get(channelType, platformId) as { thread_id: string | null; id: string } | undefined;
+    if (row) return { threadId: row.thread_id, inReplyTo: row.id };
+  } catch (err) {
+    log(`resolveDestinationThread error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return null;
 }
 
 function sleep(ms: number): Promise<void> {

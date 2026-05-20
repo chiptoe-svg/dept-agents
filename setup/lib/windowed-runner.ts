@@ -5,25 +5,24 @@
  * output stream goes silent for too long.
  *
  * Used for the container build (3–10 minutes on a fresh machine, no user
- * feedback with a plain spinner). Models the UI on claude-assist.ts's
- * 3-line action window — a single-line spinner header sitting above three
- * gutter-prefixed lines of the most recent output, redrawn in place via
- * ANSI cursor controls.
+ * feedback with a plain spinner). The 3-line action window — a
+ * single-line spinner header sitting above three gutter-prefixed lines
+ * of the most recent output, redrawn in place via ANSI cursor controls.
  *
  * Stall detection: a silence timer resets on every new line. When it hits
- * STALL_THRESHOLD_MS we pause the render, show `offerClaudeAssist` with
+ * STALL_THRESHOLD_MS we pause the render, show `offerAiCodingCliOnFailure` with
  * the step's raw log, and either resume (user said "keep waiting") or
  * let the step run its course while giving them the exit path.
  */
 import * as p from '@clack/prompts';
 import k from 'kleur';
 
-import { offerClaudeAssist } from './claude-assist.js';
+import { offerAiCodingCliOnFailure } from './cli-handoff.js';
 import { emit as phEmit } from './diagnostics.js';
 import type { StepResult, SpinnerLabels } from './runner.js';
 import { dumpTranscriptOnFailure, spawnStep, writeStepEntry } from './runner.js';
 import * as setupLog from '../logs.js';
-import { fitToWidth } from './theme.js';
+import { brandBody, fitToWidth, fmtDuration } from './theme.js';
 
 const WINDOW_SIZE = 3;
 const SPINNER_FRAMES = ['◒', '◐', '◓', '◑'];
@@ -85,9 +84,8 @@ async function runUnderWindow(
   const redraw = (): void => {
     if (stallPromptActive) return;
     out.write(`\x1b[${WINDOW_SIZE + 1}A`);
-    const elapsed = Math.round((Date.now() - start) / 1000);
     const icon = SPINNER_FRAMES[frameIdx % SPINNER_FRAMES.length];
-    const suffix = ` (${elapsed}s)`;
+    const suffix = ` (${fmtDuration(Date.now() - start)})`;
     const header = fitToWidth(labels.running, suffix);
     out.write(`\x1b[2K${k.cyan(icon)}  ${header}${k.dim(suffix)}\n`);
 
@@ -164,12 +162,11 @@ async function runUnderWindow(
   out.write(SHOW_CURSOR);
   process.off('exit', restoreCursorOnExit);
 
-  const elapsed = Math.round((Date.now() - start) / 1000);
-  const suffix = ` (${elapsed}s)`;
+  const suffix = ` (${fmtDuration(Date.now() - start)})`;
   if (result.ok) {
     const isSkipped = result.terminal?.fields.STATUS === 'skipped';
     const msg = isSkipped && labels.skipped ? labels.skipped : labels.done;
-    p.log.success(`${fitToWidth(msg, suffix)}${k.dim(suffix)}`);
+    p.log.success(`${brandBody(fitToWidth(msg, suffix))}${k.dim(suffix)}`);
   } else {
     const failMsg = labels.failed ?? labels.running.replace(/…$/, ' failed');
     p.log.error(`${fitToWidth(failMsg, suffix)}${k.dim(suffix)}`);
@@ -185,7 +182,7 @@ async function handleStall(
 ): Promise<void> {
   render.pauseRender();
   p.log.warn(
-    `This looks stuck — no output from the ${stepName} step for the last 60 seconds.`,
+    brandBody(`This looks stuck — no output from the ${stepName} step for the last 60 seconds.`),
   );
   phEmit('step_stalled', { step: stepName });
 
@@ -211,10 +208,10 @@ async function handleStall(
   );
 
   if (choice === 'help') {
-    // offerClaudeAssist runs its own spinner and may propose a fix command.
-    // We don't attempt to restart the stalled build from here — if Claude
+    // offerAiCodingCliOnFailure runs its own spinner and may propose a fix command.
+    // We don't attempt to restart the stalled build from here — if the CLI
     // proposes a command the user accepts, they can retry setup afterwards.
-    await offerClaudeAssist({
+    await offerAiCodingCliOnFailure({
       stepName,
       msg: `The ${stepName} step has produced no output for 60 seconds.`,
       hint: 'It may be hung on a slow network pull or a failing Dockerfile step.',

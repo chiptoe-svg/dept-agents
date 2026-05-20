@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — Agent Playground</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <style>
+    /* Self-contained — style.css is auth-walled, can't be loaded pre-auth.
+     * All colors inlined from the brand palette. */
+    :root {
+      --brand-blue: #4a90e2;
+      --brand-blue-hover: #357abd;
+      --brand-navy: #2a2545;
+      --bg: #f7f6f4;
+      --surface: #ffffff;
+      --surface-alt: #f1efeb;
+      --border: #e4e0d8;
+      --border-strong: #c9c2b7;
+      --text: #1d1a2e;
+      --text-muted: #6b6479;
+      --danger: #c8482a;
+      --danger-soft: #fbeae5;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    body.login-page {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 4px 12px rgba(42, 37, 69, 0.06), 0 2px 6px rgba(42, 37, 69, 0.04);
+      padding: 48px 56px;
+      width: 100%;
+      max-width: 600px;
+    }
+    .login-brand {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+    .login-brand img {
+      height: 160px;
+      width: auto;
+      max-width: 100%;
+    }
+    h1 {
+      margin: 0 0 10px;
+      color: var(--brand-navy);
+      font-size: 30px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .subtitle {
+      margin: 0 0 30px;
+      color: var(--text-muted);
+      font-size: 16px;
+      text-align: center;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 600;
+      margin-top: 14px;
+      margin-bottom: 4px;
+    }
+    input[type="email"],
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+    }
+    input:focus {
+      outline: 2px solid var(--brand-blue);
+      outline-offset: -1px;
+      border-color: var(--brand-blue);
+    }
+    .primary-btn {
+      width: 100%;
+      padding: 11px 12px;
+      background: var(--brand-blue);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    .primary-btn:hover { background: var(--brand-blue-hover); }
+    .primary-btn:focus-visible {
+      outline: 2px solid var(--brand-blue-hover);
+      outline-offset: 2px;
+    }
+    #enroll-error {
+      color: var(--danger);
+      background: var(--danger-soft);
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .footer-help {
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      text-align: center;
+    }
+    .footer-help details summary {
+      cursor: pointer;
+      user-select: none;
+      display: inline;
+    }
+    .footer-help details[open] {
+      text-align: left;
+      margin-top: 8px;
+    }
+    .footer-help details[open] summary { display: block; margin-bottom: 8px; }
+    .footer-help form {
+      display: flex;
+      gap: 6px;
+      align-items: flex-start;
+    }
+    .footer-help form input { font-size: 13px; padding: 6px 8px; }
+    .footer-help form button {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: var(--surface-alt);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #recover-status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="login-brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom"></div>
+    <h1>Sign in</h1>
+    <p class="subtitle">Use your school email and today's class passcode.</p>
+    <form id="enroll-form" autocomplete="off">
+      <label for="enroll-email">Email</label>
+      <input id="enroll-email" name="email" type="email" required autocomplete="email" placeholder="you@clemson.edu">
+      <label for="enroll-passcode">Class passcode</label>
+      <input id="enroll-passcode" name="passcode" type="text" required inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="4-digit code" autocomplete="off">
+      <p id="enroll-error" role="alert" aria-live="assertive" style="display: none;"></p>
+      <button type="submit" class="primary-btn">Sign in</button>
+    </form>
+    <div class="footer-help">
+      <details>
+        <summary>Lost your bookmark URL?</summary>
+        <p>If you signed in before via a bookmarkable URL and have misplaced it, enter your email below. We'll send a fresh link if you're on the roster.</p>
+        <form id="recover-form">
+          <input id="recover-email" name="email" type="email" required autocomplete="email" placeholder="you@clemson.edu">
+          <button type="submit">Send link</button>
+        </form>
+        <p id="recover-status" role="status" aria-live="polite"></p>
+      </details>
+    </div>
+  </main>
+  <script src="/login.js"></script>
+</body>
+</html>

@@ -24,7 +24,7 @@ import type { AgentGroup } from './types.js';
 
 // Symlink targets are container paths — dangling on host (hence the readlink
 // dance instead of existsSync), valid inside the container via RO mounts.
-const SHARED_CLAUDE_MD_CONTAINER_PATH = '/app/CLAUDE.md';
+const SHARED_CLAUDE_MD_CONTAINER_PATH = '/workspace/.shared/CLAUDE.md';
 const SHARED_SKILLS_CONTAINER_BASE = '/app/skills';
 const SHARED_MCP_TOOLS_CONTAINER_BASE = '/app/src/mcp-tools';
 

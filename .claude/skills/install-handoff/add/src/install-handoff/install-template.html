@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NanoClaw install handoff</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1a1a1a; --bg: #fafafa; --muted: #666; --accent: #0a6cff; --code-bg: #f0f0f0; --warn-bg: #fff4e0; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e8e8e8; --bg: #1a1a1a; --muted: #999; --accent: #66aaff; --code-bg: #2a2a2a; --warn-bg: #3a2e1a; } }
+  body { font: 16px/1.55 -apple-system, system-ui, "Segoe UI", sans-serif; max-width: 760px; margin: 2em auto; padding: 0 1em; color: var(--fg); background: var(--bg); }
+  h1 { margin-top: 0; }
+  h2 { margin-top: 1.8em; padding-top: 0.4em; border-top: 1px solid #ddd; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 1em; border-radius: 6px; overflow-x: auto; font-size: 14px; position: relative; }
+  .copy { position: absolute; top: 8px; right: 8px; background: var(--accent); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .copy:hover { opacity: 0.85; }
+  .copy.copied { background: #4a4; }
+  .meta { color: var(--muted); font-size: 14px; margin-bottom: 1.5em; }
+  .meta strong { color: var(--fg); }
+  .warn { background: var(--warn-bg); padding: 0.8em 1em; border-radius: 6px; margin: 1em 0; }
+  .platform-toggle { background: var(--code-bg); border: 1px solid #ccc; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  .platform-toggle:hover { background: var(--accent); color: white; border-color: var(--accent); }
+  [data-platform] { display: none; }
+  [data-platform].active { display: block; }
+  ul { padding-left: 1.4em; }
+  li { margin: 0.3em 0; }
+</style>
+</head>
+<body>
+<h1>NanoClaw install handoff</h1>
+
+<p class="meta">
+  Token: <code>{{TOKEN_FINGERPRINT}}</code> &middot;
+  Expires: <strong>{{EXPIRES_AT}}</strong> &middot;
+  Uses left: <strong>{{USES_LEFT}}</strong> of {{MAX_USES}} &middot;
+  Files: {{FILES_COUNT}}
+</p>
+
+<p>
+  Showing instructions for <strong id="platform-label">your detected platform</strong>.
+  <button class="platform-toggle" id="toggle">Switch platform</button>
+</p>
+
+<div class="warn">
+  <strong>Heads up:</strong> this URL is single-use up to the limit above. Each <code>curl</code> below counts as one use. Once exhausted or expired, it 404s.
+</div>
+
+<h2>Step 1 &mdash; Clone NanoClaw</h2>
+
+<div data-platform="mac">
+<p>If you don't have <a href="https://brew.sh">Homebrew</a>:</p>
+<pre>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"<button class="copy">Copy</button></pre>
+<p>Then:</p>
+<pre>brew install git node pnpm
+git clone {{REPO_URL}} ~/nanoclaw
+cd ~/nanoclaw<button class="copy">Copy</button></pre>
+</div>
+
+<div data-platform="linux">
+<pre>sudo apt update &amp;&amp; sudo apt install -y git curl
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+git clone {{REPO_URL}} ~/nanoclaw
+cd ~/nanoclaw<button class="copy">Copy</button></pre>
+</div>
+
+<h2>Step 2 &mdash; Pull credentials from this handoff</h2>
+
+<p>One block, paste into the new machine's terminal. Sets up dirs, downloads each file at chmod 600, and verifies what arrived.</p>
+
+<pre>{{CURL_BLOCK}}<button class="copy">Copy</button></pre>
+
+<h2>Step 3 &mdash; Bootstrap</h2>
+
+<pre>cd ~/nanoclaw &amp;&amp; bash nanoclaw.sh<button class="copy">Copy</button></pre>
+
+<p>Setup detects the credentials from step 2 and skips the prompts that would otherwise ask for them. At the channel selection, pick the one that's already configured (it'll show a "&check; already configured" hint).</p>
+
+<h2>Step 4 &mdash; Restart so the credential proxy picks up Google + Codex</h2>
+
+<div data-platform="mac">
+<pre>launchctl kickstart -k gui/$(id -u)/com.nanoclaw<button class="copy">Copy</button></pre>
+</div>
+
+<div data-platform="linux">
+<pre>systemctl --user restart nanoclaw<button class="copy">Copy</button></pre>
+</div>
+
+<h2>That's it</h2>
+
+<p>Smoke check: ask your agent to read a Google Doc, or send a message via your configured channel. If anything misbehaves, run <code>/debug</code> from Claude Code in the repo dir.</p>
+
+<script>
+(function () {
+  const ua = (navigator.userAgent || '') + ' ' + (navigator.platform || '');
+  const detected = /Mac|iPhone|iPad/i.test(ua) ? 'mac' : 'linux';
+  let current = detected;
+
+  function show(p) {
+    current = p;
+    document.querySelectorAll('[data-platform]').forEach(function (el) {
+      el.classList.toggle('active', el.dataset.platform === p);
+    });
+    const label = document.getElementById('platform-label');
+    if (label) label.textContent = p === 'mac' ? 'macOS' : 'Linux';
+  }
+
+  show(detected);
+
+  const toggle = document.getElementById('toggle');
+  if (toggle) toggle.addEventListener('click', function () {
+    show(current === 'mac' ? 'linux' : 'mac');
+  });
+
+  document.querySelectorAll('button.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const pre = btn.closest('pre');
+      if (!pre) return;
+      const text = pre.textContent.replace(/Copy$/, '').trim();
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

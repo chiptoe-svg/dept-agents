@@ -32,7 +32,7 @@ Platform event
   → Host calls wakeUpAgent(session)
   → Container spins up (or is already running)
   → Agent-runner polls its session DB, finds new messages
-  → Agent-runner processes with Claude
+  → Agent-runner processes with the agent provider (Claude SDK, Codex, OpenCode, or Ollama)
   → Agent-runner writes response to session DB
   → Host polls active session DBs for responses
   → Host reads response, looks up conversation, delivers through channel adapter

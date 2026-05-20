@@ -20,16 +20,29 @@ ARG INSTALL_CJK_FONTS=false
 # mean every rebuild silently picks up the latest and can break in lockstep
 # across all users.
 ARG CLAUDE_CODE_VERSION=2.1.116
-ARG CODEX_VERSION=0.124.0
+ARG CODEX_VERSION=0.131.0
 ARG AGENT_BROWSER_VERSION=latest
-ARG VERCEL_VERSION=latest
+ARG VERCEL_VERSION=52.2.1
 ARG BUN_VERSION=1.3.12
+
+# Optional Debian mirror override. Some campus / corporate networks
+# fail to resolve `deb.debian.org`; setting DEB_MIRROR to e.g.
+# `ftp.us.debian.org` or `mirrors.kernel.org` rewrites sources.list
+# before apt-get runs. Unset = upstream default, no changes.
+ARG DEB_MIRROR=
 
 # ---- System dependencies -----------------------------------------------------
 # tini: correct PID 1 / signal forwarding so outbound.db writes finalize on
 # SIGTERM instead of being orphaned by the shell entrypoint.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    if [ -n "$DEB_MIRROR" ]; then \
+        for f in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list; do \
+            [ -f "$f" ] || continue; \
+            sed -i "s|deb\.debian\.org/debian-security|security.debian.org/debian-security|g; \
+                    s|deb\.debian\.org/debian|${DEB_MIRROR}/debian|g" "$f"; \
+        done; \
+    fi && \
     apt-get update && apt-get install -y --no-install-recommends \
         chromium \
         fonts-liberation \
@@ -92,7 +105,13 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 #     the SDK fails at spawn time with "native binary not found".
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+# Pin pnpm to match the host (package.json packageManager). pnpm 11 stopped
+# honoring `only-built-dependencies[]=` in .npmrc for global installs, which
+# silently skips claude-code's native-binary postinstall and agent-browser's
+# bin chmod — the agent then crashes at runtime with "native binary not
+# installed". Keep this in lockstep with package.json's `packageManager`.
+ARG PNPM_VERSION=10.33.0
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 RUN --mount=type=cache,target=/root/.cache/pnpm \
     echo "only-built-dependencies[]=agent-browser" > /root/.npmrc && \
@@ -107,6 +126,14 @@ RUN --mount=type=cache,target=/root/.cache/pnpm \
 
 RUN --mount=type=cache,target=/root/.cache/pnpm \
     pnpm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+RUN --mount=type=cache,target=/root/.cache/pnpm \
+    pnpm install -g "@openai/codex@${CODEX_VERSION}"
+
+# ---- ncl CLI wrapper ----------------------------------------------------------
+# Actual script lives in the mounted source at /app/src/cli/ncl.ts.
+RUN printf '#!/bin/sh\nexec bun /app/src/cli/ncl.ts "$@"\n' > /usr/local/bin/ncl && \
+    chmod +x /usr/local/bin/ncl
 
 # ---- Entrypoint --------------------------------------------------------------
 COPY entrypoint.sh /app/entrypoint.sh

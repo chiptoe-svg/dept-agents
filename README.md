@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/nanoclaw-logo.png" alt="NanoClaw" width="400">
+  <img src="assets/classroom_nano.png" alt="NanoClaw" width="400">
 </p>
 
 <p align="center">
-  An AI assistant that runs agents securely in their own containers. Lightweight, built to be easily understood and completely customized for your needs.
+  A lightweight AI personal assistant fork built for academic environments. Comes with a small starter set of skills (Google Workspace, Telegram, web search) and runs each agent in its own secure container. Supports multi-user classrooms with instructor, TA, and student roles — each agent configurable with its own persona and skills.
 </p>
 
 <p align="center">
@@ -15,35 +15,45 @@
   <a href="repo-tokens"><img src="repo-tokens/badge.svg" alt="repo tokens" valign="middle"></a>
 </p>
 
+<p align="center">
+  📄 <strong><a href="https://chiptoe-svg.github.io/nanoclaw_gccourse/vision/">Vision &amp; Roadmap</a></strong> — what's built, what's coming, and how it fits a teaching environment
+</p>
+
 ---
 
-## Why I Built NanoClaw
+## Why Use NanoClaw?
 
-[OpenClaw](https://github.com/openclaw/openclaw) is an impressive project, but I wouldn't have been able to sleep if I had given complex software I didn't understand full access to my life. OpenClaw has nearly half a million lines of code, 53 config files, and 70+ dependencies. Its security is at the application level (allowlists, pairing codes) rather than true OS-level isolation. Everything runs in one Node process with shared memory.
+[OpenClaw](https://github.com/openclaw/openclaw) is an impressive project, but I wouldn't have been able to sleep if I had given complex software I didn't understand full access to my life (or those of the students in a class). OpenClaw has nearly half a million lines of code, 53 config files, and 70+ dependencies. Its security is at the application level (allowlists, pairing codes) rather than true OS-level isolation. Everything runs in one Node process with shared memory.
 
-NanoClaw provides that same core functionality, but in a codebase small enough to understand: one process and a handful of files. Claude agents run in their own Linux containers with filesystem isolation, not merely behind permission checks.
+NanoClaw provides that same core functionality, but in a codebase small enough to understand: one process and a handful of files. Claude or Codex agents run in their own Linux containers with filesystem isolation, not merely behind permission checks. 
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/qwibitai/nanoclaw.git nanoclaw-v2
-cd nanoclaw-v2
+git clone https://github.com/chiptoe-svg/nanoclaw_gccourse.git nanoclaw-classroom
+cd nanoclaw-classroom
 bash nanoclaw.sh
 ```
 
-`nanoclaw.sh` walks you from a fresh machine to a named agent you can message. It installs Node, pnpm, and Docker if missing, registers your Anthropic credential with OneCLI, builds the agent container, and pairs your first channel (Telegram, Discord, WhatsApp, or a local CLI). If a step fails, Claude Code is invoked automatically to diagnose and resume from where it broke.
+`nanoclaw.sh` walks you from a fresh machine to a named agent you can message. It installs Node, pnpm, and Docker if missing, asks which AI-coding-CLI you want as your operator-side assistant (Claude Code or OpenAI Codex), registers that CLI's credential with OneCLI, builds the agent container, and pairs your first channel (Telegram, Discord, WhatsApp, or a local CLI). If a step fails, your AI-coding-CLI is invoked automatically to diagnose and resume from where it broke. To switch later, run `pnpm exec tsx setup/auto.ts --reconfigure-cli`.
+
+## Deploying a classroom
+
+This fork supports two classroom deployment shapes. For most teaching scenarios, the **shared classroom** mode is the right starting point: one instructor authorizes Google Workspace and the LLM credit pool, students log in via personal email through a bookmark URL, and per-student agents share the class workspace with NanoClaw-side ownership friction preventing cross-student damage. End-to-end deploy guide: [docs/shared-classroom.md](docs/shared-classroom.md).
+
+The **per-person classroom** mode (each student authorizes their own Google + LLM provider) is more setup-heavy and lands incrementally — see [plans/master.md](plans/master.md) Phase 2.
 
 ## Philosophy
 
-**Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask Claude Code to walk you through it.
+**Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask your AI-coding-CLI (Claude Code or Codex) to walk you through it.
 
 **Secure by isolation.** Agents run in Linux containers and they can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your host.
 
-**Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have Claude Code modify it to match your needs.
+**Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have your AI-coding-CLI (Claude Code, Codex, or whatever your preferred assistant is) modify it to match your needs.
 
 **Customization = code changes.** No configuration sprawl. Want different behavior? Modify the code. The codebase is small enough that it's safe to make changes.
 
-**AI-native, hybrid by design.** The install and onboarding flow is an optimized scripted path, fast and deterministic. When a step needs judgment, whether a failed install, a guided decision, or a customization, control hands off to Claude Code seamlessly. Beyond setup there's no monitoring dashboard or debugging UI either: describe the problem in chat and Claude Code handles it.
+**AI-native, hybrid by design.** The install and onboarding flow is an optimized scripted path, fast and deterministic. When a step needs judgment, whether a failed install, a guided decision, or a customization, control hands off to your chosen AI-coding-CLI (Claude Code or Codex) seamlessly. Beyond setup there's no monitoring dashboard or debugging UI either: describe the problem in chat and your CLI handles it.
 
 **Skills over features.** Trunk ships the registry and infrastructure, not specific channel adapters or alternative agent providers. Channels (Discord, Slack, Telegram, WhatsApp, …) live on a long-lived `channels` branch; alternative providers (OpenCode, Ollama) live on `providers`. You run `/add-telegram`, `/add-opencode`, etc. and the skill copies exactly the module(s) you need into your fork. No feature you didn't ask for.
 
@@ -78,7 +88,7 @@ From a channel you own or administer, you can manage groups and tasks:
 
 ## Customizing
 
-NanoClaw doesn't use configuration files. To make changes, just tell Claude Code what you want:
+NanoClaw doesn't use configuration files. To make changes, just tell your AI-coding-CLI (Claude Code or Codex) what you want:
 
 - "Change the trigger word to @Bob"
 - "Remember in the future to make responses shorter and more direct"
@@ -87,7 +97,7 @@ NanoClaw doesn't use configuration files. To make changes, just tell Claude Code
 
 Or run `/customize` for guided changes.
 
-The codebase is small enough that Claude can safely modify it.
+The codebase is small enough that your AI-coding-CLI can safely modify it.
 
 ## Contributing
 
@@ -109,7 +119,7 @@ Skills we'd like to see:
 - macOS or Linux (Windows via WSL2)
 - Node.js 20+ and pnpm 10+ (the installer will install both if missing)
 - [Docker Desktop](https://docker.com/products/docker-desktop) (macOS/Windows) or Docker Engine (Linux)
-- [Claude Code](https://claude.ai/download) for `/customize`, `/debug`, error recovery during setup, and all `/add-<channel>` skills
+- An AI-coding-CLI for `/customize`, `/debug`, error recovery during setup, and all `/add-<channel>` skills. Either [Claude Code](https://claude.ai/download) or [OpenAI Codex](https://github.com/openai/codex) — `nanoclaw.sh` asks which on first run.
 
 ## Architecture
 
@@ -167,11 +177,11 @@ ANTHROPIC_AUTH_TOKEN=your-token-here
 
 **How do I debug issues?**
 
-Ask Claude Code. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw.
+Ask your AI-coding-CLI. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw — Claude Code, Codex, or whatever you picked at setup time can investigate the codebase and logs.
 
 **Why isn't the setup working for me?**
 
-If a step fails, `nanoclaw.sh` hands off to Claude Code to diagnose and resume. If that doesn't resolve it, run `claude`, then `/debug`. If Claude identifies an issue likely to affect other users, open a PR against the relevant setup step or skill.
+If a step fails, `nanoclaw.sh` hands off to your AI-coding-CLI to diagnose and resume. If that doesn't resolve it, run `claude` (or `codex`), then `/debug`. If the CLI identifies an issue likely to affect other users, open a PR against the relevant setup step or skill.
 
 **What changes will be accepted into the codebase?**
 
@@ -192,3 +202,5 @@ See [CHANGELOG.md](CHANGELOG.md) for breaking changes, or the [full release hist
 ## License
 
 MIT
+
+<img referrerpolicy="no-referrer-when-downgrade" src="https://static.scarf.sh/a.png?x-pxid=47894bd5-353b-42fe-bb97-74144e6df0bf" />

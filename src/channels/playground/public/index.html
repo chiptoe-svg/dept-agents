@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Playground</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom" class="brand-logo"></div>
+    <div id="agent-info">
+      <span class="label">current agent</span>
+      <strong id="active-agent-name">…</strong>
+    </div>
+    <div id="who">…</div>
+  </header>
+
+  <nav id="tab-bar">
+    <button data-tab="home" class="tab active">Home</button>
+    <button data-tab="chat" class="tab">Chat</button>
+    <button data-tab="persona" class="tab">Persona</button>
+    <button data-tab="skills" class="tab">Skills</button>
+    <button data-tab="models" class="tab">Models</button>
+  </nav>
+
+  <div id="draft-banner" hidden>
+    <span class="warn">⚠ Draft</span>
+    <span id="draft-message"></span>
+    <span class="actions">
+      <button id="draft-discard" class="btn btn-danger">↩ Discard</button>
+      <button id="draft-save" class="btn btn-success">💾 Save to my library…</button>
+      <button id="draft-apply" class="btn btn-primary">✓ Apply to my agent</button>
+    </span>
+  </div>
+
+  <main id="root">
+    <section id="tab-home" class="tab-body active"></section>
+    <section id="tab-chat" class="tab-body" hidden></section>
+    <section id="tab-persona" class="tab-body" hidden></section>
+    <section id="tab-skills" class="tab-body" hidden></section>
+    <section id="tab-models" class="tab-body" hidden></section>
+  </main>
+
+  <div id="modal-root"></div>
+  <div id="toasts"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

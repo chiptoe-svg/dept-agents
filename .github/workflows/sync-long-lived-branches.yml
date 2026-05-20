@@ -1,0 +1,148 @@
+name: Sync long-lived branches with main
+
+# Why: long-lived category branches (classroom, providers, admin)
+# are the source-of-truth that /add-* install skills fetch from. They need
+# to stay in sync with trunk so the skills don't ship code that references
+# trunk APIs that have moved (the failure mode that surfaced during Phase
+# X.7 work — origin/classroom was 616 commits behind main, and the install
+# skills' fetched files wouldn't build against current trunk).
+#
+# Design: nightly attempt to fast-forward each branch by merging main.
+# If conflict-free → push. If conflicts → open a single issue labeled
+# `branch-sync-conflict` (deduplicated by title) and stop. Human
+# resolves locally via the worktree pattern, pushes, the issue auto-
+# resolves on the next clean sync.
+
+on:
+  schedule:
+    - cron: '17 12 * * *' # daily at 12:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [classroom, providers, admin]
+    steps:
+      - name: Checkout long-lived branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Attempt fast-forward merge from main
+        id: merge
+        run: |
+          set -e
+          git fetch origin main
+          BEHIND=$(git rev-list --count HEAD..origin/main)
+          AHEAD=$(git rev-list --count origin/main..HEAD)
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "result=up_to_date" >> "$GITHUB_OUTPUT"
+            echo "Already in sync with main"
+            exit 0
+          fi
+          if git merge --no-edit origin/main; then
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+            echo "Merged $BEHIND commits from main into ${{ matrix.branch }}"
+          else
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+            echo "Conflict — $BEHIND commits behind main, will open issue"
+          fi
+
+      - name: Push merge
+        if: steps.merge.outputs.result == 'merged'
+        run: git push origin ${{ matrix.branch }}
+
+      - name: Open issue on conflict
+        if: steps.merge.outputs.result == 'conflict'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = '${{ matrix.branch }}';
+            const behind = '${{ steps.merge.outputs.behind }}';
+            const ahead = '${{ steps.merge.outputs.ahead }}';
+            const title = `Sync conflict: cannot fast-forward main into \`${branch}\``;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'branch-sync-conflict',
+              state: 'open',
+            });
+            if (existing.data.some(i => i.title === title)) {
+              core.info(`Issue already open for ${branch}, skipping create`);
+              return;
+            }
+            const body = [
+              `Nightly sync of \`origin/main\` into \`origin/${branch}\` produced merge conflicts.`,
+              ``,
+              `**Drift:** \`${branch}\` is ${behind} commit(s) behind main, ${ahead} commit(s) ahead.`,
+              ``,
+              `**To resolve locally** (path (a) main-wins recipe):`,
+              ``,
+              '```bash',
+              `git fetch origin`,
+              `git worktree add ../nanoclaw-${branch}-sync origin/${branch}`,
+              `cd ../nanoclaw-${branch}-sync`,
+              `git checkout -B ${branch} origin/${branch}`,
+              `git merge origin/main`,
+              `# resolve conflicts main-wins; preserve any classroom-/provider-/`,
+              `# admin-/gws-side fixes worth keeping (audit each)`,
+              `pnpm install && pnpm run build && pnpm test`,
+              `git push origin ${branch}`,
+              `cd .. && git worktree remove ../nanoclaw-${branch}-sync`,
+              '```',
+              ``,
+              `Once the push lands, this issue should auto-close on the next nightly run.`,
+              ``,
+              `Triggered by [\`sync-long-lived-branches.yml\`](.github/workflows/sync-long-lived-branches.yml).`,
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ['branch-sync-conflict'],
+              body,
+            });
+
+      - name: Auto-close resolved conflict issues
+        if: steps.merge.outputs.result == 'merged' || steps.merge.outputs.result == 'up_to_date'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = '${{ matrix.branch }}';
+            const title = `Sync conflict: cannot fast-forward main into \`${branch}\``;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'branch-sync-conflict',
+              state: 'open',
+            });
+            const match = existing.data.find(i => i.title === title);
+            if (!match) return;
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: match.number,
+              state: 'closed',
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: match.number,
+              body: 'Resolved — `' + branch + '` synced cleanly with main.',
+            });

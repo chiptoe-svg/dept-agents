@@ -2,10 +2,10 @@
  * OpenAI Codex provider — wraps `codex app-server` via JSON-RPC.
  *
  * Unlike the (deprecated) @openai/codex-sdk approach, the app-server
- * protocol exposes proper session/stream semantics, native compaction, and
- * stable MCP config via ~/.codex/config.toml — which is the same mechanism
- * the standalone codex CLI uses, so the container and host share one
- * provider-integration story.
+ * protocol exposes proper session/stream semantics, Codex-owned context
+ * management, and stable MCP config via ~/.codex/config.toml — which is the
+ * same mechanism the standalone codex CLI uses, so the container and host
+ * share one provider-integration story.
  *
  * Codex turns don't accept mid-turn input. Follow-up `push()` messages are
  * queued and drained after the current turn completes (same pattern as the
@@ -29,7 +29,7 @@ import {
   spawnCodexAppServer,
   startCodexTurn,
   startOrResumeCodexThread,
-  writeCodexMcpConfigToml,
+  writeCodexConfigToml,
 } from './codex-app-server.js';
 
 /** Hard ceiling for a single turn. Guards against app-server wedging. */
@@ -90,9 +90,106 @@ function readAgentAndGlobalClaudeMd(): string | undefined {
   return parts.length > 0 ? parts.join('\n\n---\n\n') : undefined;
 }
 
-function composeBaseInstructions(promptAddendum: string | undefined): string | undefined {
+/**
+ * Build a discovery list of skills available to this group. Mirrors what
+ * Claude Code surfaces natively via its `Skill` tool — name + one-line
+ * description per skill, scoped to the per-group symlinks at
+ * `/home/node/.claude/skills/` (which respects `container.json`'s skill
+ * selection, so groups that opted out won't see disabled skills here).
+ *
+ * The result is a single markdown section the model treats as part of its
+ * system prompt. We deliberately don't inline each SKILL.md's full body —
+ * that's tens of KB across the catalog and most won't apply to any given
+ * turn. Instead we tell the model: "When a description matches, Read the
+ * full SKILL.md before acting." That mirrors Claude Code's discoverable-
+ * skill model and keeps prompt overhead proportional to skill count.
+ */
+export function composeAvailableSkills(
+  skillsDir = '/home/node/.claude/skills',
+  allowedNames?: string[] | 'all',
+): string | undefined {
+  if (!fs.existsSync(skillsDir)) return undefined;
+
+  // null means "all enabled" (legacy default before per-agent filtering
+  // existed); an array narrows the visible set. Empty array → nothing
+  // visible, which is a valid user choice (run agent with no skills).
+  const allow = allowedNames === undefined || allowedNames === 'all' ? null : new Set(allowedNames);
+
+  const entries: { name: string; description: string }[] = [];
+  for (const dirent of fs.readdirSync(skillsDir).sort()) {
+    if (allow && !allow.has(dirent)) continue;
+    const skillMdPath = path.join(skillsDir, dirent, 'SKILL.md');
+    if (!fs.existsSync(skillMdPath)) continue;
+    const raw = fs.readFileSync(skillMdPath, 'utf-8');
+    const fm = parseFrontmatter(raw);
+    const name = fm.name ?? dirent;
+    const description = fm.description?.trim();
+    if (!description) continue;
+    entries.push({ name, description });
+  }
+  if (entries.length === 0) return undefined;
+
+  const list = entries.map((e) => `- **${e.name}** — ${e.description}`).join('\n');
+  return [
+    '# Available skills',
+    '',
+    "When the user's request matches a skill below, your first action is to `Read /app/skills/<name>/SKILL.md` and follow the recipe inside before doing the work. The skill's instructions take precedence over your defaults for the task it covers.",
+    '',
+    list,
+  ].join('\n');
+}
+
+/**
+ * Minimal YAML frontmatter parser — extracts `key: value` pairs from an
+ * opening `---`/`---` block. Good enough for the SKILL.md schema (flat
+ * scalar fields). Doesn't handle nested objects or multiline strings; if
+ * a skill grows those, expand here.
+ */
+function parseFrontmatter(content: string): Record<string, string> {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  if (!match) return {};
+  const out: Record<string, string> = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const m = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
+    if (!m) continue;
+    let value = m[2];
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    out[m[1]] = value;
+  }
+  return out;
+}
+
+/**
+ * Build the one-line runtime identity block prepended to base_instructions.
+ *
+ * Codex's app-server only puts the model name into the *routing* layer (the
+ * `model` field on each API request to the upstream and in turn_context's
+ * collaboration_mode). It does NOT surface that name into the LLM-visible
+ * system prompt. The cloud-OpenAI path doesn't need this — OpenAI models
+ * recognize their own identity from training — but local models like
+ * Qwen3.6 confabulate ("I'm a GPT-5 model") because the only model names
+ * they see in their prompt are the codex default skill descriptions
+ * (openai-docs, etc.).
+ *
+ * The value below is the same string that drives config.toml's `model =`
+ * line and the upstream API request body, so the identity is accurate by
+ * construction — there's no separate source of truth to drift from.
+ */
+export function composeRuntimeIdentity(provider: string, model: string | undefined): string | undefined {
+  if (!model) return undefined;
+  return `Runtime context: you are running on model "${model}" via the "${provider}" provider. If asked which model you are, answer with the model identifier above — do not guess.`;
+}
+
+function composeBaseInstructions(
+  promptAddendum: string | undefined,
+  runtimeIdentity: string | undefined,
+  allowedSkills?: string[] | 'all',
+): string | undefined {
   const claudeMd = readAgentAndGlobalClaudeMd();
-  const pieces = [claudeMd, promptAddendum].filter((s): s is string => Boolean(s));
+  const skills = composeAvailableSkills(undefined, allowedSkills);
+  const pieces = [runtimeIdentity, claudeMd, skills, promptAddendum].filter((s): s is string => Boolean(s));
   return pieces.length > 0 ? pieces.join('\n\n---\n\n') : undefined;
 }
 
@@ -102,11 +199,11 @@ export class CodexProvider implements AgentProvider {
   readonly supportsNativeSlashCommands = false;
 
   private readonly mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
-  private readonly model: string;
+  private readonly model: string | undefined;
 
   constructor(options: ProviderOptions = {}) {
     this.mcpServers = options.mcpServers ?? {};
-    this.model = (options.env?.CODEX_MODEL as string | undefined) ?? 'gpt-5.4-mini';
+    this.model = resolveCodexModel(options.env);
   }
 
   isSessionInvalid(err: unknown): boolean {
@@ -131,12 +228,41 @@ export class CodexProvider implements AgentProvider {
       // One app-server per query invocation. The poll-loop keeps a single
       // query active per batch of pending messages and ends it on idle, so
       // spawn-per-query matches that cadence naturally.
-      writeCodexMcpConfigToml(self.mcpServers);
+      // Read the per-spawn provider + model from container.json so the
+      // config.toml we write reflects whatever /provider or the Models tab
+      // last set. Falls back to 'codex' + this.model if container.json is
+      // missing or partial.
+      const containerJsonPath = '/workspace/agent/container.json';
+      const containerJson = fs.existsSync(containerJsonPath)
+        ? (JSON.parse(fs.readFileSync(containerJsonPath, 'utf-8')) as {
+            provider?: string;
+            model?: string;
+            skills?: string[] | 'all';
+            /**
+             * Reasoning effort for codex turns (low|medium|high). Default
+             * 'low' — see TurnParams.effort docs in codex-app-server.ts.
+             * Set to undefined or omit to let codex use the model's own
+             * default (typically 'medium' on gpt-5.x).
+             */
+            codexEffort?: 'low' | 'medium' | 'high';
+          })
+        : {};
+      const proxyBaseUrl = (process.env.OPENAI_BASE_URL ?? 'http://host.docker.internal:3001/openai/v1')
+        .replace(/\/(openai|omlx)\/v1$/, '');
+      const activeProvider = containerJson.provider ?? 'codex';
+      const effectiveModel = containerJson.model ?? self.model;
+      writeCodexConfigToml({
+        mcpServers: self.mcpServers,
+        activeProvider,
+        model: effectiveModel,
+        proxyBaseUrl,
+      });
       const server = spawnCodexAppServer(createCodexConfigOverrides());
       attachCodexAutoApproval(server);
 
       let threadId: string | undefined = input.continuation;
       let initYielded = false;
+      let firstTurnConsumed = false;
 
       try {
         await initializeCodexAppServer(server);
@@ -147,7 +273,11 @@ export class CodexProvider implements AgentProvider {
           sandbox: 'danger-full-access',
           approvalPolicy: 'never',
           personality: 'friendly',
-          baseInstructions: composeBaseInstructions(input.systemContext?.instructions),
+          baseInstructions: composeBaseInstructions(
+            input.systemContext?.instructions,
+            composeRuntimeIdentity(activeProvider, effectiveModel),
+            containerJson.skills,
+          ),
         };
 
         threadId = await startOrResumeCodexThread(server, threadId, threadParams);
@@ -164,6 +294,13 @@ export class CodexProvider implements AgentProvider {
 
           const text = pending.shift()!;
 
+          // Images are attached to the FIRST turn only — the initial
+          // QueryInput.imagePaths carry the photo the user sent alongside
+          // their prompt. Follow-up pending items (system reminders,
+          // accumulated context, etc.) are text-only by construction.
+          const turnImagePaths = !firstTurnConsumed ? input.imagePaths : undefined;
+          firstTurnConsumed = true;
+
           // One turn = one channel of streaming events. Each notification
           // from the app-server yields an `activity` first (so the
           // poll-loop's idle timer stays honest) and then, where relevant,
@@ -174,6 +311,8 @@ export class CodexProvider implements AgentProvider {
             text,
             self.model,
             input.cwd,
+            turnImagePaths,
+            containerJson.codexEffort ?? 'low',
             () => initYielded,
             () => {
               initYielded = true;
@@ -203,6 +342,138 @@ export class CodexProvider implements AgentProvider {
   }
 }
 
+export function resolveCodexModel(env: Record<string, string | undefined> | undefined): string | undefined {
+  const model = env?.CODEX_MODEL?.trim();
+  return model || undefined;
+}
+
+// ── ThreadItem → ProviderEvent translation ──────────────────────────────────
+// Codex emits typed ThreadItems via item/started + item/completed. The host's
+// trace plumbing (poll-loop.ts:442) speaks the older tool_use/tool_result
+// vocabulary the Claude provider has always emitted; we translate so the
+// playground trace pane lights up the same way it does for claude agents.
+// Non-tool ThreadItem types (reasoning, userMessage, agentMessage, plan,
+// hookPrompt, etc.) are intentionally NOT translated — they would either
+// duplicate the chat bubble (agentMessage) or flood the trace pane (reasoning).
+
+interface ThreadItemAny {
+  type?: string;
+  id?: string;
+  // commandExecution
+  command?: string;
+  cwd?: string;
+  aggregatedOutput?: string;
+  exitCode?: number;
+  status?: string;
+  // webSearch
+  query?: string;
+  action?: unknown;
+  // mcpToolCall
+  server?: string;
+  tool?: string;
+  arguments?: unknown;
+  result?: unknown;
+  error?: { message?: string };
+  // dynamicToolCall
+  namespace?: string;
+  contentItems?: unknown;
+  success?: boolean;
+  // fileChange
+  changes?: unknown;
+}
+
+function toolUseFromItem(item: ThreadItemAny | undefined): ProviderEvent | null {
+  if (!item || !item.id) return null;
+  switch (item.type) {
+    case 'commandExecution':
+      return {
+        type: 'tool_use',
+        toolUseId: item.id,
+        toolName: 'bash',
+        input: { command: item.command ?? '', cwd: item.cwd ?? '' },
+      };
+    case 'webSearch':
+      // query is often empty on item/started — codex fills it in on
+      // item/completed. The trace renders what we have either way.
+      return {
+        type: 'tool_use',
+        toolUseId: item.id,
+        toolName: 'web_search',
+        input: { query: item.query ?? '' },
+      };
+    case 'mcpToolCall':
+      return {
+        type: 'tool_use',
+        toolUseId: item.id,
+        toolName: `mcp:${item.server ?? '?'}.${item.tool ?? '?'}`,
+        input: item.arguments ?? null,
+      };
+    case 'dynamicToolCall':
+      return {
+        type: 'tool_use',
+        toolUseId: item.id,
+        toolName: `dynamic:${item.tool ?? '?'}`,
+        input: item.arguments ?? null,
+      };
+    case 'fileChange':
+      return {
+        type: 'tool_use',
+        toolUseId: item.id,
+        toolName: 'file_change',
+        input: { changes: item.changes ?? null },
+      };
+    default:
+      return null;
+  }
+}
+
+function toolResultFromItem(item: ThreadItemAny | undefined): ProviderEvent | null {
+  if (!item || !item.id) return null;
+  switch (item.type) {
+    case 'commandExecution': {
+      const failed = item.status === 'failed' || (typeof item.exitCode === 'number' && item.exitCode !== 0);
+      return {
+        type: 'tool_result',
+        toolUseId: item.id,
+        content: item.aggregatedOutput ?? '',
+        isError: failed,
+      };
+    }
+    case 'webSearch':
+      return {
+        type: 'tool_result',
+        toolUseId: item.id,
+        // query becomes meaningful on completion; surface it so trace shows
+        // what was actually searched for.
+        content: { query: item.query ?? '', action: item.action ?? null },
+        isError: item.status === 'failed',
+      };
+    case 'mcpToolCall':
+      return {
+        type: 'tool_result',
+        toolUseId: item.id,
+        content: item.error ? { error: item.error.message ?? 'mcp error' } : item.result ?? null,
+        isError: item.status === 'failed' || !!item.error,
+      };
+    case 'dynamicToolCall':
+      return {
+        type: 'tool_result',
+        toolUseId: item.id,
+        content: item.contentItems ?? null,
+        isError: item.status === 'failed' || item.success === false,
+      };
+    case 'fileChange':
+      return {
+        type: 'tool_result',
+        toolUseId: item.id,
+        content: { changes: item.changes ?? null },
+        isError: item.status === 'failed',
+      };
+    default:
+      return null;
+  }
+}
+
 // ── Per-turn event pump ─────────────────────────────────────────────────────
 // Pulled out because the gen() loop above reads cleaner with it extracted,
 // and because it's a natural seam for future unit tests that drive it with
@@ -212,16 +483,26 @@ async function* runOneTurn(
   server: AppServer,
   threadId: string,
   inputText: string,
-  model: string,
+  model: string | undefined,
   cwd: string,
+  localImagePaths: string[] | undefined,
+  effort: 'low' | 'medium' | 'high',
   hasInit: () => boolean,
   markInit: () => void,
 ): AsyncGenerator<ProviderEvent> {
+  const startedAt = Date.now();
   // Mutable refs via object properties — TS can't track closure assignments
   // for narrowing, but property access keeps the declared type visible.
   const turnState: { error: Error | null } = { error: null };
   let resultText = '';
   let turnDone = false;
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let tokensCached = 0;
+  // Dedup guard: thread/tokenUsage/updated may fire twice for the same LLM
+  // response (we saw consecutive identical totals in the empirical capture).
+  // Emit a model_call ProviderEvent only when `last.totalTokens` advances.
+  let lastSeenCallTotal = 0;
 
   // Buffered event queue so we can `yield` across the async notification
   // callback. Each notification pushes zero or more ProviderEvents; the
@@ -256,14 +537,76 @@ async function* runOneTurn(
         if (delta) resultText += delta;
         break;
       }
+      case 'item/started': {
+        // Tool invocations begin here. Codex v0.124.0 dropped the legacy
+        // tool_use_begin pattern in favor of typed ThreadItems streamed
+        // via item/started; we translate to the host's existing
+        // tool_use ProviderEvent (poll-loop.ts:442 picks these up and
+        // pushes them as kind:'trace' rows for the playground).
+        // Skip non-tool item types so the trace pane doesn't fill with
+        // reasoning chunks (every codex turn emits dozens) or duplicate
+        // userMessage/agentMessage entries the chat bubble already shows.
+        const item = params.item as { type?: string; id?: string; [k: string]: unknown } | undefined;
+        const ev = toolUseFromItem(item);
+        if (ev) buffer.push(ev);
+        break;
+      }
       case 'item/completed': {
-        const item = params.item as { type?: string; text?: string } | undefined;
+        // Two responsibilities: pick up agentMessage text for resultText
+        // (legacy path, preserved verbatim), and emit tool_result events
+        // for tool ThreadItems so the playground trace can render
+        // completion alongside the tool_use event from item/started.
+        const item = params.item as { type?: string; text?: string; id?: string; [k: string]: unknown } | undefined;
         if (item?.type === 'agentMessage' && item.text) resultText = item.text;
+        const ev = toolResultFromItem(item);
+        if (ev) buffer.push(ev);
         break;
       }
       case 'turn/completed':
         turnDone = true;
         break;
+      case 'thread/tokenUsage/updated': {
+        // Replaces the v0.120-era `token_count` notification (which no longer
+        // fires in v0.124+). Payload structure:
+        //   tokenUsage: { total: {inputTokens, cachedInputTokens, outputTokens,
+        //                         reasoningOutputTokens, totalTokens},
+        //                 last:  {…same fields, scoped to most recent response},
+        //                 modelContextWindow }
+        // We use `total` (cumulative for the turn) for the end-of-turn
+        // `result` event so the displayed count grows across tool iterations.
+        // We also emit a `model_call` trace ProviderEvent per LLM response
+        // by reading `last` (this call's delta) so the playground shows N
+        // discrete entries for an N-call turn rather than one cumulative
+        // summary. Deduped on last.totalTokens since the notification can
+        // fire twice with the same values.
+        const usage = params.tokenUsage as
+          | { total?: Record<string, number>; last?: Record<string, number> }
+          | undefined;
+        const tot = usage?.total;
+        if (tot) {
+          if (typeof tot.inputTokens === 'number') tokensIn = tot.inputTokens;
+          if (typeof tot.cachedInputTokens === 'number') tokensCached = tot.cachedInputTokens;
+          if (typeof tot.outputTokens === 'number') tokensOut = tot.outputTokens;
+        }
+        const last = usage?.last;
+        if (
+          last &&
+          typeof last.totalTokens === 'number' &&
+          last.totalTokens > 0 &&
+          last.totalTokens !== lastSeenCallTotal
+        ) {
+          lastSeenCallTotal = last.totalTokens;
+          buffer.push({
+            type: 'model_call',
+            tokensIn: typeof last.inputTokens === 'number' ? last.inputTokens : 0,
+            tokensCached: typeof last.cachedInputTokens === 'number' ? last.cachedInputTokens : 0,
+            tokensOut: typeof last.outputTokens === 'number' ? last.outputTokens : 0,
+            tokensReasoning:
+              typeof last.reasoningOutputTokens === 'number' ? last.reasoningOutputTokens : 0,
+          });
+        }
+        break;
+      }
       case 'turn/failed': {
         const e = params.error as { message?: string } | undefined;
         turnState.error = new Error(e?.message || 'Turn failed');
@@ -300,7 +643,7 @@ async function* runOneTurn(
       buffer.push({ type: 'init', continuation: threadId });
     }
 
-    await startCodexTurn(server, { threadId, inputText, model, cwd });
+    await startCodexTurn(server, { threadId, inputText, localImagePaths, model, cwd, effort });
 
     while (true) {
       while (buffer.length > 0) {
@@ -321,7 +664,27 @@ async function* runOneTurn(
       return;
     }
 
-    yield { type: 'result', text: resultText || null };
+    yield {
+      type: 'result',
+      text: resultText || null,
+      // Token counts come from thread/tokenUsage/updated notifications (see
+      // handler above). Codex's prompt-cache hits land on
+      // tokenUsage.total.cachedInputTokens — we forward as cacheRead (OpenAI
+      // prefix-cache, billed at 0.5× input). No cacheCreation: OpenAI's
+      // prefix cache is automatic and isn't billed at a separate write rate.
+      ...(tokensIn > 0 || tokensOut > 0
+        ? {
+            tokens: {
+              input: tokensIn,
+              output: tokensOut,
+              ...(tokensCached > 0 ? { cacheRead: tokensCached } : {}),
+            },
+          }
+        : {}),
+      latencyMs: Date.now() - startedAt,
+      provider: 'codex',
+      ...(model ? { model } : {}),
+    };
   } finally {
     clearTimeout(timer);
     const idx = server.notificationHandlers.indexOf(handler);
@@ -330,3 +693,5 @@ async function* runOneTurn(
 }
 
 registerProvider('codex', (opts) => new CodexProvider(opts));
+// 'local' is codex-app-server pointed at mlx-omni-server; same runtime, different config.toml.
+registerProvider('local', (opts) => new CodexProvider(opts));

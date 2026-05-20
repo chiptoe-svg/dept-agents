@@ -282,7 +282,36 @@ CREATE TABLE chat_sdk_lists (
 );
 ```
 
-### 1.14 `schema_version`
+### 1.14 `classroom_roster`
+
+Email → user_id mapping consumed by the playground's Google OAuth
+callback (`src/channels/playground/google-oauth.ts`). When a student
+signs in via Google, the asserted email is normalized to lowercase and
+looked up here; on hit, the playground session binds to the canonical
+`user_id` (e.g. `class:student_03`) the existing classroom role
+plumbing already produces.
+
+Populated by `/add-classroom`'s `--roster <csv>` flag (deferred —
+lives on `origin/classroom`) or by ad-hoc `ncl` inserts in the meantime.
+UPSERT on email so re-importing the same CSV is idempotent.
+
+```sql
+CREATE TABLE classroom_roster (
+  email          TEXT PRIMARY KEY,   -- normalized lowercase
+  user_id        TEXT NOT NULL,
+  agent_group_id TEXT,
+  added_at       INTEGER NOT NULL    -- ms since epoch
+);
+
+CREATE INDEX idx_classroom_roster_user_id
+  ON classroom_roster(user_id);
+```
+
+CRUD wrapper: `src/db/classroom-roster.ts` — `lookupRosterByEmail`,
+`upsertRosterEntry`, `removeRosterEntry`, `listRoster`. Migration:
+`016-classroom-roster.ts`.
+
+### 1.15 `schema_version`
 
 Migration ledger, written by the migration runner (§2).
 

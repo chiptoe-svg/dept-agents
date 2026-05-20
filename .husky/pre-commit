@@ -1,1 +1,22 @@
-pnpm run format:fix
+# Block commits that contain secrets (gitleaks scans staged diff only).
+# Gracefully skipped if gitleaks isn't installed locally so the hook
+# doesn't block environments that haven't run `brew install gitleaks`.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks git --staged --redact --no-banner -v || {
+    echo ""
+    echo "❌ gitleaks blocked the commit — a potential secret was detected in staged changes."
+    echo "   Review the finding above. If it's a false positive, add the pattern to .gitleaks.toml allowlist."
+    exit 1
+  }
+fi
+
+# Verify formatting — block the commit if anything is unformatted.
+# The old hook ran `prettier --write` on every src file without
+# re-staging the result, so it silently reformatted unrelated files
+# and left the tree dirty without ever enforcing anything. `--check`
+# enforces instead: run `pnpm format` to fix and re-stage.
+npm run format:check || {
+  echo ""
+  echo "❌ prettier found unformatted files — run 'pnpm format', re-stage, and commit again."
+  exit 1
+}

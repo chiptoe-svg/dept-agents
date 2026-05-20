@@ -29,6 +29,7 @@ if (!getAgentGroup(AGENT_GROUP_ID)) {
     name: 'Main',
     folder: 'main',
     agent_provider: 'claude',
+    model: null,
     created_at: new Date().toISOString(),
   });
   console.log('Created agent group:', AGENT_GROUP_ID);

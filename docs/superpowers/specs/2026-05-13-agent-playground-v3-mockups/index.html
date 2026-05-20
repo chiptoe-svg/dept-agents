@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Playground v3 — Brainstorm Mockups</title>
+<style>
+  body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 880px; margin: 30px auto; padding: 0 20px; color: #222; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+  h2 { border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 28px; }
+  .meta { color: #666; font-size: 13px; }
+  ol { padding-left: 24px; }
+  li { margin: 10px 0; }
+  li.canonical { background: #eef4fb; border-left: 3px solid #4a90e2; padding: 8px 12px; margin-left: -12px; list-style-position: inside; }
+  li.superseded { color: #888; }
+  a { color: #4a90e2; }
+  code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+  .canonical-tag { background: #4a90e2; color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+  .superseded-tag { background: #ccc; color: #555; font-size: 11px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Agent Playground v3 — Brainstorm Mockups</h1>
+
+<p class="meta">
+  Visual mockups produced during the brainstorming session on 2026-05-13. They informed the
+  <a href="../2026-05-13-agent-playground-v3-design.html">v3 design spec</a>
+  and the <a href="../../plans/2026-05-13-agent-playground-v3.html">implementation plan</a>.
+  Listed in chronological order; later mockups generally override earlier ones. The
+  <strong>canonical</strong> entries are the ones the spec reflects.
+</p>
+
+<h2>Mockups (chronological)</h2>
+
+<ol>
+  <li class="superseded">
+    <a href="01-philosophy.html">01-philosophy.html</a><span class="superseded-tag">superseded</span><br>
+    Three competing surface philosophies (Chat-first / Lab notebook / Experiment dashboard). User rejected all three: "you're trying to do too much in one screen" — drove the move to a tab-per-concept structure.
+  </li>
+
+  <li class="superseded">
+    <a href="02-waiting.html">02-waiting.html</a><span class="superseded-tag">superseded</span><br>
+    Transition screen. "three tabs decided: Chat / Persona / Skills" (before Models was added as a fourth tab).
+  </li>
+
+  <li class="superseded">
+    <a href="03-tab-structure.html">03-tab-structure.html</a><span class="superseded-tag">superseded</span><br>
+    First full mockup of the 4-tab structure with draft banner. Established the overall shape.
+  </li>
+
+  <li class="superseded">
+    <a href="04-three-panels.html">04-three-panels.html</a><span class="superseded-tag">superseded</span><br>
+    First three-panel layout (Library / Preview / Active) on Persona and Skills tabs, plus refined Chat with provider+model in toolbar, and Models tab with local-model cards.
+  </li>
+
+  <li class="canonical">
+    <a href="05-corrected-layers.html">05-corrected-layers.html</a><span class="canonical-tag">canonical</span><br>
+    Persona right-panel sub-tabs corrected to the <em>actual</em> file structure (My persona / Group base / Container base / Global, dimmed when absent) — backed by the architectural decision to add a host-side <code>getEffectivePersonaLayers</code> helper. Also: Models tab cards with parameter count, modalities, and instructor notes.
+  </li>
+
+  <li class="canonical">
+    <a href="06-provider-warning.html">06-provider-warning.html</a><span class="canonical-tag">canonical</span><br>
+    Chat tab — provider switch confirmation modal ("⚠ Switch provider? — this will reset chat") and model switch inline pill ("↻ next message"). Captures the asymmetry between provider switch (kills container, resets chat) and model switch (env var only, chat continues).
+  </li>
+
+  <li class="superseded">
+    <a href="07-persona-cleanup.html">07-persona-cleanup.html</a><span class="superseded-tag">superseded</span><br>
+    Middle panel cleaned up — no magic Copy/Replace buttons. Standard select-and-copy with native browser behavior. (My-library inline × delete affordance was added and then rejected in 08.)
+  </li>
+
+  <li class="superseded">
+    <a href="08-no-library-delete.html">08-no-library-delete.html</a><span class="superseded-tag">superseded</span><br>
+    Inline × delete affordance removed from My library entries — list-only listing across all three tiers. (Deletion handled separately, out of scope for v3.)
+  </li>
+
+  <li class="superseded">
+    <a href="09-persona-final.html">09-persona-final.html</a><span class="superseded-tag">superseded</span><br>
+    Library width narrowed to 150px; middle panel re-labeled "📚 From library: …"; bottom-right "Test in Chat" button removed (chat always talks to live draft, so testing = clicking the Chat tab). "Where everything happens" recap table at the bottom.
+  </li>
+
+  <li class="superseded">
+    <a href="10-correct-data.html">10-correct-data.html</a><span class="superseded-tag">superseded</span><br>
+    Demo data corrected to reflect the actual install — Felix is the current agent (right panel), <code>concise_writer</code> is what the user clicked in the library (middle panel). Added <code>prefers provider</code> dropdown alongside <code>model</code>.
+  </li>
+
+  <li class="canonical">
+    <a href="11-banner-buttons.html">11-banner-buttons.html</a><span class="canonical-tag">canonical</span><br>
+    <strong>Final Persona-tab layout.</strong> Draft-banner buttons get distinct color treatment (red Discard / green Save to my library / blue Apply to my agent). Right-panel footer reminder text removed. This is the layout the spec describes.
+  </li>
+
+  <li class="superseded">
+    <a href="12-closing.html">12-closing.html</a><span class="superseded-tag">superseded</span><br>
+    Brainstorm-closing waiting screen.
+  </li>
+
+  <li class="superseded">
+    <a href="13-plan-done.html">13-plan-done.html</a><span class="superseded-tag">superseded</span><br>
+    Plan-written closing screen.
+  </li>
+</ol>
+
+<h2>Tab-by-tab canonical reference</h2>
+
+<table style="border-collapse: collapse; width: 100%; margin-top: 6px;">
+  <tr style="background: #fafafa; border-bottom: 1px solid #ddd;">
+    <th style="padding: 6px 10px; text-align: left;">Tab / surface</th>
+    <th style="padding: 6px 10px; text-align: left;">Canonical mockup</th>
+  </tr>
+  <tr><td style="padding: 6px 10px;">Chat (with cost annotations + trace panel)</td><td style="padding: 6px 10px;"><a href="04-three-panels.html">04</a> (chat section) — superseded by spec for newer details</td></tr>
+  <tr><td style="padding: 6px 10px;">Chat — provider/model switch UX</td><td style="padding: 6px 10px;"><a href="06-provider-warning.html">06</a></td></tr>
+  <tr><td style="padding: 6px 10px;">Persona (3-panel + sub-tab base layers)</td><td style="padding: 6px 10px;"><a href="11-banner-buttons.html">11</a></td></tr>
+  <tr><td style="padding: 6px 10px;">Persona — what the read-only sub-tabs show</td><td style="padding: 6px 10px;"><a href="05-corrected-layers.html">05</a> (lower section)</td></tr>
+  <tr><td style="padding: 6px 10px;">Skills (3-panel + file tree)</td><td style="padding: 6px 10px;"><a href="04-three-panels.html">04</a> (skills section)</td></tr>
+  <tr><td style="padding: 6px 10px;">Models (card grid + local-model extras)</td><td style="padding: 6px 10px;"><a href="05-corrected-layers.html">05</a> (Models section)</td></tr>
+  <tr><td style="padding: 6px 10px;">Draft banner</td><td style="padding: 6px 10px;"><a href="11-banner-buttons.html">11</a></td></tr>
+</table>
+
+<p class="meta" style="margin-top: 28px;">
+  Each mockup file was originally a content fragment served by the brainstorming companion server (port 58679). For archival, each has been wrapped in the same frame template via <code>wrap.sh</code> so it renders standalone via any static file server.
+</p>
+
+</body>
+</html>

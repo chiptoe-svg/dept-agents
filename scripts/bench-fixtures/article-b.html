@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head><title>Understanding Git Branching Strategies</title></head>
+<body>
+<h1>Understanding Git Branching Strategies</h1>
+<p>Version control is the backbone of modern software development, and Git's branching model is
+one of its most powerful features. Choosing the right branching strategy for your team can
+dramatically reduce merge conflicts, improve release cadence, and make it easier for newcomers
+to understand the repository's history.</p>
+
+<h2>Why Branching Matters</h2>
+<p>Branches allow multiple developers to work on different features or bug fixes simultaneously
+without interfering with each other. They create a sandbox where code can be developed, tested,
+and reviewed before being integrated into the shared codebase. A disciplined branching strategy
+makes the intent behind each change obvious from the commit history alone, without requiring
+contributors to read every diff.</p>
+
+<h2>GitFlow</h2>
+<p>GitFlow is a well-known branching strategy introduced by Vincent Driessen. It defines a strict
+branching model built around releases. The model uses two permanent branches: <code>main</code>
+(or <code>master</code>), which always reflects the production-ready state, and <code>develop</code>,
+which is the integration branch for the next release. Feature branches are created from
+<code>develop</code>, and release branches are created from <code>develop</code> when you are
+ready to prepare a new production version. Hotfix branches allow you to patch <code>main</code>
+directly for urgent production issues.</p>
+
+<p>GitFlow works well for projects with scheduled releases and multiple maintained versions.
+However, it introduces overhead for teams that deploy continuously. Long-lived feature branches
+accumulate divergence and can lead to painful merge conflicts when the time comes to integrate.</p>
+
+<h2>GitHub Flow</h2>
+<p>GitHub Flow simplifies the model to two core rules: <code>main</code> is always deployable,
+and all changes are made through short-lived feature branches that are merged via pull requests.
+There are no release branches, no develop branch, and no hotfix branches. Deployments happen
+directly from <code>main</code> after every merge. This approach suits teams that ship continuously
+and value simplicity. The trade-off is that it requires robust automated testing so that
+<code>main</code> never breaks.</p>
+
+<h2>Trunk-Based Development</h2>
+<p>Trunk-Based Development takes simplicity even further. Developers commit directly to the main
+branch, called the trunk, or use very short-lived branches that last at most a day or two.
+Feature flags hide incomplete work from end users, so partially finished features can be
+integrated safely. This approach minimizes merge conflicts and keeps the integration surface small.
+Large technology companies like Google practice trunk-based development at scale.</p>
+
+<h2>Choosing a Strategy</h2>
+<p>The best branching strategy depends on your team's deployment frequency, the maturity of your
+CI/CD pipeline, and the number of simultaneous versions you need to maintain. Teams deploying
+multiple times per day benefit from trunk-based development or GitHub Flow. Teams maintaining
+several production releases simultaneously benefit from the structure of GitFlow. Small teams and
+open-source projects often adopt lightweight variations that combine elements of all three models.</p>
+
+<h2>Naming Conventions</h2>
+<p>Whatever strategy you choose, consistent naming conventions help. Common patterns include
+prefixes like <code>feat/</code> for features, <code>fix/</code> for bug fixes, <code>chore/</code>
+for maintenance tasks, and <code>docs/</code> for documentation changes. Including a ticket or
+issue number in the branch name creates a traceable link from the branch to the work item that
+motivated it.</p>
+
+<h2>Summary</h2>
+<p>There is no universally correct branching strategy. GitFlow, GitHub Flow, and trunk-based
+development each represent deliberate trade-offs between isolation, simplicity, and delivery
+speed. Understanding the forces that shape each model helps you adapt them intelligently to your
+own context rather than following a recipe blindly.</p>
+</body>
+</html>

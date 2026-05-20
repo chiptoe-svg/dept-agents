@@ -36,7 +36,8 @@ stranger on day one.
 
 Rules:
 - **No discontinuity.** Every sub-step belongs to the same visual flow.
-  The only exception is Anthropic credential registration (see below).
+  The only exception is AI-coding-CLI credential registration (Claude
+  Code or Codex — see below).
 - **No raw child output.** Never `stdio: 'inherit'` a child whose output
   wasn't written by us. Capture it and show it on failure only.
 - **No debug-style prefixes** (`[add-telegram] …`, `INFO …`, timestamps).
@@ -160,20 +161,23 @@ installer invoked from `auto.ts`), it must:
 The driver handles the rest: spinner in level 1, structured append to
 level 2, raw capture to level 3.
 
-## The Anthropic exception
+## The AI-coding-CLI auth exception
 
-Anthropic credential registration (`setup/register-claude-token.sh`) is
-the **one** permitted break in the visual flow. Why:
+AI-coding-CLI credential registration (`setup/register-claude-token.sh`
+for Claude Code; `codex login` for Codex) is the **one** permitted
+break in the visual flow. Why:
 
 - `claude setup-token` opens a browser, runs its own OAuth prompt, and
-  prints the token. It owns the TTY via `script(1)`.
-- We don't want to re-implement the OAuth device flow ourselves.
+  prints the token. It owns the TTY via `script(1)`. `codex login`
+  follows the same shape — its own browser flow, its own TTY ownership.
+- We don't want to re-implement the OAuth device flow ourselves for
+  either provider.
 - We don't want to intercept / mirror the token (it appears in the
   user's terminal already — mirroring it adds attack surface).
 
 So during this step:
 - The clack flow explicitly pauses (a `p.log.step` marker says "this
-  part is interactive, you're handing off to Anthropic").
+  part is interactive, you're handing off to Anthropic / OpenAI").
 - The child inherits stdio fully.
 - When control returns, clack resumes on the next line with a success
   marker.
@@ -192,7 +196,7 @@ leaking the token to disk outweighs the debugging value.
 | `setup/auto.ts` | Phase 2 driver. Orchestrates the clack UI, step execution, user prompts, and writes to all three log levels for every step it spawns. |
 | `setup/logs.ts` | The logging primitives (`logStep`, `logUserInput`, `logComplete`, `stepRawLog`, `initSetupLog`). Single source of truth for level 2/3 formatting and file paths. |
 | `setup/<step>.ts` | Individual step implementations. Must emit one terminal status block; must not write directly to the terminal. |
-| `setup/register-claude-token.sh` | The Anthropic exception. Inherits stdio, prints its own UI, returns a status to the driver. |
+| `setup/register-claude-token.sh` | The AI-coding-CLI auth exception (Claude Code path). Inherits stdio, prints its own UI, returns a status to the driver. The Codex path goes through `codex login` directly, following the same exception pattern. |
 | `setup/add-telegram.sh` | Non-interactive adapter installer. Reads `TELEGRAM_BOT_TOKEN` from env; never prompts. User-facing bits live in `auto.ts`. |
 | `setup/pair-telegram.ts` | Emits `PAIR_TELEGRAM_CODE` / `PAIR_TELEGRAM_ATTEMPT` / `PAIR_TELEGRAM` status blocks. Never prints UI. The driver renders it via clack notes. |
 
@@ -205,8 +209,8 @@ leaking the token to disk outweighs the debugging value.
   It breaks the clack flow — the spinner line gets torn. Use
   `log.info` / `log.error` from `src/log.ts` (writes to the raw log)
   instead.
-- **`stdio: 'inherit'` for a non-exception child.** See Anthropic above.
-  Anything else needs `pipe` + explicit capture.
+- **`stdio: 'inherit'` for a non-exception child.** See AI-coding-CLI
+  auth exception above. Anything else needs `pipe` + explicit capture.
 - **Tee-ing to stderr.** Clack's spinner owns the terminal during a step.
   Even stderr writes tear the frame. Pipe everything, then choose what
   to surface.

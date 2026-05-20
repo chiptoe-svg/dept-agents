@@ -39,6 +39,8 @@ export interface ContainerConfig {
   skills: string[] | 'all';
   /** Agent provider name (e.g. "claude", "opencode"). Default: "claude". */
   provider?: string;
+  /** Model override. Falls back to provider default if unset. */
+  model?: string;
   /** Agent group display name (used in transcript archiving). */
   groupName?: string;
   /** Assistant display name (used in system prompt / responses). */
@@ -47,6 +49,19 @@ export interface ContainerConfig {
   agentGroupId?: string;
   /** Max messages per prompt. Falls back to code default if unset. */
   maxMessagesPerPrompt?: number;
+  /**
+   * Per-group environment variables passed to the container at spawn time.
+   * Use sparingly — most config belongs in container.json itself, read by
+   * the runner. This is for env vars consumed by code we don't own (e.g.
+   * `GOOGLE_APPLICATION_CREDENTIALS` for the Google Workspace CLI).
+   */
+  env?: Record<string, string>;
+  /**
+   * Per-group allowlist of models the agent is permitted to route to.
+   * Optional — when undefined, all catalog models are usable. Set via
+   * the playground Models tab or `ncl` CRUD on container.json.
+   */
+  allowedModels?: { provider: string; model: string }[];
 }
 
 function emptyConfig(): ContainerConfig {
@@ -54,7 +69,11 @@ function emptyConfig(): ContainerConfig {
     mcpServers: {},
     packages: { apt: [], npm: [] },
     additionalMounts: [],
-    skills: 'all',
+    // Barebones default — instructors explicitly grant skills via the
+    // Skills tab so students can compare agent behavior with and without
+    // any given skill. The legacy "all" sentinel is still accepted (older
+    // installs / hand-edited container.json) but no longer auto-applied.
+    skills: [],
   };
 }
 
@@ -83,10 +102,13 @@ export function readContainerConfig(folder: string): ContainerConfig {
       additionalMounts: raw.additionalMounts ?? [],
       skills: raw.skills ?? 'all',
       provider: raw.provider,
+      model: raw.model,
       groupName: raw.groupName,
       assistantName: raw.assistantName,
       agentGroupId: raw.agentGroupId,
       maxMessagesPerPrompt: raw.maxMessagesPerPrompt,
+      env: raw.env,
+      allowedModels: raw.allowedModels,
     };
   } catch (err) {
     console.error(`[container-config] failed to parse ${p}: ${String(err)}`);

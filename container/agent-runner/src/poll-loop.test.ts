@@ -47,7 +47,7 @@ describe('formatter', () => {
     insertMessage('m1', 'task', { prompt: 'Review open PRs' });
     const messages = getPendingMessages();
     const prompt = formatMessages(messages);
-    expect(prompt).toContain('[SCHEDULED TASK]');
+    expect(prompt).toContain('<task');
     expect(prompt).toContain('Review open PRs');
   });
 
@@ -55,15 +55,17 @@ describe('formatter', () => {
     insertMessage('m1', 'webhook', { source: 'github', event: 'push', payload: { ref: 'main' } });
     const messages = getPendingMessages();
     const prompt = formatMessages(messages);
-    expect(prompt).toContain('[WEBHOOK: github/push]');
+    expect(prompt).toContain('<webhook');
+    expect(prompt).toContain('source="github"');
+    expect(prompt).toContain('event="push"');
   });
 
   it('should format system messages', () => {
     insertMessage('m1', 'system', { action: 'register_group', status: 'success', result: { id: 'ag-1' } });
     const messages = getPendingMessages();
     const prompt = formatMessages(messages);
-    expect(prompt).toContain('[SYSTEM RESPONSE]');
-    expect(prompt).toContain('register_group');
+    expect(prompt).toContain('<system_response');
+    expect(prompt).toContain('action="register_group"');
   });
 
   it('should handle mixed kinds', () => {
@@ -72,7 +74,7 @@ describe('formatter', () => {
     const messages = getPendingMessages();
     const prompt = formatMessages(messages);
     expect(prompt).toContain('sender="John"');
-    expect(prompt).toContain('[SYSTEM RESPONSE]');
+    expect(prompt).toContain('<system_response');
   });
 
   it('should escape XML in content', () => {
@@ -147,6 +149,76 @@ describe('routing', () => {
   });
 });
 
+describe('origin metadata (from= attribute)', () => {
+  function seedDestination(name: string, channelType: string, platformId: string): void {
+    getInboundDb()
+      .prepare(
+        `INSERT INTO destinations (name, display_name, type, channel_type, platform_id, agent_group_id)
+         VALUES (?, ?, 'channel', ?, ?, NULL)`,
+      )
+      .run(name, name, channelType, platformId);
+  }
+
+  function insertWithRouting(id: string, kind: string, content: object, channelType: string | null, platformId: string | null): void {
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, content)
+         VALUES (?, ?, datetime('now'), 'pending', ?, ?, ?)`,
+      )
+      .run(id, kind, platformId, channelType, JSON.stringify(content));
+  }
+
+  it('chat message includes from= when destination matches', () => {
+    seedDestination('discord-main', 'discord', 'chan-1');
+    insertWithRouting('m1', 'chat', { sender: 'Alice', text: 'hi' }, 'discord', 'chan-1');
+    const prompt = formatMessages(getPendingMessages());
+    expect(prompt).toContain('from="discord-main"');
+  });
+
+  it('chat message falls back to raw routing when no destination matches', () => {
+    insertWithRouting('m1', 'chat', { sender: 'Alice', text: 'hi' }, 'telegram', 'chat-999');
+    const prompt = formatMessages(getPendingMessages());
+    expect(prompt).toContain('from="unknown:telegram:chat-999"');
+  });
+
+  it('chat message omits from= when routing is null', () => {
+    insertMessage('m1', 'chat', { sender: 'Alice', text: 'hi' });
+    const prompt = formatMessages(getPendingMessages());
+    expect(prompt).not.toContain('from=');
+  });
+
+  it('task message includes from= when destination matches', () => {
+    seedDestination('slack-ops', 'slack', 'C-OPS');
+    insertWithRouting('t1', 'task', { prompt: 'check status' }, 'slack', 'C-OPS');
+    const prompt = formatMessages(getPendingMessages());
+    expect(prompt).toContain('<task');
+    expect(prompt).toContain('from="slack-ops"');
+  });
+
+  it('task message omits from= when routing is null', () => {
+    insertMessage('t1', 'task', { prompt: 'check status' });
+    const prompt = formatMessages(getPendingMessages());
+    expect(prompt).toContain('<task');
+    expect(prompt).not.toContain('from=');
+  });
+
+  it('webhook message includes from= when destination matches', () => {
+    seedDestination('github-ch', 'github', 'repo-1');
+    insertWithRouting('w1', 'webhook', { source: 'github', event: 'push', payload: {} }, 'github', 'repo-1');
+    const prompt = formatMessages(getPendingMessages());
+    expect(prompt).toContain('<webhook');
+    expect(prompt).toContain('from="github-ch"');
+  });
+
+  it('system message includes from= when destination matches', () => {
+    seedDestination('discord-main', 'discord', 'chan-1');
+    insertWithRouting('s1', 'system', { action: 'test', status: 'ok', result: null }, 'discord', 'chan-1');
+    const prompt = formatMessages(getPendingMessages());
+    expect(prompt).toContain('<system_response');
+    expect(prompt).toContain('from="discord-main"');
+  });
+});
+
 describe('mock provider', () => {
   it('should produce init + result events', async () => {
     const provider = new MockProvider({}, (prompt) => `Echo: ${prompt}`);
@@ -189,6 +261,96 @@ describe('mock provider', () => {
     expect(results).toHaveLength(2);
     expect(results[0].text).toBe('Re: First');
     expect(results[1].text).toBe('Re: Second');
+  });
+});
+
+describe('dispatchResultText single-destination fallback', () => {
+  function seedDestination(name: string, channelType: string, platformId: string): void {
+    getInboundDb()
+      .prepare(
+        `INSERT INTO destinations (name, display_name, type, channel_type, platform_id, agent_group_id)
+         VALUES (?, ?, 'channel', ?, ?, NULL)`,
+      )
+      .run(name, name, channelType, platformId);
+  }
+
+  it('delivers bare text to the sole destination when no <message> blocks present', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('Hello from the model', { inReplyTo: 'm1', platformId: null, channelType: null, threadId: null });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('Hello from the model');
+    expect(out[0].platform_id).toBe('telegram:user-1');
+  });
+
+  it('strips <internal> tags from bare-text fallback', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('<internal>thinking…</internal>Visible reply.', {
+      inReplyTo: 'm1',
+      platformId: null,
+      channelType: null,
+      threadId: null,
+    });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('Visible reply.');
+  });
+
+  it('strips <think> tags (reasoning-model chain-of-thought) from bare-text fallback', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText(
+      "<think>\nLet me try curl first.\nIf that fails I'll use the browser.\n</think>\nThe site is up — top story is X.",
+      {
+        inReplyTo: 'm1',
+        platformId: null,
+        channelType: null,
+        threadId: null,
+      },
+    );
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('The site is up — top story is X.');
+  });
+
+  it('routes bare text to the destination matching the inbound routing when multiple destinations exist', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    seedDestination('dm-with-chiptonkin', 'playground', 'playground:dm-with-chiptonkin');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('Hello', {
+      inReplyTo: 'm1',
+      platformId: 'telegram:user-1',
+      channelType: 'telegram',
+      threadId: null,
+    });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(out[0].platform_id).toBe('telegram:user-1');
+    expect(JSON.parse(out[0].content).text).toBe('Hello');
+  });
+
+  it('drops bare text when multiple destinations exist and routing is unknown', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    seedDestination('discord-main', 'discord', 'discord:chan-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('Hello', { inReplyTo: 'm1', platformId: null, channelType: null, threadId: null });
+    expect(getUndeliveredMessages()).toHaveLength(0);
+  });
+
+  it('does NOT fall back when valid <message to> blocks already routed', async () => {
+    seedDestination('telegram-mg-17787', 'telegram', 'telegram:user-1');
+    const { dispatchResultText } = await import('./poll-loop.js');
+    dispatchResultText('<message to="telegram-mg-17787">Wrapped reply</message>', {
+      inReplyTo: 'm1',
+      platformId: null,
+      channelType: null,
+      threadId: null,
+    });
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('Wrapped reply');
   });
 });
 

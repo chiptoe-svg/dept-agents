@@ -21,6 +21,12 @@
  *   /home/node/.claude/ ← Claude SDK state + skill symlinks (RW)
  */
 
+// Wrap globalThis.fetch BEFORE any SDK is imported so per-call
+// attribution (X-NanoClaw-Agent-Group header on proxy requests) is in
+// place from the very first outbound call. See proxy-fetch.ts.
+import { installProxyFetch } from './proxy-fetch.js';
+installProxyFetch();
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -86,11 +92,20 @@ async function main(): Promise<void> {
     log(`Additional MCP server: ${name} (${serverConfig.command})`);
   }
 
+  // Per-group model override from container.json wins over env var. The
+  // env var (CODEX_MODEL / ANTHROPIC_MODEL) is the global fallback.
+  const envWithModelOverride = { ...process.env };
+  if (config.model) {
+    envWithModelOverride.CODEX_MODEL = config.model;
+    envWithModelOverride.ANTHROPIC_MODEL = config.model;
+  }
+
   const provider = createProvider(providerName, {
     assistantName: config.assistantName || undefined,
     mcpServers,
-    env: { ...process.env },
+    env: envWithModelOverride,
     additionalDirectories: additionalDirectories.length > 0 ? additionalDirectories : undefined,
+    model: config.model || undefined,
   });
 
   await runPollLoop({

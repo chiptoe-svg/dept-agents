@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Superpowers Brainstorming</title>
+  <style>
+    /*
+     * BRAINSTORM COMPANION FRAME TEMPLATE
+     *
+     * This template provides a consistent frame with:
+     * - OS-aware light/dark theming
+     * - Fixed header and selection indicator bar
+     * - Scrollable main content area
+     * - CSS helpers for common UI patterns
+     *
+     * Content is injected via placeholder comment in #claude-content.
+     */
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    /* ===== THEME VARIABLES ===== */
+    :root {
+      --bg-primary: #f5f5f7;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #e5e5e7;
+      --border: #d1d1d6;
+      --text-primary: #1d1d1f;
+      --text-secondary: #86868b;
+      --text-tertiary: #aeaeb2;
+      --accent: #0071e3;
+      --accent-hover: #0077ed;
+      --success: #34c759;
+      --warning: #ff9f0a;
+      --error: #ff3b30;
+      --selected-bg: #e8f4fd;
+      --selected-border: #0071e3;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #1d1d1f;
+        --bg-secondary: #2d2d2f;
+        --bg-tertiary: #3d3d3f;
+        --border: #424245;
+        --text-primary: #f5f5f7;
+        --text-secondary: #86868b;
+        --text-tertiary: #636366;
+        --accent: #0a84ff;
+        --accent-hover: #409cff;
+        --selected-bg: rgba(10, 132, 255, 0.15);
+        --selected-border: #0a84ff;
+      }
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+    }
+
+    /* ===== FRAME STRUCTURE ===== */
+    .header {
+      background: var(--bg-secondary);
+      padding: 0.5rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .header h1 { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
+    .header .status { font-size: 0.7rem; color: var(--success); display: flex; align-items: center; gap: 0.4rem; }
+    .header .status::before { content: ''; width: 6px; height: 6px; background: var(--success); border-radius: 50%; }
+
+    .main { flex: 1; overflow-y: auto; }
+    #claude-content { padding: 2rem; min-height: 100%; }
+
+    .indicator-bar {
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      padding: 0.5rem 1.5rem;
+      flex-shrink: 0;
+      text-align: center;
+    }
+    .indicator-bar span {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    .indicator-bar .selected-text {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ===== TYPOGRAPHY ===== */
+    h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .section { margin-bottom: 2rem; }
+    .label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+
+    /* ===== OPTIONS (for A/B/C choices) ===== */
+    .options { display: flex; flex-direction: column; gap: 0.75rem; }
+    .option {
+      background: var(--bg-secondary);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+    .option:hover { border-color: var(--accent); }
+    .option.selected { background: var(--selected-bg); border-color: var(--selected-border); }
+    .option .letter {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      width: 1.75rem; height: 1.75rem;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 0.85rem; flex-shrink: 0;
+    }
+    .option.selected .letter { background: var(--accent); color: white; }
+    .option .content { flex: 1; }
+    .option .content h3 { font-size: 0.95rem; margin-bottom: 0.15rem; }
+    .option .content p { color: var(--text-secondary); font-size: 0.85rem; margin: 0; }
+
+    /* ===== CARDS (for showing designs/mockups) ===== */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .card.selected { border-color: var(--selected-border); border-width: 2px; }
+    .card-image { background: var(--bg-tertiary); aspect-ratio: 16/10; display: flex; align-items: center; justify-content: center; }
+    .card-body { padding: 1rem; }
+    .card-body h3 { margin-bottom: 0.25rem; }
+    .card-body p { color: var(--text-secondary); font-size: 0.85rem; }
+
+    /* ===== MOCKUP CONTAINER ===== */
+    .mockup {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .mockup-header {
+      background: var(--bg-tertiary);
+      padding: 0.5rem 1rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .mockup-body { padding: 1.5rem; }
+
+    /* ===== SPLIT VIEW (side-by-side comparison) ===== */
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+
+    /* ===== PROS/CONS ===== */
+    .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .pros, .cons { background: var(--bg-secondary); border-radius: 8px; padding: 1rem; }
+    .pros h4 { color: var(--success); font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .cons h4 { color: var(--error); font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .pros ul, .cons ul { margin-left: 1.25rem; font-size: 0.85rem; color: var(--text-secondary); }
+    .pros li, .cons li { margin-bottom: 0.25rem; }
+
+    /* ===== PLACEHOLDER (for mockup areas) ===== */
+    .placeholder {
+      background: var(--bg-tertiary);
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-tertiary);
+    }
+
+    /* ===== INLINE MOCKUP ELEMENTS ===== */
+    .mock-nav { background: var(--accent); color: white; padding: 0.75rem 1rem; display: flex; gap: 1.5rem; font-size: 0.9rem; }
+    .mock-sidebar { background: var(--bg-tertiary); padding: 1rem; min-width: 180px; }
+    .mock-content { padding: 1.5rem; flex: 1; }
+    .mock-button { background: var(--accent); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; }
+    .mock-input { background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><a href="https://github.com/obra/superpowers" style="color: inherit; text-decoration: none;">Superpowers Brainstorming</a></h1>
+    <div class="status">Connected</div>
+  </div>
+
+  <div class="main">
+    <div id="claude-content">
+<h2>Corrected Persona tab + Models tab updates</h2>
+<p class="subtitle">Persona right-panel sub-tabs now reflect the real file layout. Models tab cards add parameter count, modalities, and a notes field. Architectural change called out at the bottom.</p>
+
+<h3>Persona tab — actual layers</h3>
+<div class="mockup">
+  <div class="mockup-header">Persona — right panel sub-tabs match real file structure</div>
+  <div class="mockup-body" style="display:flex;font-size:11px;padding:8px;gap:8px;height:380px">
+    <!-- LEFT: library (unchanged) -->
+    <div style="flex:1;background:#fafafa;border:1px solid #e0e0e0;border-radius:6px;padding:8px;overflow:auto">
+      <div style="font-weight:600;font-size:11px">Library</div>
+      <input class="mock-input" placeholder="filter…" style="width:100%;font-size:10px;margin-top:4px">
+      <div style="margin-top:8px;font-size:10px;color:#666">Default agents</div>
+      <div style="font-size:10px;line-height:1.6">📋 concise_writer<br>📋 socratic_tutor<br>📋 code_reviewer<br><span style="background:#e6f0ff;border-radius:3px;padding:0 4px">📋 felix_assistant</span> ← selected</div>
+      <div style="margin-top:8px;font-size:10px;color:#666">Class library</div>
+      <div style="font-size:10px;line-height:1.6">📋 news_summarizer<br>📋 calc_helper</div>
+      <div style="margin-top:8px;font-size:10px;color:#666">My library</div>
+      <div style="font-size:10px;line-height:1.6">📋 baseline<br>📋 with_search</div>
+    </div>
+    <!-- MIDDLE: preview (unchanged) -->
+    <div style="flex:1.2;background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:8px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="font-weight:600;font-size:11px">Preview: felix_assistant</div>
+        <span style="margin-left:auto;color:#888;font-size:10px">read-only</span>
+      </div>
+      <div style="font-size:10px;color:#666;margin-top:2px">From: Default agents · prefers claude-haiku-4-5 · uses skills: scheduling, wiki</div>
+      <div style="background:#fafafa;border:1px solid #ddd;border-radius:4px;padding:6px;margin-top:6px;font-family:monospace;font-size:10px;flex:1;overflow:auto;white-space:pre-wrap"># Felix
+
+You are Felix, a personal assistant. You help with tasks, answer questions, and can schedule reminders.
+
+Occasionally end with a dad joke when it fits the tone — never on serious or technical replies.</div>
+      <div style="margin-top:6px;display:flex;gap:6px">
+        <button class="mock-button" style="font-size:10px">📋 Copy to my persona →</button>
+        <button class="mock-button" style="font-size:10px">⤴ Replace my persona</button>
+      </div>
+    </div>
+    <!-- RIGHT: active with REAL layer sub-tabs -->
+    <div style="flex:1.3;background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:0;display:flex;flex-direction:column">
+      <div style="display:flex;border-bottom:1px solid #e0e0e0;background:#fafafa">
+        <div style="padding:6px 10px;font-weight:600;font-size:10px;border-bottom:2px solid #4a90e2">My persona ✏️</div>
+        <div style="padding:6px 10px;font-size:10px;color:#888">Group base 🔒</div>
+        <div style="padding:6px 10px;font-size:10px;color:#888">Container base 🔒</div>
+        <div style="padding:6px 10px;font-size:10px;color:#888;opacity:0.5">Global 🔒</div>
+      </div>
+      <div style="padding:8px;display:flex;flex-direction:column;flex:1">
+        <div style="font-size:10px;color:#666">Editing: <code>groups/my_summarizer/CLAUDE.local.md</code></div>
+        <textarea style="flex:1;font-family:monospace;font-size:10px;border:1px solid #ddd;border-radius:4px;padding:6px;margin-top:4px;resize:none">You are a concise news summarizer. Output exactly 3 bullets, max 12 words each. Cite source URL.</textarea>
+        <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+          <span style="font-size:10px;color:#666">prefers model:</span>
+          <select class="mock-input" style="font-size:10px;width:140px"><option>claude-haiku-4-5</option></select>
+          <button class="mock-button" style="font-size:10px;margin-left:auto">Test in Chat ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:18px">What each "base" sub-tab shows when clicked</h3>
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Group base 🔒 (auto-composed)</div>
+    <div class="mockup-body" style="padding:8px;font-size:10px">
+      <div style="font-size:10px;color:#666;margin-bottom:4px">Source: <code>groups/my_summarizer/CLAUDE.md</code> (do not edit — composed at spawn)</div>
+      <div style="background:#fafafa;border:1px solid #ddd;border-radius:4px;padding:6px;font-family:monospace;font-size:10px;white-space:pre-wrap;color:#555;height:200px;overflow:auto">## Modules in this group
+
+### messaging-telegram
+You communicate via Telegram. Wrap messages in &lt;message to="…"&gt; tags…
+
+### scheduling
+You can schedule future reminders by calling…
+
+### wiki
+You maintain a persistent course-content wiki at /workspace/agent/wiki/…
+
+### onecli-gateway
+For any external API call (Slack, GitHub, Vercel)…</div>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">Container base 🔒 (immutable, all NanoClaw agents)</div>
+    <div class="mockup-body" style="padding:8px;font-size:10px">
+      <div style="font-size:10px;color:#666;margin-bottom:4px">Source: <code>container/CLAUDE.md</code> (read-only, install-wide)</div>
+      <div style="background:#fafafa;border:1px solid #ddd;border-radius:4px;padding:6px;font-family:monospace;font-size:10px;white-space:pre-wrap;color:#555;height:200px;overflow:auto">You are a NanoClaw agent. Your name, destinations, and message-sending rules are provided in the runtime system prompt at the top of each turn.
+
+## Communication
+Be concise — every message costs the reader's attention…
+
+## Workspace
+Files you create are saved in /workspace/agent/…
+
+## Memory
+When the user shares any substantive information…
+
+## Conversation history
+The conversations/ folder in your workspace…</div>
+    </div>
+  </div>
+</div>
+<p class="subtitle" style="font-size:11px;margin-top:6px">Global tab is dimmed when no <code>groups/global/CLAUDE.md</code> exists (the v2 default).</p>
+
+<h3 style="margin-top:18px">Models tab — local card with parameter count + modalities + notes</h3>
+<div class="mockup">
+  <div class="mockup-header">Models — local model card additions</div>
+  <div class="mockup-body" style="padding:10px;font-size:11px">
+    <div style="font-weight:600;margin-bottom:6px">Lock in which models your agent can use:</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <!-- One cloud card for comparison -->
+      <div style="flex:1;min-width:200px;border:2px solid #4a90e2;background:#f5faff;border-radius:6px;padding:8px">
+        <div><label><input type="checkbox" checked> <strong>claude-haiku-4-5</strong></label></div>
+        <div style="font-size:10px;color:#666">⚡ fast · $ cheap · ☁ Anthropic</div>
+        <div style="font-size:10px;margin-top:4px">$0.0008 / 1k tokens · 0.9s avg</div>
+        <div style="font-size:10px;color:#666;margin-top:2px">params: not disclosed · modalities: text + image</div>
+        <div style="font-size:10px;color:#666;margin-top:4px;font-style:italic">notes: workhorse for short answers, classification, structured output</div>
+      </div>
+      <!-- LOCAL CARD with new fields -->
+      <div style="flex:1;min-width:200px;border:2px solid #87a96b;background:#f7faf3;border-radius:6px;padding:8px">
+        <div><label><input type="checkbox" checked> <strong>llama-3.3-70b-instruct</strong></label></div>
+        <div style="font-size:10px;color:#666">🏠 local · 🆓 free · 🐢🐢 hardware-bound</div>
+        <div style="font-size:10px;margin-top:4px">$0 (local) · ~3.5s avg on Mac Studio M2 Ultra</div>
+        <div style="font-size:10px;color:#666;margin-top:2px"><strong>params:</strong> 70B · <strong>modalities:</strong> text only</div>
+        <div style="margin-top:6px;padding:4px;background:#fff;border:1px solid #d8e2cf;border-radius:4px;font-size:10px">
+          host: <code>http://192.168.1.42:11434</code> (Ollama)<br>
+          context: 32k · quantization: Q4_K_M<br>
+          status: <span style="color:#2a7">● online</span>
+        </div>
+        <div style="margin-top:6px;padding:6px;background:#fffbe6;border-left:3px solid #f0c060;font-size:10px">
+          <strong>📝 Notes (instructor):</strong><br>
+          Best for short factual queries. Refuses code-generation tasks reliably — use this when you want students to see refusal behavior. Don't use for math (3.5x worse than Sonnet on GSM8K).
+        </div>
+      </div>
+      <div style="flex:1;min-width:200px;border:1px solid #ddd;border-radius:6px;padding:8px">
+        <div><label><input type="checkbox"> <strong>llama-4-vision-17b</strong></label></div>
+        <div style="font-size:10px;color:#666">🏠 local · 🆓 free · ⚡ MLX</div>
+        <div style="font-size:10px;margin-top:4px">$0 · ~1.4s avg on M2 Ultra</div>
+        <div style="font-size:10px;color:#666;margin-top:2px"><strong>params:</strong> 17B · <strong>modalities:</strong> text + image</div>
+        <div style="margin-top:6px;padding:4px;background:#fff;border:1px solid #ddd;border-radius:4px;font-size:10px">
+          host: <code>http://localhost:10240</code><br>
+          context: 8k · status: <span style="color:#888">○ offline</span>
+        </div>
+        <div style="margin-top:6px;padding:6px;background:#fffbe6;border-left:3px solid #f0c060;font-size:10px">
+          <strong>📝 Notes:</strong> <span style="color:#888;font-style:italic">(none)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:18px">Architectural ask captured</h3>
+<div style="background:#fafafa;border:1px solid #e0e0e0;border-radius:6px;padding:10px;font-size:13px">
+  <p style="margin:0 0 6px 0"><strong>New host-side module:</strong> <code>src/persona-layers.ts</code></p>
+  <p style="margin:0 0 6px 0">Single function — <code>getEffectivePersonaLayers(folder)</code> — returns the four-layer struct:</p>
+  <pre style="background:#fff;border:1px solid #ddd;padding:6px;font-size:11px;border-radius:4px">{
+  myPersona:     string,  // groups/&lt;folder&gt;/CLAUDE.local.md  (writable)
+  groupBase:     string,  // groups/&lt;folder&gt;/CLAUDE.md  with @imports resolved
+  containerBase: string,  // container/CLAUDE.md
+  global?:       string,  // groups/global/CLAUDE.md  if present
+}</pre>
+  <p style="margin:6px 0 0 0">Reuses <code>resolveClaudeImports</code> from <code>container/agent-runner/src/providers/codex.ts</code> — refactor that out to a shared utility (today it's also used by the host's host-side persona work). Playground API calls this function regardless of which agent_provider the group is configured to use, so the right-panel sub-tabs render the same content for a Claude agent and a Codex agent.</p>
+</div>
+
+<p class="subtitle" style="margin-top:18px">If this corrected layer model + local-card additions + the host-side helper sound right, I'll wrap up the design and start writing it as a spec doc. Anything to push back on first?</p>
+    </div>
+  </div>
+
+  <div class="indicator-bar">
+    <span id="indicator-text">Click an option above, then return to the terminal</span>
+  </div>
+
+</body>
+</html>

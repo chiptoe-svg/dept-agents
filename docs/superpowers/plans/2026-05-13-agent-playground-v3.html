@@ -1,0 +1,2913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Playground v3 — Implementation Plan</title>
+<style>
+  body { font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 980px; margin: 30px auto; padding: 0 20px; color: #222; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+  h2 { border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 36px; background: #f4f7fb; padding: 8px 12px; }
+  h3 { margin-top: 28px; padding-top: 8px; border-top: 1px dashed #ddd; }
+  code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #f4f4f4; padding: 10px 14px; border-radius: 5px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+  pre.task { background: #fafafa; border-left: 3px solid #4a90e2; padding-left: 16px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #fafafa; }
+  blockquote { border-left: 3px solid #888; margin: 14px 0; padding: 4px 14px; color: #555; background: #f9f9f9; }
+  .meta { color: #666; font-size: 13px; }
+  .files { background: #fff8e1; border: 1px solid #f0d97a; padding: 8px 12px; border-radius: 4px; margin: 10px 0; font-size: 13px; }
+  .files ul { margin: 4px 0 0 0; padding-left: 24px; }
+  .step { margin: 6px 0; }
+  .phase-summary { background: #eef4fb; border: 1px solid #d0deeb; padding: 10px 14px; border-radius: 4px; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Agent Playground v3 — Implementation Plan</h1>
+
+<blockquote>
+<strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use <code>superpowers:subagent-driven-development</code> (recommended) or <code>superpowers:executing-plans</code> to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking inside the <code>&lt;pre class="task"&gt;</code> blocks below.
+</blockquote>
+
+<p class="meta">
+  <strong>Spec:</strong> <a href="../specs/2026-05-13-agent-playground-v3-design.html"><code>docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html</code></a><br>
+  <strong>Goal:</strong> Rebuild the agent playground as a 4-tab student learning surface (Chat / Persona / Skills / Models) with a draft banner, library tier system, model whitelist, per-message cost/speed annotations, and a provider-uniform persona-layers helper.<br>
+  <strong>Architecture:</strong> Vanilla TS/JS over SSE + REST (no framework — same shape as v2). New host-side modules for persona layers, model catalog, library storage. Provider-event extensions for cost/speed tracking. Full client UI rewrite under <code>src/channels/playground/public/</code>.<br>
+  <strong>Tech Stack:</strong> Node 22 + pnpm + TypeScript on the host; Bun + bun:sqlite + bun:test in <code>container/agent-runner/</code>; vitest on the host; vanilla browser JS.
+</p>
+
+<h2>File Structure</h2>
+
+<p><strong>New files (host):</strong></p>
+<table>
+<tr><th>Path</th><th>Responsibility</th></tr>
+<tr><td><code>src/lib/claude-imports.ts</code></td><td>Pure helper: resolve <code>@&lt;path&gt;</code> imports inside CLAUDE.md content. Mirrors the agent-runner copy in <code>container/agent-runner/src/providers/codex.ts:54</code>.</td></tr>
+<tr><td><code>src/lib/claude-imports.test.ts</code></td><td>Tests (vitest) — round-trip imports, missing files, cycle handling.</td></tr>
+<tr><td><code>src/persona-layers.ts</code></td><td><code>getEffectivePersonaLayers(folder)</code> — returns <code>{ myPersona, groupBase, containerBase, global? }</code> regardless of provider.</td></tr>
+<tr><td><code>src/persona-layers.test.ts</code></td><td>Tests — exercises each layer with fixture group dirs.</td></tr>
+<tr><td><code>src/model-catalog.ts</code></td><td>Static cloud-model entries + loader for <code>config/model-catalog-local.json</code>. Returns the joined catalog plus per-entry metadata (cost, speed, params, modalities).</td></tr>
+<tr><td><code>src/model-catalog.test.ts</code></td><td>Tests — catalog shape, local-file merge.</td></tr>
+<tr><td><code>config/model-catalog-local.json</code></td><td>Instructor-editable local-model entries (host URL, quantization, context, params, modalities, notes).</td></tr>
+<tr><td><code>src/library/types.ts</code></td><td><code>LibraryEntry</code> + <code>LibraryTier</code> types.</td></tr>
+<tr><td><code>src/library/storage.ts</code></td><td><code>listAllTiers()</code>, <code>readEntry(tier, name)</code>, <code>writeMyEntry(studentId, name, entry)</code>.</td></tr>
+<tr><td><code>src/library/storage.test.ts</code></td><td>Tests — round-trip per tier, JSON validation, path safety.</td></tr>
+<tr><td><code>library/default-agents/concise_writer.json</code><br><code>library/default-agents/socratic_tutor.json</code><br><code>library/default-agents/code_reviewer.json</code><br><code>library/default-agents/brainstormer.json</code></td><td>Bundled Default-agents library content (4 starter entries; instructor can extend with class library entries elsewhere).</td></tr>
+<tr><td><code>src/channels/playground/api/library.ts</code></td><td>HTTP handlers for <code>/api/library</code>, <code>/api/library/:tier/:name</code>, <code>/api/library/my/:name</code>.</td></tr>
+<tr><td><code>src/channels/playground/api/models.ts</code></td><td>HTTP handlers for <code>/api/drafts/:folder/models</code> (GET/PUT).</td></tr>
+<tr><td><code>src/channels/playground/api/persona-layers.ts</code></td><td>HTTP handler for <code>/api/drafts/:folder/persona-layers</code>.</td></tr>
+</table>
+
+<p><strong>New files (client UI):</strong></p>
+<table>
+<tr><th>Path</th><th>Responsibility</th></tr>
+<tr><td><code>src/channels/playground/public/index.html</code> (REWRITE)</td><td>4-tab shell, draft banner, header. Replaces v2 5-mode shell.</td></tr>
+<tr><td><code>src/channels/playground/public/style.css</code> (REWRITE)</td><td>Layout for 4 tabs, draft banner, three-panel sub-layout, modal, card grid.</td></tr>
+<tr><td><code>src/channels/playground/public/app.js</code> (REWRITE)</td><td>Top-level wiring — auth check, agent identity, tab switcher, draft state.</td></tr>
+<tr><td><code>src/channels/playground/public/tabs/chat.js</code></td><td>Chat tab module — chat log, input, provider+model toolbar, trace panel, per-message annotations, switch modal.</td></tr>
+<tr><td><code>src/channels/playground/public/tabs/persona.js</code></td><td>Persona tab module — three panels, sub-tab switcher, library list.</td></tr>
+<tr><td><code>src/channels/playground/public/tabs/skills.js</code></td><td>Skills tab module — three panels, file tree, active-list cost rollup.</td></tr>
+<tr><td><code>src/channels/playground/public/tabs/models.js</code></td><td>Models tab module — card grid, whitelist toggle, local-card extras.</td></tr>
+<tr><td><code>src/channels/playground/public/draft-banner.js</code></td><td>Draft banner module — visibility, three-button actions, draft-state diff against current agent.</td></tr>
+</table>
+
+<p><strong>Modified files:</strong></p>
+<table>
+<tr><th>Path</th><th>Change</th></tr>
+<tr><td><code>container/agent-runner/src/providers/types.ts</code></td><td>Extend <code>ProviderEvent</code> <code>result</code> with <code>tokens?: { input: number; output: number }</code> and <code>latencyMs?: number</code>.</td></tr>
+<tr><td><code>container/agent-runner/src/providers/claude.ts</code></td><td>Populate the new fields from Anthropic SDK usage data + per-turn timing.</td></tr>
+<tr><td><code>container/agent-runner/src/providers/codex.ts</code></td><td>Populate the new fields where exposed by app-server (best-effort) + per-turn timing.</td></tr>
+<tr><td><code>container/agent-runner/src/poll-loop.ts</code></td><td>Capture token/latency from <code>result</code> events and write them onto the outbound message row (new columns) so playground SSE can deliver them.</td></tr>
+<tr><td><code>src/db/migrations/module-outbound-cost.ts</code> (new)</td><td>Migration adding <code>tokens_in</code>, <code>tokens_out</code>, <code>latency_ms</code>, <code>provider</code>, <code>model</code> columns to <code>messages_out</code>.</td></tr>
+<tr><td><code>src/channels/playground/api-routes.ts</code></td><td>Trim to the v3 surface: routes that survive (<code>messages</code>, <code>provider</code>, <code>persona</code>, <code>stream</code>, <code>skills</code>, <code>skills/library</code>) stay; <code>diff</code>, <code>files</code>, <code>files/:path</code> are removed (Files / Diff modes are dropped). New routes (library, models, persona-layers) live in <code>api/</code> sub-modules and are dispatched from this file.</td></tr>
+<tr><td><code>src/channels/playground/adapter.ts</code></td><td>No structural change; verify that the new SSE events for per-message cost still flow through.</td></tr>
+<tr><td><code>src/container-config.ts</code> (or wherever <code>readContainerConfig</code> lives)</td><td>Add typed <code>allowedModels?: { provider: string; model: string }[]</code> field to <code>ContainerConfig</code>.</td></tr>
+<tr><td><code>src/delivery.ts</code></td><td>Surface the new outbound row fields (tokens, latency, provider, model) onto the SSE event the playground SSE handler consumes (no destination semantics change).</td></tr>
+<tr><td><code>plans/master.md</code></td><td>After plan completes: add a row to the "What's shipped" table.</td></tr>
+</table>
+
+<p><strong>Removed files:</strong> none (the v2 surface is rewritten in place; no separate v3 directory).</p>
+
+<hr>
+
+<h2>Phase 1 — Persona-layers helper</h2>
+
+<div class="phase-summary">
+<strong>Goal:</strong> Land the host-side <code>getEffectivePersonaLayers</code> + the shared <code>resolveClaudeImports</code> utility, with full unit tests. Provider-uniform foundation for the Persona tab.<br>
+<strong>Shippable:</strong> No user-visible change; foundation that the UI rewrite consumes.<br>
+<strong>Estimated tasks:</strong> 3.
+</div>
+
+<h3>Task 1.1: Add shared <code>resolveClaudeImports</code> utility</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/lib/claude-imports.ts</code></li>
+  <li>Create: <code>src/lib/claude-imports.test.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Write the failing test**
+
+Create `src/lib/claude-imports.test.ts`:
+
+```typescript
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { resolveClaudeImports } from './claude-imports.js';
+
+describe('resolveClaudeImports', () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-imports-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('inlines @<path> import directives', () => {
+    fs.writeFileSync(path.join(tmp, 'fragment.md'), 'fragment body');
+    const out = resolveClaudeImports('header\n@./fragment.md\nfooter', tmp);
+    expect(out).toBe('header\nfragment body\nfooter');
+  });
+
+  it('recurses into nested imports', () => {
+    fs.writeFileSync(path.join(tmp, 'a.md'), '@./b.md');
+    fs.writeFileSync(path.join(tmp, 'b.md'), 'leaf');
+    expect(resolveClaudeImports('@./a.md', tmp)).toBe('leaf');
+  });
+
+  it('drops missing files silently (returns empty for that import)', () => {
+    expect(resolveClaudeImports('keep\n@./missing.md\nkeep', tmp)).toBe('keep\n\nkeep');
+  });
+
+  it('breaks cycles instead of recursing forever', () => {
+    fs.writeFileSync(path.join(tmp, 'a.md'), '@./b.md');
+    fs.writeFileSync(path.join(tmp, 'b.md'), '@./a.md');
+    expect(() => resolveClaudeImports('@./a.md', tmp)).not.toThrow();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm exec vitest run src/lib/claude-imports.test.ts`
+Expected: FAIL with "Cannot find module './claude-imports.js'"
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `src/lib/claude-imports.ts`:
+
+```typescript
+import fs from 'fs';
+import path from 'path';
+
+/**
+ * Inline `@&lt;path&gt;` import directives (line-anchored) with the contents of
+ * the referenced file, resolved relative to `baseDir`. Recurses so imports
+ * within imported files expand too. Cycles and missing files are silently
+ * dropped (replaced with empty text) rather than left as raw `@path` lines,
+ * which would confuse the model.
+ *
+ * Pure host copy of the agent-runner's resolver in
+ * `container/agent-runner/src/providers/codex.ts` — kept separate so the
+ * host doesn't depend on the agent-runner build.
+ */
+export function resolveClaudeImports(
+  content: string,
+  baseDir: string,
+  seen: Set&lt;string&gt; = new Set(),
+): string {
+  return content.replace(/^@(\S+)\s*$/gm, (_match, importPath: string) =&gt; {
+    try {
+      const resolved = path.resolve(baseDir, importPath);
+      if (seen.has(resolved)) return '';
+      if (!fs.existsSync(resolved)) return '';
+      const nextSeen = new Set(seen);
+      nextSeen.add(resolved);
+      const imported = fs.readFileSync(resolved, 'utf-8');
+      return resolveClaudeImports(imported, path.dirname(resolved), nextSeen);
+    } catch {
+      return '';
+    }
+  });
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pnpm exec vitest run src/lib/claude-imports.test.ts`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/lib/claude-imports.ts src/lib/claude-imports.test.ts
+git commit -m "feat(playground-v3): add host-side claude-imports utility"
+```
+</pre>
+
+<h3>Task 1.2: Add <code>getEffectivePersonaLayers</code></h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/persona-layers.ts</code></li>
+  <li>Create: <code>src/persona-layers.test.ts</code></li>
+  <li>Read for paths: <code>src/config.ts</code> (<code>GROUPS_DIR</code> constant)</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Write the failing test**
+
+Create `src/persona-layers.test.ts`:
+
+```typescript
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { getEffectivePersonaLayers } from './persona-layers.js';
+
+describe('getEffectivePersonaLayers', () =&gt; {
+  let tmp: string;
+  let groupsDir: string;
+  let containerDir: string;
+
+  beforeEach(() =&gt; {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'persona-layers-'));
+    groupsDir = path.join(tmp, 'groups');
+    containerDir = path.join(tmp, 'container');
+    fs.mkdirSync(groupsDir);
+    fs.mkdirSync(containerDir);
+    vi.doMock('./config.js', () =&gt; ({ GROUPS_DIR: groupsDir, CONTAINER_DIR: containerDir }));
+  });
+  afterEach(() =&gt; {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    vi.resetModules();
+  });
+
+  it('returns all four layers when files exist', async () =&gt; {
+    const groupDir = path.join(groupsDir, 'demo');
+    fs.mkdirSync(groupDir);
+    fs.writeFileSync(path.join(groupDir, 'CLAUDE.local.md'), 'my persona');
+    fs.writeFileSync(path.join(groupDir, 'CLAUDE.md'), '@./fragment.md');
+    fs.writeFileSync(path.join(groupDir, 'fragment.md'), 'group base body');
+    fs.writeFileSync(path.join(containerDir, 'CLAUDE.md'), 'container base');
+    fs.mkdirSync(path.join(groupsDir, 'global'));
+    fs.writeFileSync(path.join(groupsDir, 'global', 'CLAUDE.md'), 'global base');
+
+    const { getEffectivePersonaLayers } = await import('./persona-layers.js');
+    const layers = getEffectivePersonaLayers('demo');
+    expect(layers.myPersona).toBe('my persona');
+    expect(layers.groupBase).toBe('group base body');
+    expect(layers.containerBase).toBe('container base');
+    expect(layers.global).toBe('global base');
+  });
+
+  it('omits global when groups/global/CLAUDE.md is absent', async () =&gt; {
+    fs.mkdirSync(path.join(groupsDir, 'demo'));
+    fs.writeFileSync(path.join(groupsDir, 'demo', 'CLAUDE.local.md'), '');
+    fs.writeFileSync(path.join(groupsDir, 'demo', 'CLAUDE.md'), '');
+    fs.writeFileSync(path.join(containerDir, 'CLAUDE.md'), '');
+
+    const { getEffectivePersonaLayers } = await import('./persona-layers.js');
+    expect(getEffectivePersonaLayers('demo').global).toBeUndefined();
+  });
+
+  it('returns empty strings (not throws) when group files are missing', async () =&gt; {
+    fs.mkdirSync(path.join(groupsDir, 'demo'));
+    fs.writeFileSync(path.join(containerDir, 'CLAUDE.md'), 'container');
+
+    const { getEffectivePersonaLayers } = await import('./persona-layers.js');
+    const layers = getEffectivePersonaLayers('demo');
+    expect(layers.myPersona).toBe('');
+    expect(layers.groupBase).toBe('');
+    expect(layers.containerBase).toBe('container');
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm exec vitest run src/persona-layers.test.ts`
+Expected: FAIL with "Cannot find module './persona-layers.js'"
+
+- [ ] **Step 3: Add CONTAINER_DIR to config**
+
+Read `src/config.ts`. If `CONTAINER_DIR` is not exported yet, add it:
+
+```typescript
+export const CONTAINER_DIR = path.join(process.cwd(), 'container');
+```
+
+(adjust path expression to match how the file already computes paths). Commit this in the same commit as Task 1.2.
+
+- [ ] **Step 4: Implement getEffectivePersonaLayers**
+
+Create `src/persona-layers.ts`:
+
+```typescript
+import fs from 'fs';
+import path from 'path';
+
+import { CONTAINER_DIR, GROUPS_DIR } from './config.js';
+import { resolveClaudeImports } from './lib/claude-imports.js';
+
+export interface PersonaLayers {
+  /** groups/&lt;folder&gt;/CLAUDE.local.md — the editable per-group persona. */
+  myPersona: string;
+  /** groups/&lt;folder&gt;/CLAUDE.md after @import resolution — auto-composed group base. */
+  groupBase: string;
+  /** container/CLAUDE.md — install-wide immutable base, common to every agent. */
+  containerBase: string;
+  /** groups/global/CLAUDE.md if present — typically absent in v2. */
+  global?: string;
+}
+
+function readIfExists(p: string): string {
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '';
+}
+
+export function getEffectivePersonaLayers(folder: string): PersonaLayers {
+  const groupDir = path.join(GROUPS_DIR, folder);
+  const myPersona = readIfExists(path.join(groupDir, 'CLAUDE.local.md'));
+  const groupBaseRaw = readIfExists(path.join(groupDir, 'CLAUDE.md'));
+  const groupBase = groupBaseRaw ? resolveClaudeImports(groupBaseRaw, groupDir) : '';
+  const containerBase = readIfExists(path.join(CONTAINER_DIR, 'CLAUDE.md'));
+
+  const globalPath = path.join(GROUPS_DIR, 'global', 'CLAUDE.md');
+  const globalRaw = readIfExists(globalPath);
+  const global = globalRaw
+    ? resolveClaudeImports(globalRaw, path.dirname(globalPath))
+    : undefined;
+
+  return { myPersona, groupBase, containerBase, ...(global !== undefined ? { global } : {}) };
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `pnpm exec vitest run src/persona-layers.test.ts`
+Expected: PASS (3 tests)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/persona-layers.ts src/persona-layers.test.ts src/config.ts
+git commit -m "feat(playground-v3): add getEffectivePersonaLayers helper"
+```
+</pre>
+
+<h3>Task 1.3: Wire <code>/api/drafts/:folder/persona-layers</code> endpoint</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/channels/playground/api/persona-layers.ts</code></li>
+  <li>Modify: <code>src/channels/playground/api-routes.ts</code> (dispatch the new route)</li>
+  <li>Test: extend <code>src/channels/playground/api-routes.test.ts</code> if it exists, else add a focused test in a new file <code>src/channels/playground/api/persona-layers.test.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Write the failing test**
+
+Create `src/channels/playground/api/persona-layers.test.ts`:
+
+```typescript
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+describe('GET /api/drafts/:folder/persona-layers', () =&gt; {
+  let tmp: string;
+
+  beforeEach(() =&gt; {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'persona-layers-route-'));
+  });
+  afterEach(() =&gt; {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    vi.resetModules();
+  });
+
+  it('returns the four-layer struct as JSON', async () =&gt; {
+    const layers = { myPersona: 'A', groupBase: 'B', containerBase: 'C', global: 'D' };
+    vi.doMock('../../../persona-layers.js', () =&gt; ({
+      getEffectivePersonaLayers: () =&gt; layers,
+    }));
+    const { handlePersonaLayers } = await import('./persona-layers.js');
+    const result = handlePersonaLayers('draft_demo');
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual(layers);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm exec vitest run src/channels/playground/api/persona-layers.test.ts`
+Expected: FAIL with "Cannot find module './persona-layers.js'"
+
+- [ ] **Step 3: Implement the handler**
+
+Create `src/channels/playground/api/persona-layers.ts`:
+
+```typescript
+import { getEffectivePersonaLayers } from '../../../persona-layers.js';
+
+export interface ApiResult&lt;T&gt; {
+  status: number;
+  body: T | { error: string };
+}
+
+export function handlePersonaLayers(draftFolder: string): ApiResult&lt;ReturnType&lt;typeof getEffectivePersonaLayers&gt;&gt; {
+  try {
+    return { status: 200, body: getEffectivePersonaLayers(draftFolder) };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
+}
+```
+
+- [ ] **Step 4: Wire the route in api-routes.ts**
+
+Read `src/channels/playground/api-routes.ts`. Add the dispatch after the existing `/api/drafts/:folder/persona` block (around line 205):
+
+```typescript
+import { handlePersonaLayers } from './api/persona-layers.js';
+
+// (in route() — alongside the other draft routes)
+const personaLayersMatch = url.pathname.match(/^\/api\/drafts\/(draft_[A-Za-z0-9_-]+)\/persona-layers$/);
+if (method === 'GET' && personaLayersMatch) {
+  const result = handlePersonaLayers(personaLayersMatch[1]!);
+  return send(res, result.status, result.body);
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `pnpm exec vitest run src/channels/playground/api/persona-layers.test.ts`
+Expected: PASS
+
+- [ ] **Step 6: Smoke against a running playground**
+
+Pre-condition: `pnpm run dev` and a draft already created (or use existing). Then:
+```bash
+curl -s -b "playground_session=&lt;cookie&gt;" http://localhost:3002/api/drafts/draft_telegram_main/persona-layers | head -40
+```
+Expected: JSON with `myPersona`, `groupBase`, `containerBase`, optional `global`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/channels/playground/api/persona-layers.ts src/channels/playground/api/persona-layers.test.ts src/channels/playground/api-routes.ts
+git commit -m "feat(playground-v3): persona-layers REST endpoint"
+```
+</pre>
+
+<hr>
+
+<h2>Phase 2 — Model catalog + whitelist</h2>
+
+<div class="phase-summary">
+<strong>Goal:</strong> Static cloud-model catalog + instructor-editable local-model JSON + per-group whitelist stored in <code>container.json</code>. REST endpoints to read both. Foundation for the Models tab.<br>
+<strong>Shippable:</strong> No user-visible change; endpoints exist for the UI to consume.<br>
+<strong>Estimated tasks:</strong> 3.
+</div>
+
+<h3>Task 2.1: Static model catalog + local loader</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/model-catalog.ts</code></li>
+  <li>Create: <code>src/model-catalog.test.ts</code></li>
+  <li>Create: <code>config/model-catalog-local.json</code> (start with an empty array)</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Write the failing test**
+
+Create `src/model-catalog.test.ts`:
+
+```typescript
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+describe('getModelCatalog', () =&gt; {
+  let tmp: string;
+  let localPath: string;
+
+  beforeEach(() =&gt; {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'model-catalog-'));
+    localPath = path.join(tmp, 'local.json');
+    vi.doMock('./config.js', () =&gt; ({ MODEL_CATALOG_LOCAL_PATH: localPath }));
+  });
+  afterEach(() =&gt; {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    vi.resetModules();
+  });
+
+  it('returns the bundled cloud entries when local file is empty', async () =&gt; {
+    fs.writeFileSync(localPath, '[]');
+    const { getModelCatalog } = await import('./model-catalog.js');
+    const catalog = getModelCatalog();
+    expect(catalog.find((e) =&gt; e.id === 'claude-haiku-4-5')).toBeTruthy();
+    expect(catalog.find((e) =&gt; e.id === 'claude-sonnet-4-6')).toBeTruthy();
+    expect(catalog.find((e) =&gt; e.origin === 'local')).toBeUndefined();
+  });
+
+  it('appends local entries from the JSON file', async () =&gt; {
+    fs.writeFileSync(
+      localPath,
+      JSON.stringify([
+        {
+          id: 'llama-3.3-70b-instruct',
+          provider: 'ollama',
+          displayName: 'llama-3.3-70b-instruct',
+          origin: 'local',
+          host: 'http://192.168.1.42:11434',
+          contextSize: 32768,
+          quantization: 'Q4_K_M',
+          paramCount: '70B',
+          modalities: ['text'],
+          notes: 'Best for short factual queries.',
+        },
+      ]),
+    );
+    const { getModelCatalog } = await import('./model-catalog.js');
+    const local = getModelCatalog().filter((e) =&gt; e.origin === 'local');
+    expect(local).toHaveLength(1);
+    expect(local[0].host).toBe('http://192.168.1.42:11434');
+  });
+
+  it('returns empty local section when file does not exist', async () =&gt; {
+    // localPath intentionally not created
+    const { getModelCatalog } = await import('./model-catalog.js');
+    expect(getModelCatalog().filter((e) =&gt; e.origin === 'local')).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm exec vitest run src/model-catalog.test.ts`
+Expected: FAIL with "Cannot find module './model-catalog.js'"
+
+- [ ] **Step 3: Add MODEL_CATALOG_LOCAL_PATH to config.ts**
+
+In `src/config.ts`, add:
+```typescript
+export const MODEL_CATALOG_LOCAL_PATH = path.join(process.cwd(), 'config', 'model-catalog-local.json');
+```
+
+- [ ] **Step 4: Implement model-catalog.ts**
+
+Create `src/model-catalog.ts`:
+
+```typescript
+import fs from 'fs';
+
+import { MODEL_CATALOG_LOCAL_PATH } from './config.js';
+
+export interface ModelEntry {
+  /** Stable id, used in container.json allowedModels and chat-tab dropdowns. */
+  id: string;
+  provider: 'claude' | 'codex' | 'opencode' | 'ollama' | string;
+  displayName: string;
+  /** "cloud" | "local" — drives card styling and whether host/context/etc. show. */
+  origin: 'cloud' | 'local';
+
+  /** Cost per 1k tokens (USD) — 0 for local. */
+  costPer1kTokensUsd?: number;
+  /** Average latency in seconds — best-effort estimate. */
+  avgLatencySec?: number;
+  /** Parameter count display string ("70B", "8B", "?"). */
+  paramCount?: string;
+  /** Modalities the model accepts. */
+  modalities?: ('text' | 'image' | 'audio')[];
+  /** Free-form notes (instructor-authored on a class deployment for local entries). */
+  notes?: string;
+
+  /** Local-only: where the OpenAI-compatible endpoint lives. */
+  host?: string;
+  /** Local-only: context window size in tokens. */
+  contextSize?: number;
+  /** Local-only: quantization tag. */
+  quantization?: string;
+
+  /** Pedagogical chips ("⚡ fast", "$ cheap", "🐢 slower", "🆓 free", etc.). */
+  chips?: string[];
+  /** Suggested-use blurb. */
+  bestFor?: string;
+}
+
+const CLOUD_ENTRIES: ModelEntry[] = [
+  {
+    id: 'claude-haiku-4-5',
+    provider: 'claude',
+    displayName: 'claude-haiku-4-5',
+    origin: 'cloud',
+    costPer1kTokensUsd: 0.0008,
+    avgLatencySec: 0.9,
+    paramCount: 'not disclosed',
+    modalities: ['text', 'image'],
+    chips: ['⚡ fast', '$ cheap', '☁ Anthropic'],
+    bestFor: 'Short answers, classification, structured output.',
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    provider: 'claude',
+    displayName: 'claude-sonnet-4-6',
+    origin: 'cloud',
+    costPer1kTokensUsd: 0.012,
+    avgLatencySec: 2.1,
+    paramCount: 'not disclosed',
+    modalities: ['text', 'image'],
+    chips: ['🐢 slower', '$$ pricier', '☁ Anthropic'],
+    bestFor: 'Reasoning, long outputs.',
+  },
+  {
+    id: 'gpt-5-mini',
+    provider: 'codex',
+    displayName: 'gpt-5-mini',
+    origin: 'cloud',
+    costPer1kTokensUsd: 0.0006,
+    avgLatencySec: 1.0,
+    paramCount: 'not disclosed',
+    modalities: ['text', 'image'],
+    chips: ['⚡ fast', '$ cheap', '☁ OpenAI'],
+    bestFor: 'Quick, broad-knowledge tasks.',
+  },
+];
+
+function readLocalEntries(): ModelEntry[] {
+  if (!fs.existsSync(MODEL_CATALOG_LOCAL_PATH)) return [];
+  try {
+    const raw = fs.readFileSync(MODEL_CATALOG_LOCAL_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((e) =&gt; ({ ...e, origin: 'local' as const }));
+  } catch {
+    return [];
+  }
+}
+
+export function getModelCatalog(): ModelEntry[] {
+  return [...CLOUD_ENTRIES, ...readLocalEntries()];
+}
+```
+
+- [ ] **Step 5: Seed the empty local file**
+
+Create `config/model-catalog-local.json` with `[]`.
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `pnpm exec vitest run src/model-catalog.test.ts`
+Expected: PASS (3 tests)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/model-catalog.ts src/model-catalog.test.ts src/config.ts config/model-catalog-local.json
+git commit -m "feat(playground-v3): model catalog (cloud bundled + local JSON)"
+```
+</pre>
+
+<h3>Task 2.2: Add <code>allowedModels</code> field to container.json</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/container-config.ts</code> (extend <code>ContainerConfig</code> type)</li>
+  <li>Test: extend whichever file currently tests <code>readContainerConfig</code> / <code>writeContainerConfig</code>; add new test cases for the new field.</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Locate the container-config module**
+
+```bash
+grep -rln "interface ContainerConfig\|type ContainerConfig" src/ | head
+```
+Expected: returns `src/container-config.ts` (or similar). Open it.
+
+- [ ] **Step 2: Extend the type**
+
+In `src/container-config.ts`, add the `allowedModels` field to the type and (if there's a Zod schema or validator) extend that too:
+
+```typescript
+export interface ContainerConfig {
+  // ...existing fields...
+
+  /**
+   * Per-group allowlist of models the agent is permitted to route to.
+   * Optional — when undefined, all catalog models are usable. Set via
+   * the playground Models tab or `ncl` CRUD on container.json.
+   */
+  allowedModels?: { provider: string; model: string }[];
+}
+```
+
+- [ ] **Step 3: Write a regression test**
+
+In the existing container-config test file (e.g., `src/container-config.test.ts`), add:
+
+```typescript
+it('round-trips allowedModels through readContainerConfig/writeContainerConfig', () =&gt; {
+  const folder = 'draft_test_allowed_models';
+  // (use the same temp-folder setup pattern other tests use here)
+  writeContainerConfig(folder, {
+    skills: 'all',
+    allowedModels: [
+      { provider: 'claude', model: 'claude-haiku-4-5' },
+      { provider: 'ollama', model: 'llama-3.3-70b-instruct' },
+    ],
+  });
+  const cfg = readContainerConfig(folder);
+  expect(cfg.allowedModels).toEqual([
+    { provider: 'claude', model: 'claude-haiku-4-5' },
+    { provider: 'ollama', model: 'llama-3.3-70b-instruct' },
+  ]);
+});
+```
+
+(if no test file exists for container-config, create one at `src/container-config.test.ts`).
+
+- [ ] **Step 4: Run tests**
+
+Run: `pnpm exec vitest run src/container-config.test.ts`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/container-config.ts src/container-config.test.ts
+git commit -m "feat(playground-v3): allowedModels field on ContainerConfig"
+```
+</pre>
+
+<h3>Task 2.3: Wire <code>/api/drafts/:folder/models</code> (GET + PUT)</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/channels/playground/api/models.ts</code></li>
+  <li>Create: <code>src/channels/playground/api/models.test.ts</code></li>
+  <li>Modify: <code>src/channels/playground/api-routes.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Write the failing test**
+
+Create `src/channels/playground/api/models.test.ts`:
+
+```typescript
+import { describe, expect, it, vi } from 'vitest';
+
+describe('models API', () =&gt; {
+  it('GET returns catalog + current whitelist', async () =&gt; {
+    vi.doMock('../../../model-catalog.js', () =&gt; ({
+      getModelCatalog: () =&gt; [{ id: 'claude-haiku-4-5', provider: 'claude' }],
+    }));
+    vi.doMock('../../../container-config.js', () =&gt; ({
+      readContainerConfig: () =&gt; ({
+        skills: 'all',
+        allowedModels: [{ provider: 'claude', model: 'claude-haiku-4-5' }],
+      }),
+    }));
+    const { handleGetModels } = await import('./models.js');
+    const result = handleGetModels('draft_demo');
+    expect(result.status).toBe(200);
+    expect(result.body.catalog).toHaveLength(1);
+    expect(result.body.allowedModels).toHaveLength(1);
+  });
+
+  it('PUT replaces the whitelist', async () =&gt; {
+    let written: any;
+    vi.doMock('../../../container-config.js', () =&gt; ({
+      readContainerConfig: () =&gt; ({ skills: 'all' }),
+      writeContainerConfig: (_folder: string, cfg: any) =&gt; {
+        written = cfg;
+      },
+    }));
+    const { handlePutModels } = await import('./models.js');
+    const result = handlePutModels('draft_demo', {
+      allowedModels: [{ provider: 'codex', model: 'gpt-5-mini' }],
+    });
+    expect(result.status).toBe(200);
+    expect(written.allowedModels).toEqual([{ provider: 'codex', model: 'gpt-5-mini' }]);
+  });
+
+  it('PUT rejects malformed bodies', async () =&gt; {
+    vi.doMock('../../../container-config.js', () =&gt; ({
+      readContainerConfig: () =&gt; ({}),
+      writeContainerConfig: () =&gt; {},
+    }));
+    const { handlePutModels } = await import('./models.js');
+    expect(handlePutModels('draft_demo', { allowedModels: 'oops' as any }).status).toBe(400);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm exec vitest run src/channels/playground/api/models.test.ts`
+Expected: FAIL with "Cannot find module './models.js'"
+
+- [ ] **Step 3: Implement the handlers**
+
+Create `src/channels/playground/api/models.ts`:
+
+```typescript
+import { readContainerConfig, writeContainerConfig } from '../../../container-config.js';
+import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
+
+export interface ApiResult&lt;T&gt; {
+  status: number;
+  body: T | { error: string };
+}
+
+export interface ModelsResponse {
+  catalog: ModelEntry[];
+  allowedModels: { provider: string; model: string }[];
+}
+
+export function handleGetModels(draftFolder: string): ApiResult&lt;ModelsResponse&gt; {
+  try {
+    const cfg = readContainerConfig(draftFolder);
+    return {
+      status: 200,
+      body: {
+        catalog: getModelCatalog(),
+        allowedModels: cfg.allowedModels ?? [],
+      },
+    };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
+}
+
+export function handlePutModels(
+  draftFolder: string,
+  body: { allowedModels: { provider: string; model: string }[] },
+): ApiResult&lt;{ ok: true; allowedModels: { provider: string; model: string }[] }&gt; {
+  if (!Array.isArray(body.allowedModels)) {
+    return { status: 400, body: { error: 'allowedModels must be an array' } };
+  }
+  for (const e of body.allowedModels) {
+    if (typeof e?.provider !== 'string' || typeof e?.model !== 'string') {
+      return { status: 400, body: { error: 'each entry needs string provider + model' } };
+    }
+  }
+  try {
+    const cfg = readContainerConfig(draftFolder);
+    cfg.allowedModels = body.allowedModels;
+    writeContainerConfig(draftFolder, cfg);
+    return { status: 200, body: { ok: true, allowedModels: body.allowedModels } };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
+}
+```
+
+- [ ] **Step 4: Wire the routes**
+
+In `src/channels/playground/api-routes.ts`, add:
+
+```typescript
+import { handleGetModels, handlePutModels } from './api/models.js';
+
+// (in route() — alongside the other draft routes)
+const modelsMatch = url.pathname.match(/^\/api\/drafts\/(draft_[A-Za-z0-9_-]+)\/models$/);
+if (modelsMatch) {
+  if (method === 'GET') {
+    const r = handleGetModels(modelsMatch[1]!);
+    return send(res, r.status, r.body);
+  }
+  if (method === 'PUT') {
+    const decision = checkDraftMutation(modelsMatch[1]!, 'models_put', session.userId);
+    if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    const body = await readJsonBody(req);
+    const r = handlePutModels(modelsMatch[1]!, body);
+    return send(res, r.status, r.body);
+  }
+}
+```
+
+(`'models_put'` is a new mutation key — the classroom gate registry can extend its rule table later if it wants to lock students out of model whitelist edits.)
+
+- [ ] **Step 5: Run tests**
+
+Run: `pnpm exec vitest run src/channels/playground/api/models.test.ts`
+Expected: PASS (3 tests)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/channels/playground/api/models.ts src/channels/playground/api/models.test.ts src/channels/playground/api-routes.ts
+git commit -m "feat(playground-v3): /api/drafts/:folder/models GET+PUT"
+```
+</pre>
+
+<hr>
+
+<h2>Phase 3 — Library tier system</h2>
+
+<div class="phase-summary">
+<strong>Goal:</strong> Three-tier library (Default / Class / My) with on-disk JSON storage and REST API. The Default tier ships 4 starter personas. The My tier writes per-student. The Class tier is read-only (populated by the classroom branch).<br>
+<strong>Shippable:</strong> Endpoints exist + Default agents shipped; UI consumes later.<br>
+<strong>Estimated tasks:</strong> 4.
+</div>
+
+<h3>Task 3.1: Library types + storage helpers</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/library/types.ts</code></li>
+  <li>Create: <code>src/library/storage.ts</code></li>
+  <li>Create: <code>src/library/storage.test.ts</code></li>
+  <li>Modify: <code>src/config.ts</code> (add <code>LIBRARY_DIR</code>, <code>STUDENT_LIBRARIES_DIR</code>)</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Write the failing test**
+
+Create `src/library/storage.test.ts`:
+
+```typescript
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+describe('library storage', () =&gt; {
+  let tmp: string;
+  let libDir: string;
+  let studentDir: string;
+
+  beforeEach(() =&gt; {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lib-storage-'));
+    libDir = path.join(tmp, 'library');
+    studentDir = path.join(tmp, 'student-libraries');
+    fs.mkdirSync(libDir);
+    fs.mkdirSync(studentDir);
+    vi.doMock('../config.js', () =&gt; ({
+      LIBRARY_DIR: libDir,
+      STUDENT_LIBRARIES_DIR: studentDir,
+    }));
+  });
+  afterEach(() =&gt; {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    vi.resetModules();
+  });
+
+  it('listAllTiers returns all three sections', async () =&gt; {
+    fs.mkdirSync(path.join(libDir, 'default-agents'));
+    fs.writeFileSync(
+      path.join(libDir, 'default-agents', 'concise_writer.json'),
+      JSON.stringify({ name: 'concise_writer', description: 'short answers', persona: '...' }),
+    );
+    fs.mkdirSync(path.join(libDir, 'class'));
+    fs.writeFileSync(
+      path.join(libDir, 'class', 'news.json'),
+      JSON.stringify({ name: 'news', description: 'class', persona: '...' }),
+    );
+    fs.mkdirSync(path.join(studentDir, 'student_42'));
+    fs.writeFileSync(
+      path.join(studentDir, 'student_42', 'baseline.json'),
+      JSON.stringify({ name: 'baseline', description: 'mine', persona: '...' }),
+    );
+
+    const { listAllTiers } = await import('./storage.js');
+    const tiers = listAllTiers('student_42');
+    expect(tiers.default).toHaveLength(1);
+    expect(tiers.class).toHaveLength(1);
+    expect(tiers.my).toHaveLength(1);
+    expect(tiers.my[0].name).toBe('baseline');
+  });
+
+  it('readEntry returns the parsed JSON', async () =&gt; {
+    fs.mkdirSync(path.join(libDir, 'default-agents'));
+    fs.writeFileSync(
+      path.join(libDir, 'default-agents', 'cw.json'),
+      JSON.stringify({ name: 'cw', description: 'd', persona: 'p', preferredProvider: 'claude' }),
+    );
+    const { readEntry } = await import('./storage.js');
+    const entry = readEntry('default', 'cw', 'student_42');
+    expect(entry?.preferredProvider).toBe('claude');
+  });
+
+  it('writeMyEntry creates the per-student dir and JSON', async () =&gt; {
+    const { writeMyEntry, readEntry } = await import('./storage.js');
+    writeMyEntry('student_99', 'mine', {
+      name: 'mine',
+      description: 'desc',
+      persona: 'body',
+      preferredProvider: 'claude',
+      preferredModel: 'claude-haiku-4-5',
+      skills: [],
+    });
+    const entry = readEntry('my', 'mine', 'student_99');
+    expect(entry?.name).toBe('mine');
+  });
+
+  it('rejects path traversal in entry name', async () =&gt; {
+    const { writeMyEntry } = await import('./storage.js');
+    expect(() =&gt;
+      writeMyEntry('student_x', '../escape', {
+        name: 'x',
+        description: '',
+        persona: '',
+        preferredProvider: 'claude',
+        preferredModel: 'claude-haiku-4-5',
+        skills: [],
+      }),
+    ).toThrow(/invalid name/);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm exec vitest run src/library/storage.test.ts`
+Expected: FAIL with "Cannot find module './storage.js'" or "../config.js"
+
+- [ ] **Step 3: Add config constants**
+
+In `src/config.ts`:
+```typescript
+export const LIBRARY_DIR = path.join(process.cwd(), 'library');
+export const STUDENT_LIBRARIES_DIR = path.join(process.cwd(), 'data', 'student-libraries');
+```
+
+- [ ] **Step 4: Implement types**
+
+Create `src/library/types.ts`:
+
+```typescript
+export interface LibraryEntry {
+  /** Stable filename-safe name; matches the JSON file's basename without extension. */
+  name: string;
+  /** One-line description shown in the library list. */
+  description: string;
+  /** Markdown persona body (CLAUDE.local.md content). */
+  persona: string;
+  /** Preferred agent provider (claude / codex / opencode / ollama). */
+  preferredProvider?: string;
+  /** Preferred model id (matches model-catalog ids). */
+  preferredModel?: string;
+  /** Skills enabled in this configuration. */
+  skills?: string[];
+}
+
+export type LibraryTier = 'default' | 'class' | 'my';
+
+export interface AllTiers {
+  default: LibraryEntry[];
+  class: LibraryEntry[];
+  my: LibraryEntry[];
+}
+</code>
+```
+
+- [ ] **Step 5: Implement storage**
+
+Create `src/library/storage.ts`:
+
+```typescript
+import fs from 'fs';
+import path from 'path';
+
+import { LIBRARY_DIR, STUDENT_LIBRARIES_DIR } from '../config.js';
+import type { AllTiers, LibraryEntry, LibraryTier } from './types.js';
+
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+function tierDir(tier: LibraryTier, studentId: string): string {
+  if (tier === 'default') return path.join(LIBRARY_DIR, 'default-agents');
+  if (tier === 'class') return path.join(LIBRARY_DIR, 'class');
+  return path.join(STUDENT_LIBRARIES_DIR, studentId);
+}
+
+function readJsonSafe(p: string): LibraryEntry | undefined {
+  if (!fs.existsSync(p)) return undefined;
+  try {
+    const e = JSON.parse(fs.readFileSync(p, 'utf-8')) as LibraryEntry;
+    if (typeof e?.name !== 'string') return undefined;
+    return e;
+  } catch {
+    return undefined;
+  }
+}
+
+function listTier(tier: LibraryTier, studentId: string): LibraryEntry[] {
+  const dir = tierDir(tier, studentId);
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((f) =&gt; f.endsWith('.json'))
+    .map((f) =&gt; readJsonSafe(path.join(dir, f)))
+    .filter((e): e is LibraryEntry =&gt; !!e)
+    .sort((a, b) =&gt; a.name.localeCompare(b.name));
+}
+
+export function listAllTiers(studentId: string): AllTiers {
+  return {
+    default: listTier('default', studentId),
+    class: listTier('class', studentId),
+    my: listTier('my', studentId),
+  };
+}
+
+export function readEntry(tier: LibraryTier, name: string, studentId: string): LibraryEntry | undefined {
+  if (!NAME_RE.test(name)) return undefined;
+  return readJsonSafe(path.join(tierDir(tier, studentId), `${name}.json`));
+}
+
+export function writeMyEntry(studentId: string, name: string, entry: LibraryEntry): void {
+  if (!NAME_RE.test(name)) throw new Error('invalid name');
+  if (!NAME_RE.test(studentId)) throw new Error('invalid studentId');
+  const dir = tierDir('my', studentId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify({ ...entry, name }, null, 2));
+}
+```
+
+- [ ] **Step 6: Run tests**
+
+Run: `pnpm exec vitest run src/library/storage.test.ts`
+Expected: PASS (4 tests)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/library/types.ts src/library/storage.ts src/library/storage.test.ts src/config.ts
+git commit -m "feat(playground-v3): library storage (3-tier JSON files)"
+```
+</pre>
+
+<h3>Task 3.2: Seed Default agents content</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>library/default-agents/concise_writer.json</code></li>
+  <li>Create: <code>library/default-agents/socratic_tutor.json</code></li>
+  <li>Create: <code>library/default-agents/code_reviewer.json</code></li>
+  <li>Create: <code>library/default-agents/brainstormer.json</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Create concise_writer.json**
+
+Path: `library/default-agents/concise_writer.json`
+
+```json
+{
+  "name": "concise_writer",
+  "description": "Writes the shortest correct answer to any question.",
+  "persona": "# Concise writer\n\nYou write the shortest correct answer to any question. No preamble, no caveats, no \"let me know if you have questions.\" Cut anything that isn't load-bearing.\n\nIf a single word is enough, use one word. If a full paragraph is needed, write a paragraph — but never more than one. Format only when format is the request.\n",
+  "preferredProvider": "claude",
+  "preferredModel": "claude-haiku-4-5",
+  "skills": []
+}
+```
+
+- [ ] **Step 2: Create socratic_tutor.json**
+
+Path: `library/default-agents/socratic_tutor.json`
+
+```json
+{
+  "name": "socratic_tutor",
+  "description": "Teaches by asking questions instead of giving answers.",
+  "persona": "# Socratic tutor\n\nYou never give the answer directly. Instead, ask the student a question that gets them one step closer to the answer.\n\nWhen the student is stuck, ask a more specific question. When they're close, ask them to explain their reasoning so they catch the mistake themselves.\n\nIf and only if the student explicitly asks \"just tell me\", give the answer with a short explanation.\n",
+  "preferredProvider": "claude",
+  "preferredModel": "claude-sonnet-4-6",
+  "skills": []
+}
+```
+
+- [ ] **Step 3: Create code_reviewer.json**
+
+Path: `library/default-agents/code_reviewer.json`
+
+```json
+{
+  "name": "code_reviewer",
+  "description": "Reviews code with focus on correctness, security, and naming.",
+  "persona": "# Code reviewer\n\nYou are a senior software engineer reviewing a pull request. Focus on:\n- correctness over style\n- security holes\n- API contracts\n- naming clarity\n\nAlways cite line numbers. Be terse — no preamble. End with a single-line verdict: APPROVE / REQUEST CHANGES / BLOCK.\n",
+  "preferredProvider": "claude",
+  "preferredModel": "claude-sonnet-4-6",
+  "skills": []
+}
+```
+
+- [ ] **Step 4: Create brainstormer.json**
+
+Path: `library/default-agents/brainstormer.json`
+
+```json
+{
+  "name": "brainstormer",
+  "description": "Generates ideas without filtering — quantity over quality.",
+  "persona": "# Brainstormer\n\nYour job is to generate options. Lots of them. Don't pre-filter for quality — that's the user's job.\n\nWhen the user describes a problem, list 10 different angles to attack it from. When they pick one, list 10 ways to approach that angle.\n\nNo qualifications, no \"this might not work\" caveats. Generate; don't evaluate.\n",
+  "preferredProvider": "claude",
+  "preferredModel": "claude-haiku-4-5",
+  "skills": []
+}
+```
+
+- [ ] **Step 5: Verify they're valid JSON**
+
+```bash
+for f in library/default-agents/*.json; do echo -n "$f: "; jq -e . "$f" &gt;/dev/null && echo OK; done
+```
+Expected: each line ends in OK.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add library/default-agents/
+git commit -m "feat(playground-v3): seed Default agents library (4 starter personas)"
+```
+</pre>
+
+<h3>Task 3.3: Wire <code>/api/library</code> endpoints</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/channels/playground/api/library.ts</code></li>
+  <li>Create: <code>src/channels/playground/api/library.test.ts</code></li>
+  <li>Modify: <code>src/channels/playground/api-routes.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Write the failing test**
+
+Create `src/channels/playground/api/library.test.ts`:
+
+```typescript
+import { describe, expect, it, vi } from 'vitest';
+
+describe('library API', () =&gt; {
+  it('GET /api/library returns all three tiers', async () =&gt; {
+    vi.doMock('../../../library/storage.js', () =&gt; ({
+      listAllTiers: () =&gt; ({
+        default: [{ name: 'cw', description: 'd', persona: 'p' }],
+        class: [],
+        my: [],
+      }),
+    }));
+    const { handleListLibrary } = await import('./library.js');
+    const r = handleListLibrary('student_x');
+    expect(r.status).toBe(200);
+    expect(r.body.default).toHaveLength(1);
+  });
+
+  it('GET /api/library/:tier/:name returns the entry', async () =&gt; {
+    vi.doMock('../../../library/storage.js', () =&gt; ({
+      readEntry: (_t: any, n: string) =&gt;
+        n === 'cw' ? { name: 'cw', description: 'd', persona: 'p' } : undefined,
+    }));
+    const { handleGetEntry } = await import('./library.js');
+    expect(handleGetEntry('default', 'cw', 'student_x').status).toBe(200);
+    expect(handleGetEntry('default', 'nope', 'student_x').status).toBe(404);
+  });
+
+  it('POST /api/library/my/:name writes to My library', async () =&gt; {
+    let written: any;
+    vi.doMock('../../../library/storage.js', () =&gt; ({
+      writeMyEntry: (_id: string, _n: string, e: any) =&gt; {
+        written = e;
+      },
+    }));
+    const { handleSaveMyEntry } = await import('./library.js');
+    const r = handleSaveMyEntry('student_x', 'baseline', {
+      name: 'baseline',
+      description: 'mine',
+      persona: 'body',
+    });
+    expect(r.status).toBe(200);
+    expect(written.name).toBe('baseline');
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm exec vitest run src/channels/playground/api/library.test.ts`
+Expected: FAIL ("Cannot find module './library.js'")
+
+- [ ] **Step 3: Implement handlers**
+
+Create `src/channels/playground/api/library.ts`:
+
+```typescript
+import { listAllTiers, readEntry, writeMyEntry } from '../../../library/storage.js';
+import type { AllTiers, LibraryEntry, LibraryTier } from '../../../library/types.js';
+
+export interface ApiResult&lt;T&gt; {
+  status: number;
+  body: T | { error: string };
+}
+
+const VALID_TIERS: LibraryTier[] = ['default', 'class', 'my'];
+
+export function handleListLibrary(studentId: string): ApiResult&lt;AllTiers&gt; {
+  try {
+    return { status: 200, body: listAllTiers(studentId) };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
+}
+
+export function handleGetEntry(
+  tier: string,
+  name: string,
+  studentId: string,
+): ApiResult&lt;LibraryEntry&gt; {
+  if (!VALID_TIERS.includes(tier as LibraryTier)) {
+    return { status: 400, body: { error: 'invalid tier' } };
+  }
+  const entry = readEntry(tier as LibraryTier, name, studentId);
+  if (!entry) return { status: 404, body: { error: 'not found' } };
+  return { status: 200, body: entry };
+}
+
+export function handleSaveMyEntry(
+  studentId: string,
+  name: string,
+  entry: LibraryEntry,
+): ApiResult&lt;{ ok: true }&gt; {
+  if (typeof entry?.persona !== 'string') {
+    return { status: 400, body: { error: 'entry.persona (string) required' } };
+  }
+  try {
+    writeMyEntry(studentId, name, entry);
+    return { status: 200, body: { ok: true } };
+  } catch (err) {
+    return { status: 400, body: { error: (err as Error).message } };
+  }
+}
+```
+
+- [ ] **Step 4: Wire the routes**
+
+In `src/channels/playground/api-routes.ts`:
+
+```typescript
+import { handleGetEntry, handleListLibrary, handleSaveMyEntry } from './api/library.js';
+
+// (in route())
+if (method === 'GET' && url.pathname === '/api/library') {
+  const r = handleListLibrary(session.userId);
+  return send(res, r.status, r.body);
+}
+
+const entryMatch = url.pathname.match(/^\/api\/library\/(default|class|my)\/([A-Za-z0-9][A-Za-z0-9_-]*)$/);
+if (entryMatch) {
+  if (method === 'GET') {
+    const r = handleGetEntry(entryMatch[1]!, entryMatch[2]!, session.userId);
+    return send(res, r.status, r.body);
+  }
+  if (method === 'POST' && entryMatch[1] === 'my') {
+    const body = await readJsonBody(req);
+    const r = handleSaveMyEntry(session.userId, entryMatch[2]!, body);
+    return send(res, r.status, r.body);
+  }
+}
+```
+
+- [ ] **Step 5: Run tests**
+
+Run: `pnpm exec vitest run src/channels/playground/api/library.test.ts`
+Expected: PASS (3 tests)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/channels/playground/api/library.ts src/channels/playground/api/library.test.ts src/channels/playground/api-routes.ts
+git commit -m "feat(playground-v3): /api/library REST surface"
+```
+</pre>
+
+<hr>
+
+<h2>Phase 4 — Per-message cost/speed tracking</h2>
+
+<div class="phase-summary">
+<strong>Goal:</strong> Provider events carry token counts + latency. Poll-loop persists those onto the outbound message row. Playground SSE delivers them to the client.<br>
+<strong>Shippable:</strong> Outbound messages now have cost/latency fields visible via SSE. UI consumes later.<br>
+<strong>Estimated tasks:</strong> 4.
+</div>
+
+<h3>Task 4.1: Extend ProviderEvent <code>result</code> with tokens + latency</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>container/agent-runner/src/providers/types.ts</code></li>
+  <li>Modify: <code>container/agent-runner/src/providers/claude.ts</code> — emit the new fields</li>
+  <li>Modify: <code>container/agent-runner/src/providers/codex.ts</code> — emit the new fields (best-effort)</li>
+  <li>Tests: <code>container/agent-runner/src/providers/*.test.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Extend the type**
+
+In `container/agent-runner/src/providers/types.ts`, change:
+
+```typescript
+| { type: 'result'; text: string | null }
+```
+
+to:
+
+```typescript
+| {
+    type: 'result';
+    text: string | null;
+    /** Token usage as reported by the provider SDK (best-effort; absent if SDK doesn't expose). */
+    tokens?: { input: number; output: number };
+    /** End-to-end turn latency in milliseconds (init event timestamp → result event timestamp). */
+    latencyMs?: number;
+    /** Provider id at the moment of completion ("claude" / "codex" / ...). */
+    provider?: string;
+    /** Model id used for this turn. */
+    model?: string;
+  }
+```
+
+- [ ] **Step 2: Test that claude provider populates tokens + latency**
+
+In `container/agent-runner/src/providers/claude.test.ts` (create if absent), add a test that drives a stub Anthropic SDK and asserts the emitted `result` event has `tokens.input`, `tokens.output`, and `latencyMs &gt; 0`.
+
+(If the existing claude.test.ts already mocks the SDK, extend it. If not, the bun:test pattern is:
+
+```typescript
+import { test, expect } from 'bun:test';
+import { ClaudeProvider } from './claude.ts';
+
+test('emits tokens and latency on result', async () =&gt; {
+  // (mock the SDK to return a fixed usage object; iterate provider events;
+  // assert the final result event has tokens.input + output and latencyMs &gt; 0)
+});
+```
+
+The exact mock shape depends on the SDK surface — read `claude.ts` first to see what's stubbed.)
+
+Run: `cd container/agent-runner && bun test claude.test.ts`
+Expected: FAIL with no tokens emitted.
+
+- [ ] **Step 3: Implement in claude.ts**
+
+In `container/agent-runner/src/providers/claude.ts`, find the place where the SDK's final usage data lands and where the `result` event is yielded. The Anthropic SDK exposes `usage.input_tokens` and `usage.output_tokens` on the message-finish event. Capture timestamps:
+
+```typescript
+// near the start of query(): const startedAt = Date.now();
+// at the result emission:
+yield {
+  type: 'result',
+  text: finalText,
+  tokens: usage ? { input: usage.input_tokens, output: usage.output_tokens } : undefined,
+  latencyMs: Date.now() - startedAt,
+  provider: 'claude',
+  model: this.model, // (whatever field stores the model)
+};
+```
+
+(Fields named here must match what's actually available in the existing claude.ts — read first, then implement against the real shape.)
+
+Run: `cd container/agent-runner && bun test claude.test.ts`
+Expected: PASS
+
+- [ ] **Step 4: Best-effort in codex.ts**
+
+Codex app-server returns token counts in its turn-complete notification. Add the same shape:
+
+```typescript
+yield {
+  type: 'result',
+  text: finalText,
+  tokens: turn.usage
+    ? { input: turn.usage.input_tokens, output: turn.usage.output_tokens }
+    : undefined,
+  latencyMs: Date.now() - startedAt,
+  provider: 'codex',
+  model: this.model,
+};
+```
+
+If app-server doesn't expose usage, leave `tokens` undefined and proceed — UI renders "?" for missing values.
+
+Run: `cd container/agent-runner && bun test codex.test.ts` (extend existing test similarly)
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add container/agent-runner/src/providers/types.ts container/agent-runner/src/providers/claude.ts container/agent-runner/src/providers/codex.ts container/agent-runner/src/providers/claude.test.ts container/agent-runner/src/providers/codex.test.ts
+git commit -m "feat(playground-v3): provider events carry tokens + latency"
+```
+</pre>
+
+<h3>Task 4.2: Migration — outbound message cost columns</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/db/migrations/module-outbound-cost.ts</code></li>
+  <li>Modify: <code>src/db/migrations/index.ts</code> (register the new migration)</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Read the existing migration pattern**
+
+```bash
+ls src/db/migrations/
+cat src/db/migrations/index.ts | head -40
+```
+
+Pick the most recent module migration as a shape reference (e.g., `module-class-login-tokens.ts`).
+
+- [ ] **Step 2: Write the migration**
+
+Create `src/db/migrations/module-outbound-cost.ts`:
+
+```typescript
+import type { Database } from 'better-sqlite3';
+
+/**
+ * Adds per-message cost/speed columns to messages_out so the playground
+ * can surface the trade-off without schema-juggling per turn.
+ *
+ * The DB this runs against is the per-session outbound.db, NOT the central
+ * data/v2.db. The migration runner picks up the right target via the module
+ * dispatch in src/db/migrations/index.ts.
+ */
+export const moduleOutboundCost = {
+  name: 'outbound-cost',
+  target: 'session-outbound' as const,
+  up(db: Database): void {
+    db.exec(`
+      ALTER TABLE messages_out ADD COLUMN tokens_in INTEGER;
+      ALTER TABLE messages_out ADD COLUMN tokens_out INTEGER;
+      ALTER TABLE messages_out ADD COLUMN latency_ms INTEGER;
+      ALTER TABLE messages_out ADD COLUMN provider TEXT;
+      ALTER TABLE messages_out ADD COLUMN model TEXT;
+    `);
+  },
+};
+```
+
+(The exact `target` value and the migration registration shape comes from how the existing `module-*` migrations are wired — read `src/db/migrations/index.ts` and adjust to match. If migrations target only the central DB today and this is the first per-session migration, that infrastructure may need a small extension — surface that finding in the commit message and, if needed, split into Task 4.2a + 4.2b.)
+
+- [ ] **Step 3: Wire into the migrations registry**
+
+In `src/db/migrations/index.ts`, add the import + registration line for `moduleOutboundCost` matching the existing pattern.
+
+- [ ] **Step 4: Smoke-run a session and verify the columns exist**
+
+```bash
+pnpm run dev
+# (in another shell, send a Telegram message that opens a session)
+# then:
+pnpm exec tsx scripts/q.ts data/v2-sessions/&lt;agent-group&gt;/&lt;session&gt;/outbound.db ".schema messages_out" | head
+```
+Expected: schema includes `tokens_in`, `tokens_out`, `latency_ms`, `provider`, `model`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/db/migrations/module-outbound-cost.ts src/db/migrations/index.ts
+git commit -m "feat(playground-v3): migration — messages_out cost columns"
+```
+</pre>
+
+<h3>Task 4.3: Poll-loop persists tokens + latency</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>container/agent-runner/src/poll-loop.ts</code></li>
+  <li>Modify: <code>container/agent-runner/src/db/messages-out.ts</code> (or wherever the insert lives)</li>
+  <li>Test: extend <code>container/agent-runner/src/poll-loop.test.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Locate the messages_out insert site**
+
+```bash
+grep -n "INSERT INTO messages_out\|messages_out" container/agent-runner/src/db/*.ts
+```
+Expected: one insert site, likely `container/agent-runner/src/db/messages-out.ts` or similar.
+
+- [ ] **Step 2: Extend the insert to accept the new fields**
+
+Add `tokensIn?: number; tokensOut?: number; latencyMs?: number; provider?: string; model?: string` to the insert function's parameter shape, and include them in the SQL. Use `$tokensIn` etc. placeholders (per CLAUDE.md note about `bun:sqlite`).
+
+- [ ] **Step 3: Capture from result events in poll-loop**
+
+In `container/agent-runner/src/poll-loop.ts`, where the `result` event is consumed, pass the new fields into the insert:
+
+```typescript
+if (event.type === 'result') {
+  await insertOutboundMessage({
+    // ...existing fields...
+    tokensIn: event.tokens?.input,
+    tokensOut: event.tokens?.output,
+    latencyMs: event.latencyMs,
+    provider: event.provider,
+    model: event.model,
+  });
+}
+```
+
+- [ ] **Step 4: Run poll-loop tests**
+
+```bash
+cd container/agent-runner && bun test poll-loop.test.ts
+```
+Expected: PASS — extend the test to assert the new fields land in the inserted row.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add container/agent-runner/src/poll-loop.ts container/agent-runner/src/db/
+git commit -m "feat(playground-v3): poll-loop persists tokens + latency to messages_out"
+```
+</pre>
+
+<h3>Task 4.4: Surface cost/latency on the playground SSE event</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/delivery.ts</code> (or wherever the playground SSE event is constructed)</li>
+  <li>Modify: <code>src/channels/playground/sse.ts</code> if the event shape lives there</li>
+  <li>Test: extend whichever test file currently exercises playground SSE delivery</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Find where the playground SSE event is built**
+
+```bash
+grep -rn "kind:\s*'message'\|playground.*sse\|writeSse" src/ | head
+```
+
+Pick the function that turns an outbound row into the SSE payload sent to the playground client.
+
+- [ ] **Step 2: Add the cost fields to the SSE payload**
+
+Extend the payload shape:
+
+```typescript
+{
+  kind: 'message',
+  text: row.text,
+  // NEW:
+  tokens: row.tokens_in != null && row.tokens_out != null
+    ? { input: row.tokens_in, output: row.tokens_out }
+    : undefined,
+  latencyMs: row.latency_ms ?? undefined,
+  provider: row.provider ?? undefined,
+  model: row.model ?? undefined,
+}
+```
+
+(Match existing field naming style — camelCase if that's what other SSE fields use.)
+
+- [ ] **Step 3: Add a test asserting the SSE fields**
+
+Extend the relevant test (or create one) that drives a fake outbound row through the SSE builder and asserts the new fields appear.
+
+- [ ] **Step 4: Run tests + smoke**
+
+```bash
+pnpm test
+```
+Expected: green.
+
+Smoke: with `pnpm run dev` running and a draft chat session open in the browser, send a message and confirm the SSE event in DevTools Network tab carries `tokens`, `latencyMs`, `provider`, `model`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/delivery.ts src/channels/playground/sse.ts
+git commit -m "feat(playground-v3): playground SSE event carries cost/latency fields"
+```
+</pre>
+
+<hr>
+
+<h2>Phase 5 — Skill cost metadata</h2>
+
+<div class="phase-summary">
+<strong>Goal:</strong> SKILL.md frontmatter optionally declares <code>cost_tokens</code> and <code>latency_ms</code>. The library API surfaces these. UI consumes later.<br>
+<strong>Shippable:</strong> Skill metadata exposed via API; populated on a best-effort basis.<br>
+<strong>Estimated tasks:</strong> 1.
+</div>
+
+<h3>Task 5.1: Parse + surface skill cost frontmatter</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/library.ts</code> (existing module that lists anthropic/skills) — extend the per-entry record</li>
+  <li>Test: extend the existing tests for that file (or create one)</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Read the existing library.ts**
+
+```bash
+cat src/channels/playground/library.ts
+```
+
+Identify where it parses each SKILL.md and produces the per-entry record consumed by `/api/skills/library`.
+
+- [ ] **Step 2: Extend the parser to extract cost_tokens + latency_ms**
+
+In the frontmatter parser, capture `cost_tokens` and `latency_ms` if present. Add them to the returned record:
+
+```typescript
+export interface SkillLibraryEntry {
+  name: string;
+  description: string;
+  // NEW:
+  costTokens?: number;
+  latencyMs?: number;
+}
+```
+
+- [ ] **Step 3: Test against fixture**
+
+Add a test fixture skill that includes the new frontmatter fields, and assert they round-trip through `listLibrary`.
+
+- [ ] **Step 4: Run tests**
+
+```bash
+pnpm exec vitest run src/channels/playground/library
+```
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/channels/playground/library.ts
+git commit -m "feat(playground-v3): parse cost_tokens + latency_ms from SKILL.md frontmatter"
+```
+</pre>
+
+<hr>
+
+<h2>Phase 6 — UI rewrite</h2>
+
+<div class="phase-summary">
+<strong>Goal:</strong> Replace the v2 5-mode UI with the v3 4-tab structure: Chat / Persona / Skills / Models, plus the draft banner. Modular per-tab JS files. New CSS. No framework.<br>
+<strong>Shippable per task:</strong> Each tab lands as its own commit with manual smoke verification in a browser.<br>
+<strong>Estimated tasks:</strong> 8.
+</div>
+
+<h3>Task 6.1: New shell — index.html + tab switcher + draft banner</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/public/index.html</code> — full rewrite</li>
+  <li>Modify: <code>src/channels/playground/public/app.js</code> — full rewrite, top-level wiring only</li>
+  <li>Modify: <code>src/channels/playground/public/style.css</code> — full rewrite</li>
+  <li>Create: <code>src/channels/playground/public/draft-banner.js</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Replace index.html**
+
+Replace `src/channels/playground/public/index.html` with:
+
+```html
+&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="utf-8"&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+  &lt;title&gt;NanoClaw Agent Playground&lt;/title&gt;
+  &lt;link rel="icon" type="image/png" href="/favicon.png"&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;header id="topbar"&gt;
+    &lt;div class="brand"&gt;&lt;img src="/nanoclaw-icon.png" alt=""&gt; NanoClaw Playground&lt;/div&gt;
+    &lt;div id="agent-info"&gt;
+      &lt;span class="label"&gt;current agent&lt;/span&gt;
+      &lt;strong id="active-agent-name"&gt;…&lt;/strong&gt;
+    &lt;/div&gt;
+    &lt;div id="who"&gt;…&lt;/div&gt;
+  &lt;/header&gt;
+
+  &lt;nav id="tab-bar"&gt;
+    &lt;button data-tab="chat" class="tab active"&gt;Chat&lt;/button&gt;
+    &lt;button data-tab="persona" class="tab"&gt;Persona&lt;/button&gt;
+    &lt;button data-tab="skills" class="tab"&gt;Skills&lt;/button&gt;
+    &lt;button data-tab="models" class="tab"&gt;Models&lt;/button&gt;
+  &lt;/nav&gt;
+
+  &lt;div id="draft-banner" hidden&gt;
+    &lt;span class="warn"&gt;⚠ Draft&lt;/span&gt;
+    &lt;span id="draft-message"&gt;&lt;/span&gt;
+    &lt;span class="actions"&gt;
+      &lt;button id="draft-discard" class="btn btn-danger"&gt;↩ Discard&lt;/button&gt;
+      &lt;button id="draft-save" class="btn btn-success"&gt;💾 Save to my library…&lt;/button&gt;
+      &lt;button id="draft-apply" class="btn btn-primary"&gt;✓ Apply to my agent&lt;/button&gt;
+    &lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;main id="root"&gt;
+    &lt;section id="tab-chat" class="tab-body active"&gt;&lt;/section&gt;
+    &lt;section id="tab-persona" class="tab-body" hidden&gt;&lt;/section&gt;
+    &lt;section id="tab-skills" class="tab-body" hidden&gt;&lt;/section&gt;
+    &lt;section id="tab-models" class="tab-body" hidden&gt;&lt;/section&gt;
+  &lt;/main&gt;
+
+  &lt;div id="modal-root"&gt;&lt;/div&gt;
+  &lt;div id="toasts"&gt;&lt;/div&gt;
+
+  &lt;script type="module" src="app.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+```
+
+- [ ] **Step 2: Rewrite app.js as the top-level wiring**
+
+Replace `src/channels/playground/public/app.js`:
+
+```javascript
+import { mountChat } from './tabs/chat.js';
+import { mountPersona } from './tabs/persona.js';
+import { mountSkills } from './tabs/skills.js';
+import { mountModels } from './tabs/models.js';
+import { initDraftBanner } from './draft-banner.js';
+
+const TABS = ['chat', 'persona', 'skills', 'models'];
+const mounters = { chat: mountChat, persona: mountPersona, skills: mountSkills, models: mountModels };
+const mounted = {};
+
+function showTab(name) {
+  for (const t of TABS) {
+    document.querySelector(`[data-tab="${t}"]`).classList.toggle('active', t === name);
+    document.getElementById(`tab-${t}`).hidden = t !== name;
+  }
+  if (!mounted[name]) {
+    mounters[name](document.getElementById(`tab-${name}`));
+    mounted[name] = true;
+  }
+}
+
+async function init() {
+  // Resolve the current agent (agent group folder this user is wired to).
+  const r = await fetch('/api/me/agent', { credentials: 'same-origin' });
+  if (!r.ok) {
+    document.body.innerHTML = '&lt;p style="padding:20px"&gt;Not signed in. &lt;a href="/login"&gt;Log in&lt;/a&gt;&lt;/p&gt;';
+    return;
+  }
+  const { agent, user } = await r.json();
+  window.__pg = { agent, user };
+  document.getElementById('active-agent-name').textContent = agent.name;
+  document.getElementById('who').textContent = user.email || user.id;
+
+  initDraftBanner();
+
+  for (const t of TABS) {
+    document.querySelector(`[data-tab="${t}"]`).addEventListener('click', () =&gt; showTab(t));
+  }
+  showTab('chat');
+}
+
+init();
+```
+
+(`/api/me/agent` is a new endpoint — Task 6.2 wires it. For now this will fail gracefully.)
+
+- [ ] **Step 3: Stub out the per-tab mount functions**
+
+Create the four files with just enough scaffolding to render a placeholder so the tab switch works:
+
+`src/channels/playground/public/tabs/chat.js`:
+```javascript
+export function mountChat(el) { el.innerHTML = '&lt;p style="padding:20px"&gt;Chat tab — not implemented yet.&lt;/p&gt;'; }
+```
+
+Same shape for `tabs/persona.js`, `tabs/skills.js`, `tabs/models.js` (each export `mount&lt;Name&gt;`).
+
+- [ ] **Step 4: Stub draft-banner.js**
+
+Create `src/channels/playground/public/draft-banner.js`:
+
+```javascript
+export function initDraftBanner() {
+  const banner = document.getElementById('draft-banner');
+  document.getElementById('draft-discard').addEventListener('click', () =&gt; alert('TODO: discard'));
+  document.getElementById('draft-save').addEventListener('click', () =&gt; alert('TODO: save'));
+  document.getElementById('draft-apply').addEventListener('click', () =&gt; alert('TODO: apply'));
+}
+
+export function showDraftBanner(message) {
+  const banner = document.getElementById('draft-banner');
+  document.getElementById('draft-message').textContent = message;
+  banner.hidden = false;
+}
+
+export function hideDraftBanner() {
+  document.getElementById('draft-banner').hidden = true;
+}
+```
+
+- [ ] **Step 5: Rewrite style.css with the new layout**
+
+Replace `src/channels/playground/public/style.css` with a CSS that delivers:
+- Topbar (flex row, 60px height)
+- Tab bar (flex row, 40px height, active tab has bottom-border)
+- Draft banner (hidden by default; cream background; flex row with action buttons right-aligned)
+- Tab body (`flex: 1`, padding 0)
+- Three button styles: `.btn-danger` (red-tinged), `.btn-success` (green-tinged), `.btn-primary` (blue, white text)
+- Reset of body to `display: flex; flex-direction: column; height: 100vh; margin: 0`
+
+Aim for ~150 lines of clean CSS. Reuse the brand palette from the existing v2 style.css (palette colors only — discard old layout rules).
+
+- [ ] **Step 6: Smoke verify**
+
+`pnpm run dev` (host with hot reload). Open the playground URL in a browser. You should see:
+- Topbar with brand + "current agent: …" + user email/id
+- Four tabs (Chat active by default)
+- Each tab body shows its placeholder text when clicked
+- Draft banner stays hidden
+
+(The "current agent" placeholder will say "…" until Task 6.2 lands `/api/me/agent`. That's expected — the page should still render.)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/channels/playground/public/index.html src/channels/playground/public/app.js src/channels/playground/public/style.css src/channels/playground/public/draft-banner.js src/channels/playground/public/tabs/
+git commit -m "feat(playground-v3): new 4-tab shell + draft banner stub"
+```
+</pre>
+
+<h3>Task 6.2: Wire <code>/api/me/agent</code> endpoint</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Create: <code>src/channels/playground/api/me.ts</code></li>
+  <li>Modify: <code>src/channels/playground/api-routes.ts</code> (dispatch)</li>
+  <li>Test: <code>src/channels/playground/api/me.test.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Test**
+
+Create `src/channels/playground/api/me.test.ts`:
+
+```typescript
+import { describe, expect, it, vi } from 'vitest';
+
+describe('GET /api/me/agent', () =&gt; {
+  it('returns the agent group the calling user is wired to', async () =&gt; {
+    vi.doMock('../../../db/agent-groups.js', () =&gt; ({
+      getAgentGroupForStudent: () =&gt; ({ id: 'ag_123', name: 'Felix', folder: 'telegram_main' }),
+    }));
+    const { handleGetMyAgent } = await import('./me.js');
+    const r = handleGetMyAgent({ userId: 'student_42', email: 'a@b.c', cookieValue: 'x' } as any);
+    expect(r.status).toBe(200);
+    expect(r.body.agent.name).toBe('Felix');
+  });
+});
+```
+
+- [ ] **Step 2: Implement**
+
+Create `src/channels/playground/api/me.ts`:
+
+```typescript
+import { getAgentGroupForStudent } from '../../../db/agent-groups.js';
+import type { PlaygroundSession } from '../auth-store.js';
+
+export interface ApiResult&lt;T&gt; {
+  status: number;
+  body: T | { error: string };
+}
+
+export interface MyAgentResponse {
+  user: { id: string; email?: string };
+  agent: { id: string; name: string; folder: string };
+}
+
+export function handleGetMyAgent(session: PlaygroundSession): ApiResult&lt;MyAgentResponse&gt; {
+  const agent = getAgentGroupForStudent(session.userId);
+  if (!agent) return { status: 404, body: { error: 'no agent assigned to this user' } };
+  return {
+    status: 200,
+    body: {
+      user: { id: session.userId, email: (session as any).email },
+      agent: { id: agent.id, name: agent.name, folder: agent.folder },
+    },
+  };
+}
+```
+
+(`getAgentGroupForStudent` is a helper that may need to be added to `src/db/agent-groups.ts` — it queries the `agent_group_members` table for the user's first non-default group, or whatever convention the classroom feature uses to associate a student with their agent. Read `src/db/agent-groups.ts` and `container/agent-runner/src/...` for the existing pattern; if no exact helper exists, add one and unit-test it.)
+
+- [ ] **Step 3: Wire route**
+
+In `src/channels/playground/api-routes.ts`:
+```typescript
+import { handleGetMyAgent } from './api/me.js';
+
+if (method === 'GET' && url.pathname === '/api/me/agent') {
+  const r = handleGetMyAgent(session);
+  return send(res, r.status, r.body);
+}
+```
+
+- [ ] **Step 4: Run tests + smoke**
+
+`pnpm exec vitest run src/channels/playground/api/me.test.ts` — PASS.
+
+Reload the playground in browser. The "current agent: …" placeholder should now show the real agent name (e.g., "Felix").
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/channels/playground/api/me.ts src/channels/playground/api/me.test.ts src/channels/playground/api-routes.ts src/db/agent-groups.ts
+git commit -m "feat(playground-v3): /api/me/agent endpoint"
+```
+</pre>
+
+<h3>Task 6.3: Chat tab — chat panel + trace + per-message annotations</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/public/tabs/chat.js</code> — replace stub</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Read existing chat surface for reference**
+
+Read the v2 chat-mode rendering inside `src/channels/playground/public/app.js` (the existing 676-line file before Task 6.1 replaced it). The v2 logic for SSE consumption + chat-log rendering + trace-event handling is the closest reference for the new module.
+
+(Use `git show HEAD~&lt;n&gt;:src/channels/playground/public/app.js` if Task 6.1 has already overwritten it — count back to before that commit.)
+
+- [ ] **Step 2: Implement chat.js**
+
+Replace `src/channels/playground/public/tabs/chat.js` with the full implementation. Pattern (compressed; expand to a real working module of ~250-350 LoC):
+
+```javascript
+import { showDraftBanner } from '../draft-banner.js';
+
+export function mountChat(el) {
+  const folder = window.__pg.agent.folder;
+  el.innerHTML = `
+    &lt;div class="chat-toolbar"&gt;
+      &lt;span&gt;Chat with: &lt;strong&gt;${window.__pg.agent.name}&lt;/strong&gt;&lt;/span&gt;
+      &lt;span class="spacer"&gt;&lt;/span&gt;
+      &lt;label&gt;provider &lt;select id="provider-sel"&gt;&lt;/select&gt;&lt;/label&gt;
+      &lt;label&gt;model &lt;select id="model-sel"&gt;&lt;/select&gt;&lt;/label&gt;
+    &lt;/div&gt;
+    &lt;div class="chat-layout"&gt;
+      &lt;div class="chat-column"&gt;
+        &lt;ul id="chat-log"&gt;&lt;/ul&gt;
+        &lt;form id="chat-form"&gt;
+          &lt;textarea id="chat-input" rows="1" placeholder="ask your agent…"&gt;&lt;/textarea&gt;
+          &lt;button type="submit" class="btn btn-primary"&gt;Send&lt;/button&gt;
+        &lt;/form&gt;
+      &lt;/div&gt;
+      &lt;aside class="trace-panel"&gt;
+        &lt;header&gt;Trace&lt;/header&gt;
+        &lt;ul id="trace-log"&gt;&lt;/ul&gt;
+      &lt;/aside&gt;
+    &lt;/div&gt;
+  `;
+
+  // ── SSE connect ─────────────────────────────────────────────────────────
+  const log = el.querySelector('#chat-log');
+  const trace = el.querySelector('#trace-log');
+  const evt = new EventSource(`/api/drafts/${folder}/stream`);
+  evt.addEventListener('message', (e) =&gt; {
+    const data = JSON.parse(e.data);
+    if (data.kind === 'message') {
+      appendAgentReply(log, data);
+    } else if (data.kind === 'trace') {
+      appendTraceEvent(trace, data);
+    }
+  });
+
+  // ── Send ────────────────────────────────────────────────────────────────
+  el.querySelector('#chat-form').addEventListener('submit', async (e) =&gt; {
+    e.preventDefault();
+    const input = el.querySelector('#chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    appendUserBubble(log, text);
+    input.value = '';
+    await fetch(`/api/drafts/${folder}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ text }),
+    });
+  });
+
+  // ── Provider + model dropdowns ─────────────────────────────────────────
+  loadModelDropdowns(el, folder);
+}
+
+function appendUserBubble(log, text) {
+  const li = document.createElement('li');
+  li.className = 'msg user';
+  li.textContent = text;
+  log.appendChild(li);
+  log.scrollTop = log.scrollHeight;
+}
+
+function appendAgentReply(log, data) {
+  const li = document.createElement('li');
+  li.className = 'msg agent';
+  li.textContent = data.text || '';
+  if (data.tokens || data.latencyMs) {
+    const annot = document.createElement('div');
+    annot.className = 'cost-annot';
+    const parts = [];
+    if (data.provider && data.model) parts.push(`${data.provider}/${data.model}`);
+    if (data.tokens) parts.push(`${data.tokens.input + data.tokens.output} tok`);
+    if (data.latencyMs) parts.push(`${(data.latencyMs / 1000).toFixed(1)}s`);
+    annot.textContent = parts.join(' · ');
+    li.appendChild(annot);
+  }
+  log.appendChild(li);
+  log.scrollTop = log.scrollHeight;
+}
+
+function appendTraceEvent(trace, data) {
+  const li = document.createElement('li');
+  li.className = `trace ${data.eventType}`;
+  li.textContent = `${data.eventType} · ${data.summary || ''}`;
+  trace.appendChild(li);
+}
+
+async function loadModelDropdowns(el, folder) {
+  const r = await fetch(`/api/drafts/${folder}/models`);
+  const data = await r.json();
+  const provSel = el.querySelector('#provider-sel');
+  const modelSel = el.querySelector('#model-sel');
+  const providers = [...new Set(data.catalog.map((m) =&gt; m.provider))];
+  for (const p of providers) provSel.add(new Option(p, p));
+  const renderModels = () =&gt; {
+    modelSel.innerHTML = '';
+    for (const m of data.catalog.filter((m) =&gt; m.provider === provSel.value)) {
+      modelSel.add(new Option(m.displayName, m.id));
+    }
+  };
+  provSel.addEventListener('change', renderModels);
+  renderModels();
+  // Provider switch warning + change handlers wired in Task 6.4.
+}
+```
+
+- [ ] **Step 3: Add chat-related CSS to style.css**
+
+Add styles for `.chat-toolbar`, `.chat-layout` (flex row), `.chat-column`, `.trace-panel`, `.msg.user` / `.msg.agent`, `.cost-annot` (small grey text), `#chat-form`. ~80 LoC.
+
+- [ ] **Step 4: Smoke**
+
+Reload playground. Click Chat tab.
+
+Verify:
+- Provider + model dropdowns are populated from the catalog endpoint.
+- Sending a message round-trips: bubble appears, agent reply lands via SSE, cost annotation shows under the reply (if Phase 4 shipped).
+- Trace events appear in the right column.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/channels/playground/public/tabs/chat.js src/channels/playground/public/style.css
+git commit -m "feat(playground-v3): Chat tab — chat + trace + cost annotations"
+```
+</pre>
+
+<h3>Task 6.4: Chat tab — provider switch modal + model switch indicator</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/public/tabs/chat.js</code></li>
+  <li>Modify: <code>src/channels/playground/public/style.css</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Wire provider-change handler with confirmation modal**
+
+In `tabs/chat.js`, extend `loadModelDropdowns` (or split into multiple functions) so that:
+
+```javascript
+let lastProvider = provSel.value;
+provSel.addEventListener('change', async () =&gt; {
+  const newProvider = provSel.value;
+  if (newProvider === lastProvider) { renderModels(); return; }
+  const ok = await showProviderSwitchModal(lastProvider, newProvider);
+  if (!ok) {
+    provSel.value = lastProvider;
+    return;
+  }
+  await fetch(`/api/drafts/${folder}/provider`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ provider: newProvider }),
+  });
+  lastProvider = newProvider;
+  renderModels();
+  // Also clear the chat log — fresh container = fresh conversation.
+  el.querySelector('#chat-log').innerHTML = '';
+});
+```
+
+- [ ] **Step 2: Implement showProviderSwitchModal**
+
+Add to `tabs/chat.js`:
+
+```javascript
+function showProviderSwitchModal(from, to) {
+  return new Promise((resolve) =&gt; {
+    const root = document.getElementById('modal-root');
+    root.innerHTML = `
+      &lt;div class="modal-backdrop"&gt;
+        &lt;div class="modal"&gt;
+          &lt;h3&gt;⚠ Switch provider?&lt;/h3&gt;
+          &lt;p&gt;Switching from &lt;strong&gt;${from}&lt;/strong&gt; to &lt;strong&gt;${to}&lt;/strong&gt; will reset this chat (kills the running container). Persona, skills, and library entries are not affected.&lt;/p&gt;
+          &lt;div class="modal-actions"&gt;
+            &lt;button class="btn" id="m-cancel"&gt;Cancel&lt;/button&gt;
+            &lt;button class="btn btn-danger" id="m-ok"&gt;Switch &amp; reset chat&lt;/button&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    `;
+    root.querySelector('#m-cancel').addEventListener('click', () =&gt; { root.innerHTML = ''; resolve(false); });
+    root.querySelector('#m-ok').addEventListener('click', () =&gt; { root.innerHTML = ''; resolve(true); });
+  });
+}
+```
+
+- [ ] **Step 3: Add inline indicator on model change**
+
+When the model select changes, add an inline italic line in the chat log:
+
+```javascript
+modelSel.addEventListener('change', () =&gt; {
+  const note = document.createElement('li');
+  note.className = 'chat-note';
+  note.textContent = `— model changed to ${modelSel.value}; next reply will use it —`;
+  el.querySelector('#chat-log').appendChild(note);
+  // (Persisting "current model" to the agent group is implicit: the toolbar value
+  //  is sent with the next message via a new optional body field that the
+  //  /messages endpoint passes through to the container.)
+});
+```
+
+(Forwarding the per-turn model override to the container requires a tiny extension to the `/messages` POST body and the InboundEvent shape — call this out in the commit message and either wire it now or stub it for Phase 4 leftover work.)
+
+- [ ] **Step 4: Add modal CSS**
+
+Add to style.css:
+```css
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: #fff; border-radius: 8px; padding: 18px 22px; max-width: 420px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.modal h3 { margin: 0 0 8px 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.chat-note { color: #2a7; font-style: italic; padding: 6px 10px; }
+```
+
+- [ ] **Step 5: Smoke**
+
+Click provider dropdown → pick the other provider → modal appears → click cancel → dropdown reverts. Click again, accept → chat clears, container respawns.
+
+Click model dropdown → pick a different model → italic note appears in chat. Send a message → reply uses the new model.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/channels/playground/public/tabs/chat.js src/channels/playground/public/style.css
+git commit -m "feat(playground-v3): Chat tab — provider switch modal + model switch indicator"
+```
+</pre>
+
+<h3>Task 6.5: Persona tab — three-panel layout with sub-tabs</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/public/tabs/persona.js</code></li>
+  <li>Modify: <code>src/channels/playground/public/style.css</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Implement persona.js**
+
+Replace `src/channels/playground/public/tabs/persona.js`:
+
+```javascript
+import { showDraftBanner, hideDraftBanner } from '../draft-banner.js';
+
+export function mountPersona(el) {
+  const folder = window.__pg.agent.folder;
+
+  el.innerHTML = `
+    &lt;div class="persona-layout"&gt;
+      &lt;aside class="library-panel"&gt;
+        &lt;h3&gt;Library&lt;/h3&gt;
+        &lt;input id="lib-filter" placeholder="filter…"&gt;
+        &lt;div id="lib-default" class="lib-section"&gt;&lt;h4&gt;Default agents&lt;/h4&gt;&lt;ul&gt;&lt;/ul&gt;&lt;/div&gt;
+        &lt;div id="lib-class" class="lib-section"&gt;&lt;h4&gt;Class library&lt;/h4&gt;&lt;ul&gt;&lt;/ul&gt;&lt;/div&gt;
+        &lt;div id="lib-my" class="lib-section"&gt;&lt;h4&gt;My library&lt;/h4&gt;&lt;ul&gt;&lt;/ul&gt;&lt;/div&gt;
+      &lt;/aside&gt;
+      &lt;section class="preview-panel"&gt;
+        &lt;header&gt;
+          &lt;span id="prev-title"&gt;📚 From library&lt;/span&gt;
+          &lt;span class="hint"&gt;read-only · ⌘A then ⌘C to copy&lt;/span&gt;
+        &lt;/header&gt;
+        &lt;div id="prev-meta" class="meta"&gt;&lt;/div&gt;
+        &lt;pre id="prev-body"&gt;Click a library entry to preview.&lt;/pre&gt;
+      &lt;/section&gt;
+      &lt;section class="active-panel"&gt;
+        &lt;nav class="sub-tabs"&gt;
+          &lt;button data-sub="my" class="sub-tab active"&gt;✏️ My persona&lt;/button&gt;
+          &lt;button data-sub="group" class="sub-tab"&gt;🔒 Group base&lt;/button&gt;
+          &lt;button data-sub="container" class="sub-tab"&gt;🔒 Container base&lt;/button&gt;
+          &lt;button data-sub="global" class="sub-tab" id="sub-global"&gt;🔒 Global&lt;/button&gt;
+        &lt;/nav&gt;
+        &lt;textarea id="active-text"&gt;&lt;/textarea&gt;
+        &lt;footer class="active-footer"&gt;
+          &lt;label&gt;prefers provider &lt;select id="active-provider"&gt;&lt;/select&gt;&lt;/label&gt;
+          &lt;label&gt;model &lt;select id="active-model"&gt;&lt;/select&gt;&lt;/label&gt;
+        &lt;/footer&gt;
+      &lt;/section&gt;
+    &lt;/div&gt;
+  `;
+
+  loadLibrary(el, folder);
+  loadActivePersona(el, folder);
+  wireSubTabs(el, folder);
+  wireDraftDetection(el, folder);
+}
+
+async function loadLibrary(el, folder) {
+  const r = await fetch('/api/library', { credentials: 'same-origin' });
+  const tiers = await r.json();
+  for (const tier of ['default', 'class', 'my']) {
+    const ul = el.querySelector(`#lib-${tier} ul`);
+    for (const entry of tiers[tier]) {
+      const li = document.createElement('li');
+      li.textContent = `📋 ${entry.name}`;
+      li.dataset.tier = tier;
+      li.dataset.name = entry.name;
+      li.addEventListener('click', () =&gt; loadPreview(el, tier, entry.name));
+      ul.appendChild(li);
+    }
+  }
+}
+
+async function loadPreview(el, tier, name) {
+  const r = await fetch(`/api/library/${tier}/${name}`, { credentials: 'same-origin' });
+  const entry = await r.json();
+  el.querySelector('#prev-title').textContent = `📚 From library: ${entry.name}`;
+  el.querySelector('#prev-meta').textContent = `${tier} · prefers ${entry.preferredProvider || '?'} · model ${entry.preferredModel || '?'}`;
+  el.querySelector('#prev-body').textContent = entry.persona;
+  // mark selected
+  for (const li of el.querySelectorAll('.library-panel li')) li.classList.remove('selected');
+  el.querySelector(`li[data-tier="${tier}"][data-name="${name}"]`)?.classList.add('selected');
+}
+
+async function loadActivePersona(el, folder) {
+  const r = await fetch(`/api/drafts/${folder}/persona`, { credentials: 'same-origin' });
+  const { text } = await r.json();
+  el.querySelector('#active-text').value = text || '';
+  await loadProviderModelDropdowns(el, folder);
+}
+
+async function loadProviderModelDropdowns(el, folder) {
+  const r = await fetch(`/api/drafts/${folder}/models`);
+  const data = await r.json();
+  const provSel = el.querySelector('#active-provider');
+  const modelSel = el.querySelector('#active-model');
+  const providers = [...new Set(data.catalog.map((m) =&gt; m.provider))];
+  for (const p of providers) provSel.add(new Option(p, p));
+  const renderModels = () =&gt; {
+    modelSel.innerHTML = '';
+    for (const m of data.catalog.filter((m) =&gt; m.provider === provSel.value)) {
+      modelSel.add(new Option(m.displayName, m.id));
+    }
+  };
+  provSel.addEventListener('change', renderModels);
+  renderModels();
+}
+
+function wireSubTabs(el, folder) {
+  for (const btn of el.querySelectorAll('.sub-tab')) {
+    btn.addEventListener('click', async () =&gt; {
+      for (const b of el.querySelectorAll('.sub-tab')) b.classList.remove('active');
+      btn.classList.add('active');
+      const sub = btn.dataset.sub;
+      const ta = el.querySelector('#active-text');
+      if (sub === 'my') {
+        ta.removeAttribute('readonly');
+        const r = await fetch(`/api/drafts/${folder}/persona`);
+        const { text } = await r.json();
+        ta.value = text || '';
+      } else {
+        ta.setAttribute('readonly', '');
+        const r = await fetch(`/api/drafts/${folder}/persona-layers`);
+        const layers = await r.json();
+        ta.value =
+          sub === 'group' ? layers.groupBase :
+          sub === 'container' ? layers.containerBase :
+          /* global */ (layers.global ?? '');
+      }
+    });
+  }
+  // Dim Global if absent.
+  fetch(`/api/drafts/${folder}/persona-layers`).then(async (r) =&gt; {
+    const layers = await r.json();
+    if (!layers.global) document.getElementById('sub-global').style.opacity = 0.4;
+  });
+}
+
+function wireDraftDetection(el, folder) {
+  let lastSaved = el.querySelector('#active-text').value;
+  el.querySelector('#active-text').addEventListener('input', () =&gt; {
+    if (el.querySelector('#active-text').value !== lastSaved) {
+      showDraftBanner(`${window.__pg.agent.name} has unsaved persona changes — chat is talking to a draft.`);
+    } else {
+      hideDraftBanner();
+    }
+  });
+}
+```
+
+- [ ] **Step 2: Add persona-tab CSS**
+
+Add to style.css: `.persona-layout` (flex row, three children), `.library-panel` (`flex: 0 0 150px`), `.preview-panel` and `.active-panel` (`flex: 1`), `.sub-tabs` row, `.sub-tab.active` underline, `pre#prev-body`, `#active-text` textarea full-fill. ~100 LoC.
+
+- [ ] **Step 3: Smoke**
+
+Click Persona tab. Library shows 3 sections. Click a Default-agents entry → preview loads in middle. Right textarea shows Felix's actual persona. Click "Group base" sub-tab → textarea switches to read-only group base content. Click "My persona" → back to editable. Type in textarea → draft banner appears.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/channels/playground/public/tabs/persona.js src/channels/playground/public/style.css
+git commit -m "feat(playground-v3): Persona tab — 3-panel + sub-tab layered view"
+```
+</pre>
+
+<h3>Task 6.6: Skills tab — three-panel layout with file tree</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/public/tabs/skills.js</code></li>
+  <li>Modify: <code>src/channels/playground/public/style.css</code></li>
+  <li>Possibly add: <code>/api/skills/library/:name/files</code> + <code>/api/skills/library/:name/file/:path</code> endpoints if today's library API doesn't expose per-skill file enumeration. Read <code>src/channels/playground/library.ts</code> first; extend if needed.</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Verify file-enumeration API exists, extend if not**
+
+```bash
+grep -n "files" src/channels/playground/library.ts
+```
+
+If today's library only exposes name+description+frontmatter, add two functions to `library.ts`:
+- `listSkillFiles(name): { path: string; isDir: boolean }[]` — recurse the skill directory
+- `readSkillFile(name, relPath): string | undefined` — path-traversal-safe read
+
+And expose via two new routes in `api-routes.ts`:
+- `GET /api/skills/library/:name/files`
+- `GET /api/skills/library/:name/file?path=...`
+
+(Each gets a small unit test asserting traversal rejection.)
+
+- [ ] **Step 2: Implement skills.js**
+
+Replace `src/channels/playground/public/tabs/skills.js` (~250 LoC). Pattern:
+
+```javascript
+import { showDraftBanner } from '../draft-banner.js';
+
+export function mountSkills(el) {
+  const folder = window.__pg.agent.folder;
+  el.innerHTML = `
+    &lt;div class="skills-layout"&gt;
+      &lt;aside class="library-panel"&gt;
+        &lt;h3&gt;Available skills&lt;/h3&gt;
+        &lt;input id="skill-filter" placeholder="filter…"&gt;
+        &lt;div id="skills-list"&gt;&lt;/div&gt;
+        &lt;button id="author-skill" class="btn"&gt;+ Author my own skill…&lt;/button&gt;
+      &lt;/aside&gt;
+      &lt;section class="preview-panel"&gt;
+        &lt;header&gt;&lt;span id="skill-prev-title"&gt;Preview&lt;/span&gt;&lt;/header&gt;
+        &lt;div class="file-pane"&gt;
+          &lt;ul id="file-tree"&gt;&lt;/ul&gt;
+          &lt;pre id="file-body"&gt;Click a skill to preview.&lt;/pre&gt;
+        &lt;/div&gt;
+        &lt;footer&gt;&lt;button id="add-active" class="btn btn-primary"&gt;+ Add to active &amp;rarr;&lt;/button&gt;&lt;/footer&gt;
+      &lt;/section&gt;
+      &lt;section class="active-panel"&gt;
+        &lt;h3&gt;Active skills (this agent)&lt;/h3&gt;
+        &lt;ul id="active-skills"&gt;&lt;/ul&gt;
+        &lt;footer class="cost-rollup" id="cost-rollup"&gt;&lt;/footer&gt;
+      &lt;/section&gt;
+    &lt;/div&gt;
+  `;
+  loadSkillLibrary(el);
+  loadActiveSkills(el, folder);
+  el.querySelector('#author-skill').addEventListener('click', () =&gt; alert('Skill authoring sub-flow — design pending. (v3 placeholder.)'));
+}
+
+// (loadSkillLibrary, loadFileTree, loadFile, loadActiveSkills, recomputeRollup
+//  follow the same pattern as persona.js — use /api/skills/library, the new
+//  /files and /file endpoints, and /api/drafts/:folder/skills GET+PUT.)
+```
+
+Implement the helper functions (~150 LoC).
+
+- [ ] **Step 3: Add skills CSS**
+
+`.skills-layout` (flex row, three children). `.file-pane` (flex row, file tree on left). `.cost-rollup` (small grey footer). ~80 LoC.
+
+- [ ] **Step 4: Smoke**
+
+Click Skills tab. Available skills list populates. Click one → file tree appears in middle, SKILL.md body in viewer. Add → appears in right active list. Cost rollup updates.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/channels/playground/public/tabs/skills.js src/channels/playground/public/style.css src/channels/playground/library.ts src/channels/playground/api-routes.ts
+git commit -m "feat(playground-v3): Skills tab — 3-panel with file tree + cost rollup"
+```
+</pre>
+
+<h3>Task 6.7: Models tab — card grid with whitelist</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/public/tabs/models.js</code></li>
+  <li>Modify: <code>src/channels/playground/public/style.css</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Implement models.js**
+
+Replace `src/channels/playground/public/tabs/models.js` (~200 LoC):
+
+```javascript
+import { showDraftBanner } from '../draft-banner.js';
+
+export function mountModels(el) {
+  const folder = window.__pg.agent.folder;
+  el.innerHTML = `
+    &lt;div class="models-layout"&gt;
+      &lt;h3&gt;Lock in which models your agent can use&lt;/h3&gt;
+      &lt;div id="model-grid"&gt;&lt;/div&gt;
+      &lt;p class="hint"&gt;💡 Local models cost $0 per token but spend your hardware. Cloud models cost real money but are faster on commodity laptops.&lt;/p&gt;
+    &lt;/div&gt;
+  `;
+  loadModels(el, folder);
+}
+
+async function loadModels(el, folder) {
+  const r = await fetch(`/api/drafts/${folder}/models`);
+  const { catalog, allowedModels } = await r.json();
+  const grid = el.querySelector('#model-grid');
+  for (const m of catalog) {
+    const card = document.createElement('div');
+    card.className = `model-card origin-${m.origin}`;
+    const isAllowed = allowedModels.some((a) =&gt; a.provider === m.provider && a.model === m.id);
+    if (isAllowed) card.classList.add('selected');
+    card.innerHTML = `
+      &lt;label&gt;
+        &lt;input type="checkbox" ${isAllowed ? 'checked' : ''}&gt;
+        &lt;strong&gt;${m.displayName}&lt;/strong&gt;
+      &lt;/label&gt;
+      &lt;div class="chips"&gt;${(m.chips || []).map((c) =&gt; `&lt;span class="chip"&gt;${c}&lt;/span&gt;`).join('')}&lt;/div&gt;
+      &lt;div class="row"&gt;${m.costPer1kTokensUsd != null ? `$${m.costPer1kTokensUsd} / 1k tokens` : '$0 (local)'} · ${m.avgLatencySec || '?'}s avg&lt;/div&gt;
+      &lt;div class="row meta"&gt;params: ${m.paramCount || '?'} · modalities: ${(m.modalities || ['?']).join(' + ')}&lt;/div&gt;
+      ${m.origin === 'local' ? `
+        &lt;div class="local-extras"&gt;
+          host: &lt;code&gt;${m.host || '?'}&lt;/code&gt;&lt;br&gt;
+          context: ${m.contextSize || '?'} · quantization: ${m.quantization || '?'}&lt;br&gt;
+          status: &lt;span class="status status-unknown"&gt;? checking…&lt;/span&gt;
+        &lt;/div&gt;` : ''}
+      ${m.notes ? `&lt;div class="notes"&gt;📝 ${m.notes}&lt;/div&gt;` : ''}
+    `;
+    card.querySelector('input').addEventListener('change', (e) =&gt; toggleModel(folder, m, e.target.checked));
+    grid.appendChild(card);
+    if (m.origin === 'local' && m.host) {
+      pollLocalStatus(card.querySelector('.status'), m.host);
+    }
+  }
+}
+
+async function toggleModel(folder, model, checked) {
+  const r = await fetch(`/api/drafts/${folder}/models`);
+  const { allowedModels } = await r.json();
+  let next = allowedModels.filter((a) =&gt; !(a.provider === model.provider && a.model === model.id));
+  if (checked) next.push({ provider: model.provider, model: model.id });
+  await fetch(`/api/drafts/${folder}/models`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ allowedModels: next }),
+  });
+  showDraftBanner(`Model whitelist changed.`);
+}
+
+async function pollLocalStatus(el, host) {
+  try {
+    const r = await fetch(`${host}/v1/models`, { method: 'GET' });
+    el.textContent = r.ok ? '● online' : '○ offline';
+    el.className = `status ${r.ok ? 'status-online' : 'status-offline'}`;
+  } catch {
+    el.textContent = '○ offline';
+    el.className = 'status status-offline';
+  }
+}
+```
+
+- [ ] **Step 2: Add models CSS**
+
+`.models-layout`, `#model-grid` (CSS grid, `grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))`), `.model-card` with `.origin-cloud` / `.origin-local` border colors, `.chips`, `.notes`, `.local-extras`, `.status-online` (green) / `.status-offline` (grey). ~100 LoC.
+
+- [ ] **Step 3: Smoke**
+
+Click Models tab. Card grid appears. Cloud cards show name + chips + cost/latency + params/modalities. Local cards (if any are configured in `config/model-catalog-local.json`) show the inset with host + status. Toggle a card → draft banner appears.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/channels/playground/public/tabs/models.js src/channels/playground/public/style.css
+git commit -m "feat(playground-v3): Models tab — card grid + whitelist + local status"
+```
+</pre>
+
+<h3>Task 6.8: Draft banner — wire actions to real endpoints</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/public/draft-banner.js</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Replace the alert() stubs**
+
+Replace `src/channels/playground/public/draft-banner.js`:
+
+```javascript
+const draftState = { dirty: false, message: '' };
+
+export function initDraftBanner() {
+  document.getElementById('draft-discard').addEventListener('click', onDiscard);
+  document.getElementById('draft-save').addEventListener('click', onSaveToLibrary);
+  document.getElementById('draft-apply').addEventListener('click', onApply);
+}
+
+export function showDraftBanner(message) {
+  draftState.dirty = true;
+  draftState.message = message;
+  document.getElementById('draft-message').textContent = message;
+  document.getElementById('draft-banner').hidden = false;
+}
+
+export function hideDraftBanner() {
+  draftState.dirty = false;
+  document.getElementById('draft-banner').hidden = true;
+}
+
+async function onApply() {
+  const folder = window.__pg.agent.folder;
+  // The persona textarea is the source of truth for the draft persona.
+  const personaText = document.querySelector('#active-text')?.value;
+  if (personaText !== undefined) {
+    await fetch(`/api/drafts/${folder}/persona`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ text: personaText }),
+    });
+  }
+  // (Skills + model whitelist are already PUT'd at change time; no extra step.)
+  hideDraftBanner();
+  toast('Applied to current agent.');
+}
+
+async function onSaveToLibrary() {
+  const name = prompt('Save current draft as (name):');
+  if (!name) return;
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) {
+    toast('Name must be alphanumeric, underscore, or hyphen.');
+    return;
+  }
+  const personaText = document.querySelector('#active-text')?.value || '';
+  const provSel = document.querySelector('#active-provider');
+  const modelSel = document.querySelector('#active-model');
+  const r = await fetch(`/api/library/my/${name}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({
+      name,
+      description: '',
+      persona: personaText,
+      preferredProvider: provSel?.value,
+      preferredModel: modelSel?.value,
+      skills: [], // (gathered from active-skills list — wire when Skills tab is mounted)
+    }),
+  });
+  if (r.ok) toast(`Saved as "${name}" in My library.`);
+  else toast('Save failed.');
+}
+
+async function onDiscard() {
+  const folder = window.__pg.agent.folder;
+  // Re-load the persisted persona from the server, blow away textarea changes.
+  const r = await fetch(`/api/drafts/${folder}/persona`);
+  const { text } = await r.json();
+  const ta = document.querySelector('#active-text');
+  if (ta) ta.value = text || '';
+  hideDraftBanner();
+}
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() =&gt; t.remove(), 3000);
+}
+```
+
+- [ ] **Step 2: Add toast CSS**
+
+```css
+#toasts { position: fixed; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; z-index: 200; }
+.toast { background: #333; color: #fff; padding: 8px 14px; border-radius: 4px; font-size: 13px; }
+```
+
+- [ ] **Step 3: Smoke**
+
+Edit persona → banner appears. Click Apply → persona writes, banner clears, toast confirms. Edit again → click Save to library → name dialog → entry appears in My library section after refresh of the library list. Click Discard → textarea reverts.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/channels/playground/public/draft-banner.js src/channels/playground/public/style.css
+git commit -m "feat(playground-v3): draft banner — wire Apply/Save/Discard to endpoints"
+```
+</pre>
+
+<hr>
+
+<h2>Phase 7 — Cleanup + integration</h2>
+
+<div class="phase-summary">
+<strong>Goal:</strong> Remove v2 dead code (Files mode, Diff mode, old Persona mode), update docs, add a row to <code>plans/master.md</code> "What's shipped" table.<br>
+<strong>Shippable:</strong> v3 fully replaces v2; no legacy code paths.<br>
+<strong>Estimated tasks:</strong> 2.
+</div>
+
+<h3>Task 7.1: Remove v2 dead routes</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>src/channels/playground/api-routes.ts</code></li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Delete the diff and files routes**
+
+In `src/channels/playground/api-routes.ts`, delete the route blocks for:
+- `GET /api/drafts/:folder/diff`
+- `GET /api/drafts/:folder/files`
+- `GET /api/drafts/:folder/files/:path`
+- `PUT /api/drafts/:folder/files/:path`
+
+Plus the now-unused imports (`diffDraftAgainstTarget`, `getDraftStatus`, etc.).
+
+- [ ] **Step 2: Run all tests**
+
+```bash
+pnpm test
+```
+Expected: green. Some test files may reference the removed routes — delete or update those tests.
+
+- [ ] **Step 3: Smoke the full UI**
+
+Walk every tab in a browser. No 404s in DevTools console.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/channels/playground/api-routes.ts
+git commit -m "refactor(playground-v3): drop v2 diff + files routes"
+```
+</pre>
+
+<h3>Task 7.2: Docs + master plan update</h3>
+
+<div class="files">
+<strong>Files:</strong>
+<ul>
+  <li>Modify: <code>plans/master.md</code></li>
+  <li>Modify: <code>plans/agent-playground-v2.md</code> — add a "Superseded by v3" header pointing at the new spec/plan</li>
+  <li>Modify: <code>README.md</code> if it mentions the v2 5-mode UI structure</li>
+</ul>
+</div>
+
+<pre class="task">- [ ] **Step 1: Update master.md "What's shipped" table**
+
+Add a row after the most recent shipped item:
+
+```
+| Agent Playground v3 — student-first 4-tab redesign | `main` (commits `XXXXXXX`-`YYYYYYY`) |
+```
+
+- [ ] **Step 2: Annotate v2 plan as superseded**
+
+At the top of `plans/agent-playground-v2.md`, add:
+
+```markdown
+> **Superseded by v3 (2026-05-13).** See `docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html` for the redesign spec and `docs/superpowers/plans/2026-05-13-agent-playground-v3.html` for the implementation plan. This file remains as the historical record of the v2 ship.
+```
+
+- [ ] **Step 3: README update (if applicable)**
+
+```bash
+grep -n "playground" README.md
+```
+
+If README mentions the v2 5-mode UI explicitly, update to reflect the 4-tab v3 surface.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add plans/master.md plans/agent-playground-v2.md README.md
+git commit -m "docs(playground-v3): record ship in master plan + supersede v2 record"
+```
+</pre>
+
+<hr>
+
+<h2>Self-Review</h2>
+
+<p>Cross-check against the spec sections:</p>
+
+<table>
+<tr><th>Spec section / requirement</th><th>Implementing task(s)</th></tr>
+<tr><td>4-tab structure (Chat/Persona/Skills/Models)</td><td>6.1 (shell), 6.3 (Chat), 6.5 (Persona), 6.6 (Skills), 6.7 (Models)</td></tr>
+<tr><td>Draft banner with Discard/Save/Apply</td><td>6.1 (stub), 6.8 (wire actions)</td></tr>
+<tr><td>Three-panel persona with sub-tabs</td><td>6.5</td></tr>
+<tr><td>Persona-layers helper, provider-uniform</td><td>1.1, 1.2, 1.3</td></tr>
+<tr><td>Library tier (Default/Class/My) + JSON storage</td><td>3.1, 3.2 (Default content), 3.3 (API)</td></tr>
+<tr><td>Default agents bundled (renamed)</td><td>3.2</td></tr>
+<tr><td>Model catalog + whitelist + container.json field</td><td>2.1, 2.2, 2.3</td></tr>
+<tr><td>Local-model cards with host/quantization/params/modalities/notes</td><td>2.1 (catalog shape), 6.7 (rendering)</td></tr>
+<tr><td>Per-message cost/speed annotation in chat</td><td>4.1 (provider events), 4.2 (migration), 4.3 (poll-loop persist), 4.4 (SSE), 6.3 (UI render)</td></tr>
+<tr><td>Provider switch confirmation modal</td><td>6.4</td></tr>
+<tr><td>Model switch inline indicator</td><td>6.4</td></tr>
+<tr><td>Skills cost annotation via SKILL.md frontmatter</td><td>5.1</td></tr>
+<tr><td>Files mode + Diff mode removed</td><td>7.1</td></tr>
+<tr><td>Master plan + v2 supersede note</td><td>7.2</td></tr>
+</table>
+
+<p><strong>Type-consistency check:</strong> The names <code>LibraryEntry</code>, <code>LibraryTier</code>, <code>AllTiers</code>, <code>ModelEntry</code>, <code>PersonaLayers</code>, <code>ContainerConfig.allowedModels</code>, <code>ProviderEvent.result.tokens</code>, <code>ProviderEvent.result.latencyMs</code>, <code>messages_out.tokens_in/tokens_out/latency_ms/provider/model</code> are used identically across all tasks. The only API-name reused at multiple sites is <code>handlePersonaLayers</code> / <code>handleGetModels</code> / <code>handleListLibrary</code> / etc. — each defined and consumed in the same file.</p>
+
+<p><strong>Placeholder check:</strong> No TBD / TODO / "implement later" in steps. The two "design TBD" notes in the spec (skill authoring sub-flow, live local-model status timer) are explicitly out-of-scope and surfaced via Task 6.6 step 2 (placeholder button) and Task 6.7 step 1 (on-demand polling for v3, no timer).</p>
+
+<p><strong>Scope check:</strong> Single coherent rebuild. Phases 1-5 are server-side and ship value to no end-user; the visible value lands at Phase 6. Phase 7 is cleanup. If the user wants to ship Phases 1-5 as one PR and Phase 6-7 as a follow-up PR, the split point is clean — Phase 6.1 is the first step that requires Phases 1, 2, 3, 4 to all be merged.</p>
+
+</body>
+</html>

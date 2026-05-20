@@ -1,0 +1,41 @@
+[
+  {
+    "id": "pong",
+    "kind": "single",
+    "prompt": "Reply with exactly the word `Pong` and nothing else.",
+    "gate": "equals",
+    "expected": "Pong"
+  },
+  {
+    "id": "utc-clock",
+    "kind": "single",
+    "prompt": "What is the current UTC time? Use a tool to find out.",
+    "gate": "regex",
+    "expected": "\\d{1,2}:\\d{2}"
+  },
+  {
+    "id": "title-fetch",
+    "kind": "single",
+    "prompt": "Fetch http://127.0.0.1:7777/example.html and tell me the page's <title>.",
+    "gate": "contains",
+    "expected": "Example Domain"
+  },
+  {
+    "id": "three-turn-lesson",
+    "kind": "multi",
+    "prompts": [
+      "I'm planning a 30-minute Python lesson on dictionaries. Outline what I should cover.",
+      "Add a runnable code example for each topic.",
+      "Rewrite the examples in JavaScript."
+    ],
+    "gate": "min-bullets-per-turn",
+    "expected": 3
+  },
+  {
+    "id": "comparative-research",
+    "kind": "single",
+    "prompt": "Fetch these three URLs, summarize each in 50 words, then pick the most beginner-friendly and explain why. http://127.0.0.1:7777/article-a.html http://127.0.0.1:7777/article-b.html http://127.0.0.1:7777/article-c.html",
+    "gate": "contains-all",
+    "expected": ["article a", "article b", "article c"]
+  }
+]

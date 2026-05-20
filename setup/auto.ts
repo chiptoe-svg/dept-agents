@@ -14,8 +14,8 @@
  *                          "Terminal Agent".
  *   NANOCLAW_SKIP          comma-separated step names to skip
  *                          (environment|container|onecli|auth|mounts|
- *                           service|cli-agent|timezone|channel|verify|
- *                           first-chat)
+ *                           service|cli-agent|timezone|channel|
+ *                           verify|first-chat)
  *
  * Timezone is auto-detected after the CLI agent step. UTC resolves are
  * confirmed with the user, and free-text replies fall through to a
@@ -23,11 +23,13 @@
  */
 import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
+import * as os from 'os';
 import path from 'path';
 
 import * as p from '@clack/prompts';
 import k from 'kleur';
 
+import { BACK_TO_CHANNEL_SELECTION } from './lib/back-nav.js';
 import { runDiscordChannel } from './channels/discord.js';
 import { runIMessageChannel } from './channels/imessage.js';
 import { runSignalChannel } from './channels/signal.js';
@@ -37,7 +39,9 @@ import { runTelegramChannel } from './channels/telegram.js';
 import { runWhatsAppChannel } from './channels/whatsapp.js';
 import { pingCliAgent, type PingResult } from './lib/agent-ping.js';
 import { brightSelect } from './lib/bright-select.js';
-import { offerClaudeAssist } from './lib/claude-assist.js';
+import { offerAiCodingCliOnFailure } from './lib/cli-handoff.js';
+import { listAiCodingClis } from './lib/ai-coding-cli/index.js';
+import type { AiCodingCli } from './lib/ai-coding-cli/types.js';
 import {
   applyToEnv,
   parseFlags,
@@ -46,25 +50,41 @@ import {
 } from './lib/setup-config-parse.js';
 import { runAdvancedScreen } from './lib/setup-config-screen.js';
 import { runWindowedStep } from './lib/windowed-runner.js';
+import { detectRegisteredGroups, detectExistingDisplayName, readEnvKey } from './environment.js';
 import { pollHealth } from './onecli.js';
 import { getLaunchdLabel, getSystemdUnit } from '../src/install-slug.js';
-import { claudeCliAvailable, resolveTimezoneViaClaude } from './lib/tz-from-claude.js';
+import { resolveTimezoneViaCli, aiCodingCliAvailable } from './lib/tz-from-cli.js';
 import * as setupLog from './logs.js';
-import { ensureAnswer, fail, runQuietChild, runQuietStep } from './lib/runner.js';
+import { ensureAnswer, fail, runQuietChild, runQuietStep, spawnQuiet } from './lib/runner.js';
 import { emit as phEmit } from './lib/diagnostics.js';
-import { brandBold, brandChip, dimWrap, fitToWidth, wrapForGutter } from './lib/theme.js';
+import { accentGreen, brandBody, brandBold, brandChip, dimWrap, fitToWidth, fmtDuration, note, wrapForGutter } from './lib/theme.js';
 import { isValidTimezone } from '../src/timezone.js';
 
 const CLI_AGENT_NAME = 'Terminal Agent';
 const RUN_START = Date.now();
 
-type ChannelChoice = 'telegram' | 'discord' | 'whatsapp' | 'signal' | 'teams' | 'slack' | 'imessage' | 'skip';
+type ChannelChoice = 'telegram' | 'discord' | 'whatsapp' | 'signal' | 'teams' | 'slack' | 'imessage' | 'other' | 'skip';
 
 async function main(): Promise<void> {
+  // Make sure ~/.local/bin is on PATH for every child process we spawn.
+  // Installers we run mid-setup (OneCLI, claude) drop binaries there and
+  // append a PATH line to the user's shell rc, but rc updates don't reach
+  // an already-running Node process — so without this patch a freshly
+  // installed `onecli` is invisible to a subsequent `runInheritScript`.
+  ensureLocalBinOnPath();
+
   // Parse CLI flags first — `--help` short-circuits before we render anything,
   // and flag values get folded into process.env so existing step code reading
   // NANOCLAW_* sees them unchanged.
-  const flagResult = parseFlags(process.argv.slice(2));
+  //
+  // `--reconfigure-cli` is a meta-mode that re-prompts for the setup-helper
+  // CLI (Claude Code or OpenAI Codex) and exits without running setup.
+  // We strip it before passing argv to parseFlags since it isn't in the
+  // config registry.
+  const rawArgv = process.argv.slice(2);
+  const reconfigureCli = rawArgv.includes('--reconfigure-cli');
+  const filteredArgv = rawArgv.filter((a) => a !== '--reconfigure-cli');
+  const flagResult = parseFlags(filteredArgv);
   if (flagResult.help) {
     printHelp();
     process.exit(0);
@@ -78,27 +98,44 @@ async function main(): Promise<void> {
   let configValues = { ...readFromEnv(), ...flagResult.values };
   applyToEnv(configValues);
 
+  if (reconfigureCli) {
+    p.intro('Reconfigure setup-helper CLI');
+    await pickAiCodingCli({ force: true });
+    p.outro(brandBody('Done — your next setup run (or step failure) will use the chosen CLI.'));
+    process.exit(0);
+  }
+
   printIntro();
   initProgressionLog();
   phEmit('auto_started');
 
   // Welcome menu — default path or open advanced overrides before any setup
   // work begins. Default lands on standard so Enter is the happy path.
-  const startChoice = ensureAnswer(
-    await brightSelect<'default' | 'advanced'>({
-      message: 'How would you like to begin?',
-      options: [
-        { value: 'default', label: 'Standard setup' },
-        { value: 'advanced', label: 'Advanced', hint: 'override defaults' },
-      ],
-      initialValue: 'default',
-    }),
-  ) as 'default' | 'advanced';
-  setupLog.userInput('start_choice', startChoice);
+  // On sg re-exec, the user already chose — skip straight to standard.
+  let startChoice: 'default' | 'advanced' = 'default';
+  if (process.env.NANOCLAW_REEXEC_SG !== '1') {
+    startChoice = ensureAnswer(
+      await brightSelect<'default' | 'advanced'>({
+        message: 'How would you like to begin?',
+        options: [
+          { value: 'default', label: 'Standard setup' },
+          { value: 'advanced', label: 'Advanced', hint: 'override defaults' },
+        ],
+        initialValue: 'default',
+      }),
+    ) as 'default' | 'advanced';
+    setupLog.userInput('start_choice', startChoice);
+  }
   if (startChoice === 'advanced') {
     configValues = await runAdvancedScreen(configValues);
     applyToEnv(configValues);
   }
+
+  // Pick the AI-coding CLI helper (Claude Code or OpenAI Codex) before any
+  // step that might call into cli-handoff/cli-assist on failure. Once
+  // chosen the value is persisted to .env (NANOCLAW_AI_CODING_CLI=…) so
+  // subsequent runs skip the prompt.
+  await pickAiCodingCli();
 
   const skip = new Set(
     (process.env.NANOCLAW_SKIP ?? '')
@@ -122,11 +159,13 @@ async function main(): Promise<void> {
   }
 
   if (!skip.has('container')) {
-    p.log.message(dimWrap('Your assistant lives in its own sandbox. It can only see what you explicitly share.', 4));
+    p.log.message(brandBody(dimWrap('Your assistant lives in its own sandbox. It can only see what you explicitly share.', 4)));
     p.log.message(
-      dimWrap(
-        'The first build pulls a base image and installs a few tools. On a fresh machine this usually takes 3–10 minutes.',
-        4,
+      brandBody(
+        dimWrap(
+          'The first build pulls a base image and installs a few tools. On a fresh machine this usually takes 3–10 minutes.',
+          4,
+        ),
       ),
     );
     const res = await runWindowedStep('container', {
@@ -159,11 +198,49 @@ async function main(): Promise<void> {
     maybeReexecUnderSg();
   }
 
-  if (!skip.has('onecli')) {
+  // Credential-mode choice: default to native credential proxy (this fork's
+  // preferred path — simpler, .env-based, no separate gateway). OneCLI is
+  // available for users who want centralized credential vaulting / per-call
+  // attribution / per-user OAuth tokens (Phase 2 master plan territory).
+  // The choice is persisted to .env as NANOCLAW_CREDENTIAL_MODE so re-runs
+  // skip the prompt.
+  let credentialMode: 'native' | 'onecli' =
+    (process.env.NANOCLAW_CREDENTIAL_MODE as 'native' | 'onecli' | undefined) ??
+    (readEnvKey('NANOCLAW_CREDENTIAL_MODE') as 'native' | 'onecli' | null) ??
+    'native';
+  if (!skip.has('credential-mode') && !process.env.NANOCLAW_CREDENTIAL_MODE && !readEnvKey('NANOCLAW_CREDENTIAL_MODE')) {
+    credentialMode = ensureAnswer(
+      await brightSelect<'native' | 'onecli'>({
+        message: 'How would you like to manage credentials?',
+        options: [
+          {
+            value: 'native',
+            label: 'Native credential proxy (recommended)',
+            hint: 'Simpler — keys live in .env, an HTTP proxy injects them at request time',
+          },
+          {
+            value: 'onecli',
+            label: 'OneCLI vault',
+            hint: 'Advanced — separate gateway service with centralized vaulting',
+          },
+        ],
+      }),
+    );
+    setupLog.userInput('credential_mode', credentialMode);
+    appendEnvLine(`NANOCLAW_CREDENTIAL_MODE=${credentialMode}`);
+  }
+
+  if (credentialMode === 'native') {
+    if (!skip.has('auth')) {
+      await runNativeAuthStep();
+    }
+  } else if (!skip.has('onecli')) {
     p.log.message(
-      dimWrap(
-        'Your assistant never gets your API keys directly. The vault adds them to approved requests as they leave the sandbox.',
-        4,
+      brandBody(
+        dimWrap(
+          'Your assistant never gets your API keys directly. The vault adds them to approved requests as they leave the sandbox.',
+          4,
+        ),
       ),
     );
 
@@ -259,7 +336,7 @@ async function main(): Promise<void> {
     }
   }
 
-  if (!skip.has('auth')) {
+  if (credentialMode === 'onecli' && !skip.has('auth')) {
     await runAuthStep();
   }
 
@@ -287,29 +364,39 @@ async function main(): Promise<void> {
       await fail('service', "Couldn't start NanoClaw.", 'See logs/nanoclaw.error.log for details.');
     }
     if (res.terminal?.fields.DOCKER_GROUP_STALE === 'true') {
-      p.log.warn("NanoClaw's permissions need a tweak before it can reach Docker.");
+      p.log.warn(brandBody("NanoClaw's permissions need a tweak before it can reach Docker."));
       p.log.message(
-        '  sudo setfacl -m u:$(whoami):rw /var/run/docker.sock\n' + `  systemctl --user restart ${getSystemdUnit()}`,
+        brandBody(
+          '  sudo setfacl -m u:$(whoami):rw /var/run/docker.sock\n' + `  systemctl --user restart ${getSystemdUnit()}`,
+        ),
       );
     }
   }
 
   let displayName: string | undefined;
-  const needsDisplayName = !skip.has('cli-agent') || !skip.has('channel');
-  if (needsDisplayName) {
-    const fallback = process.env.USER?.trim() || 'Operator';
+  async function resolveDisplayName(): Promise<string> {
+    if (displayName) return displayName;
     const preset = process.env.NANOCLAW_DISPLAY_NAME?.trim();
-    displayName = preset || (await askDisplayName(fallback));
+    const existing = detectExistingDisplayName(process.cwd());
+    const fallback = process.env.USER?.trim() || 'Operator';
+    displayName = preset || existing || (await askDisplayName(fallback));
+    return displayName;
+  }
+
+  if (!skip.has('cli-agent') && detectRegisteredGroups(process.cwd())) {
+    skip.add('cli-agent');
+    skip.add('first-chat');
   }
 
   if (!skip.has('cli-agent')) {
+    await resolveDisplayName();
     const res = await runQuietStep(
       'cli-agent',
       {
         running: 'Bringing your assistant online…',
         done: 'Assistant wired up.',
       },
-      ['--display-name', displayName!, '--agent-name', CLI_AGENT_NAME],
+      ['--display-name', displayName!, '--agent-name', CLI_AGENT_NAME, '--folder', '_ping-test'],
     );
     if (!res.ok) {
       await fail(
@@ -320,16 +407,39 @@ async function main(): Promise<void> {
     }
     if (!skip.has('first-chat')) {
       p.log.message(
-        dimWrap(
-          "Your assistant runs in an isolated sandbox. I'm going to send it a quick test message (ping) and wait for a reply (pong) to confirm it's responding. First startup typically takes 30–60 seconds while the sandbox warms up.",
-          4,
+        brandBody(
+          dimWrap(
+            "Your assistant runs in an isolated sandbox. I'm going to send it a quick test message (ping) and wait for a reply (pong) to confirm it's responding. First startup typically takes 30–60 seconds while the sandbox warms up.",
+            4,
+          ),
         ),
       );
       const ping = await confirmAssistantResponds();
       if (ping === 'ok') {
         phEmit('first_chat_ready');
+        const cleanupRawLog = setupLog.stepRawLog('cleanup-cli-agent');
+        const cleanupStart = Date.now();
+        const cleanup = await spawnQuiet(
+          'pnpm',
+          ['exec', 'tsx', 'scripts/delete-cli-agent.ts', '--folder', '_ping-test'],
+          cleanupRawLog,
+        );
+        setupLog.step(
+          'cleanup-cli-agent',
+          cleanup.ok ? 'success' : 'failed',
+          Date.now() - cleanupStart,
+          { exit_code: cleanup.exitCode },
+          cleanupRawLog,
+        );
+        if (!cleanup.ok) {
+          p.log.warn(
+            brandBody(
+              `Couldn't clean up the test agent — it may still appear in your agent list. See ${cleanupRawLog} for details.`,
+            ),
+          );
+        }
         const next = ensureAnswer(
-          await p.select({
+          await brightSelect<'continue' | 'chat'>({
             message: 'What next?',
             options: [
               {
@@ -345,11 +455,27 @@ async function main(): Promise<void> {
           }),
         ) as 'continue' | 'chat';
         setupLog.userInput('first_chat_choice', next);
-        if (next === 'chat') await runFirstChat();
+        if (next === 'chat') {
+          const terminalAgentName = `${displayName!}'s Terminal`;
+          const createRes = await runQuietChild(
+            'create-terminal-agent',
+            'pnpm',
+            ['exec', 'tsx', 'scripts/init-cli-agent.ts', '--display-name', displayName!, '--agent-name', terminalAgentName],
+            { running: `Creating ${terminalAgentName}…`, done: `${terminalAgentName} is ready.` },
+          );
+          if (!createRes.ok) {
+            await fail(
+              'create-terminal-agent',
+              `Couldn't create ${terminalAgentName}.`,
+              'You can retry later with `pnpm exec tsx scripts/init-cli-agent.ts`.',
+            );
+          }
+          await runFirstChat();
+        }
       } else {
         phEmit('first_chat_failed', { reason: ping });
         renderPingFailureNote(ping);
-        await offerClaudeAssist({
+        await offerAiCodingCliOnFailure({
           stepName: 'cli-agent',
           msg:
             ping === 'socket_error'
@@ -368,30 +494,51 @@ async function main(): Promise<void> {
     await runTimezoneStep();
   }
 
+  // v1 → v2 migration is handled by `bash migrate-v2.sh`, not the setup flow.
+  // Users migrating from v1 run that script before (or instead of) setup.
+
   let channelChoice: ChannelChoice = 'skip';
+
   if (!skip.has('channel')) {
-    channelChoice = await askChannelChoice();
-    if (channelChoice === 'telegram') {
-      await runTelegramChannel(displayName!);
-    } else if (channelChoice === 'discord') {
-      await runDiscordChannel(displayName!);
-    } else if (channelChoice === 'whatsapp') {
-      await runWhatsAppChannel(displayName!);
-    } else if (channelChoice === 'signal') {
-      await runSignalChannel(displayName!);
-    } else if (channelChoice === 'teams') {
-      await runTeamsChannel(displayName!);
-    } else if (channelChoice === 'slack') {
-      await runSlackChannel(displayName!);
-    } else if (channelChoice === 'imessage') {
-      await runIMessageChannel(displayName!);
-    } else {
-      p.log.info(
-        wrapForGutter(
-          'No messaging app for now. You can add one later (like Telegram, Discord, WhatsApp, Teams, Slack, or iMessage).',
-          4,
-        ),
-      );
+    // Loop so a channel sub-flow can return BACK_TO_CHANNEL_SELECTION on
+    // its first prompt and bounce the user back to the chooser without
+    // restarting setup. Channels not yet wired with the back option just
+    // return void and the loop exits after one pass.
+    let backed = true;
+    while (backed) {
+      backed = false;
+      channelChoice = await askChannelChoice();
+      if (channelChoice !== 'skip' && channelChoice !== 'other') {
+        await resolveDisplayName();
+      }
+      let result: void | typeof BACK_TO_CHANNEL_SELECTION;
+      if (channelChoice === 'telegram') {
+        result = await runTelegramChannel(displayName!);
+      } else if (channelChoice === 'discord') {
+        result = await runDiscordChannel(displayName!);
+      } else if (channelChoice === 'whatsapp') {
+        result = await runWhatsAppChannel(displayName!);
+      } else if (channelChoice === 'signal') {
+        result = await runSignalChannel(displayName!);
+      } else if (channelChoice === 'teams') {
+        result = await runTeamsChannel(displayName!);
+      } else if (channelChoice === 'slack') {
+        result = await runSlackChannel(displayName!);
+      } else if (channelChoice === 'imessage') {
+        result = await runIMessageChannel(displayName!);
+      } else if (channelChoice === 'other') {
+        result = await askOtherChannelName();
+      } else {
+        p.log.info(
+          brandBody(
+            wrapForGutter(
+              'No messaging app for now. You can add one later (like Telegram, Discord, WhatsApp, Teams, Slack, or iMessage).',
+              4,
+            ),
+          ),
+        );
+      }
+      if (result === BACK_TO_CHANNEL_SELECTION) backed = true;
     }
   }
 
@@ -420,14 +567,6 @@ async function main(): Promise<void> {
             6,
           ),
         );
-      } else {
-        const agentPing = res.terminal?.fields.AGENT_PING;
-        if (agentPing && agentPing !== 'ok' && agentPing !== 'skipped') {
-          notes.push(
-            "• Your assistant didn't reply to a test message. " +
-              'Check `logs/nanoclaw.log` for clues, then try `pnpm run chat hi`.',
-          );
-        }
       }
       if (!res.terminal?.fields.CONFIGURED_CHANNELS) {
         notes.push(
@@ -435,10 +574,10 @@ async function main(): Promise<void> {
         );
       }
       if (notes.length > 0) {
-        p.note(notes.join('\n'), "What's left");
+        note(notes.join('\n'), "What's left");
       }
       // "What's left" is a soft failure — we don't abort like fail(), but the
-      // user is still stuck and a fix is exactly what claude-assist is for.
+      // user is still stuck and a fix is exactly what cli-assist is for.
       const summary = notes
         .map((n) => n.replace(/^•\s*/, '').split('\n')[0].trim())
         .filter(Boolean)
@@ -447,9 +586,8 @@ async function main(): Promise<void> {
         unresolved_count: notes.length,
         service_running: res.terminal?.fields.SERVICE === 'running',
         has_credentials: res.terminal?.fields.CREDENTIALS === 'configured',
-        agent_responds: res.terminal?.fields.AGENT_PING === 'ok',
       });
-      await offerClaudeAssist({
+      await offerAiCodingCliOnFailure({
         stepName: 'verify',
         msg: summary || 'Verification completed with unresolved issues.',
         hint: `Terminal block: ${JSON.stringify(res.terminal?.fields ?? {})}`,
@@ -467,11 +605,11 @@ async function main(): Promise<void> {
   ];
   const labelWidth = Math.max(...rows.map(([l]) => l.length));
   const nextSteps = rows.map(([l, c]) => `${k.cyan(l.padEnd(labelWidth))}  ${c}`).join('\n');
-  p.note(nextSteps, 'Try these');
+  note(nextSteps, 'Try these');
 
   // Always-on warning goes before the "check your DMs" directive so the
   // caveat doesn't land after the user's already looked away at their phone.
-  p.note(
+  note(
     wrapForGutter(
       "NanoClaw runs on this machine. It's only reachable while this computer is on and connected to the internet. For always-on availability, run it on a cloud VM — or keep this machine awake.",
       6,
@@ -488,7 +626,22 @@ async function main(): Promise<void> {
     // that the welcome-message signal was too easy to miss. Use p.note so it
     // renders with a visible box, cyan-bold the directive line, and put it
     // as the last thing before outro.
-    p.note(`${brandBold('→')} ${k.bold(`Check your ${dmTarget} — your assistant is saying hi.`)}`, 'Go say hi');
+    note(`${brandBold('→')} ${k.bold(`Check your ${dmTarget} — your assistant is saying hi.`)}`, 'Go say hi');
+  }
+
+  // Sidecar playbook detection — if this fork ships a `setup_classroom.md`
+  // at the repo root, print a pointer so the operator knows about the
+  // classroom-deploy follow-up. Generic single-agent installs don't ship
+  // the file and see no noise.
+  if (fs.existsSync(path.join(process.cwd(), 'setup_classroom.md'))) {
+    note(
+      `${brandBold('📚')} ${k.bold('Classroom playbook detected:')} ${k.cyan('setup_classroom.md')}\n` +
+        `   Run ${k.cyan('claude')} and ask it to "follow setup_classroom.md" to provision a class.`,
+      'Optional next step',
+    );
+  }
+
+  if (dmTarget) {
     p.outro(k.green("You're set."));
   } else {
     p.outro(k.green("You're ready! Chat with `pnpm run chat hi`."));
@@ -510,10 +663,7 @@ function channelDmLabel(choice: ChannelChoice): string | null {
     case 'imessage':
       return 'iMessage';
     case 'slack':
-      // Slack install doesn't wire an agent or send a welcome DM — the
-      // driver prints its own "finish in your Slack app" note. Falling
-      // through to null avoids a misleading "check your Slack DMs" banner.
-      return null;
+      return 'Slack DMs';
     default:
       return null;
   }
@@ -532,18 +682,16 @@ async function confirmAssistantResponds(): Promise<PingResult> {
   const s = p.spinner();
   const start = Date.now();
   const label = 'Waking your assistant…';
-  s.start(fitToWidth(label, ' (999s)'));
+  s.start(fitToWidth(label, ' (99m 59s)'));
   const tick = setInterval(() => {
-    const elapsed = Math.round((Date.now() - start) / 1000);
-    const suffix = ` (${elapsed}s)`;
+    const suffix = ` (${fmtDuration(Date.now() - start)})`;
     s.message(`${fitToWidth(label, suffix)}${k.dim(suffix)}`);
   }, 1000);
 
   const result = await pingCliAgent();
 
   clearInterval(tick);
-  const elapsed = Math.round((Date.now() - start) / 1000);
-  const suffix = ` (${elapsed}s)`;
+  const suffix = ` (${fmtDuration(Date.now() - start)})`;
   if (result === 'ok') {
     s.stop(`${k.bold(fitToWidth('Your assistant is ready.', suffix))}${k.dim(suffix)}`);
   } else {
@@ -570,7 +718,7 @@ function renderPingFailureNote(result: PingResult): void {
           'No reply from your assistant within 30 seconds. Check `logs/nanoclaw.log` for clues, then try `pnpm run chat hi`.',
           6,
         );
-  p.note(body, 'Skipping the first chat');
+  note(body, 'Skipping the first chat');
 }
 
 /**
@@ -585,7 +733,7 @@ function renderPingFailureNote(result: PingResult): void {
  * clearly optional.
  */
 async function runFirstChat(): Promise<void> {
-  p.note(
+  note(
     wrapForGutter(
       [
         'Your assistant runs in a sandbox on this machine.',
@@ -628,11 +776,146 @@ function sendChatMessage(message: string): Promise<void> {
   });
 }
 
+// ─── env-write helper (native credential mode) ─────────────────────────
+
+/**
+ * Extract the Claude Code subscription OAuth token, cross-platform.
+ *
+ *   macOS:  reads from the Keychain (`security find-generic-password`)
+ *   Linux:  reads from ~/.claude/.credentials.json
+ *
+ * Returns the access token string on success, null on any failure (no
+ * Keychain entry, no file, malformed JSON, missing field, exec failed).
+ *
+ * Both platforms store the same JSON shape — `{ claudeAiOauth: { accessToken, ... } }`.
+ * The Keychain entry's password value IS that JSON; macOS just persists it
+ * encrypted at rest via the system keyring instead of as a plain file.
+ */
+function extractClaudeCodeOAuthToken(): string | null {
+  // 1. macOS Keychain (preferred when available — newer Claude Code uses this).
+  if (process.platform === 'darwin') {
+    try {
+      const result = spawnSync('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      if (result.status === 0 && result.stdout) {
+        const creds = JSON.parse(result.stdout.trim());
+        const token = creds?.claudeAiOauth?.accessToken;
+        if (typeof token === 'string' && token.length > 0) return token;
+      }
+    } catch {
+      /* fall through to file path */
+    }
+  }
+  // 2. File path (Linux, or macOS installs that pre-date Keychain storage).
+  const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
+  if (!fs.existsSync(credPath)) return null;
+  try {
+    const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+    const token = creds?.claudeAiOauth?.accessToken;
+    return typeof token === 'string' && token.length > 0 ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+function appendEnvLine(line: string): void {
+  const envPath = path.join(process.cwd(), '.env');
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+  const key = line.split('=')[0]!;
+  // Idempotent: skip if any line for this key already exists.
+  if (new RegExp(`^${key}=`, 'm').test(existing)) return;
+  const sep = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+  fs.appendFileSync(envPath, `${sep}${line}\n`);
+}
+
+// ─── native auth step (writes credential to .env) ───────────────────────
+// For users on the native credential proxy path (NANOCLAW_CREDENTIAL_MODE=native).
+// Mirrors the OneCLI auth step's UX (subscription / OAuth / API key / skip)
+// but writes the credential to .env where the credential proxy reads it
+// at runtime, instead of storing in OneCLI's vault.
+async function runNativeAuthStep(): Promise<void> {
+  // Already-configured short-circuit.
+  if (readEnvKey('ANTHROPIC_API_KEY') || readEnvKey('CLAUDE_CODE_OAUTH_TOKEN') || readEnvKey('ANTHROPIC_AUTH_TOKEN')) {
+    p.log.success(brandBody('Your Claude credential is already in .env.'));
+    setupLog.step('auth', 'skipped', 0, { REASON: 'env-already-present' });
+    return;
+  }
+
+  // Pre-flight probe: detect which methods are available right now so the
+  // menu can hint accurately and pre-focus the most likely option. Catches
+  // platform-specific gaps (e.g. Claude Code creds in macOS Keychain vs
+  // Linux file) before the user picks an option that would fail.
+  const subscriptionAvailable = extractClaudeCodeOAuthToken() !== null;
+  const subscriptionHint = subscriptionAvailable
+    ? '✓ found in ' + (process.platform === 'darwin' ? 'macOS Keychain' : '~/.claude/.credentials.json')
+    : `✗ not detected — sign in to Claude Code first (\`claude\`), or use a different method below`;
+
+  const method = ensureAnswer(
+    await brightSelect({
+      message: 'How would you like to connect to Claude?',
+      // Order: available subscription first (the happy path); else lead with paste-OAuth.
+      options: subscriptionAvailable
+        ? [
+            { value: 'subscription', label: 'Use my Claude Code subscription', hint: subscriptionHint },
+            { value: 'oauth', label: 'Paste an OAuth token I already have', hint: 'sk-ant-oat…' },
+            { value: 'api', label: 'Paste an Anthropic API key', hint: 'pay-per-use via console.anthropic.com' },
+            { value: 'skip', label: "Skip — I'll add it to .env later", hint: 'agent containers will fail until you add the key' },
+          ]
+        : [
+            { value: 'oauth', label: 'Paste an OAuth token I already have', hint: 'sk-ant-oat…' },
+            { value: 'api', label: 'Paste an Anthropic API key', hint: 'pay-per-use via console.anthropic.com' },
+            { value: 'subscription', label: 'Use my Claude Code subscription', hint: subscriptionHint },
+            { value: 'skip', label: "Skip — I'll add it to .env later", hint: 'agent containers will fail until you add the key' },
+          ],
+      initialValue: subscriptionAvailable ? 'subscription' : 'oauth',
+    }),
+  ) as 'subscription' | 'oauth' | 'api' | 'skip';
+  setupLog.userInput('auth_method', method);
+  phEmit('auth_method_chosen', { method });
+
+  if (method === 'skip') {
+    p.log.message(brandBody(dimWrap('OK — add ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to .env when you have it. Then restart nanoclaw.', 4)));
+    setupLog.step('auth', 'skipped', 0, { REASON: 'user-skipped' });
+    return;
+  }
+
+  if (method === 'subscription') {
+    const token = extractClaudeCodeOAuthToken();
+    if (!token) {
+      p.log.warn(
+        brandBody(
+          "Couldn't find a Claude Code OAuth token. Make sure you've signed in to Claude Code (run `claude` in another terminal). On macOS, credentials live in the Keychain; on Linux, in ~/.claude/.credentials.json. If `security find-generic-password -s 'Claude Code-credentials' -w` (macOS) or `cat ~/.claude/.credentials.json` (Linux) fails, finish signing in and re-run setup.",
+        ),
+      );
+      setupLog.step('auth', 'failed', 0, { ERROR: 'no-claude-credentials' });
+      return runNativeAuthStep();
+    }
+    appendEnvLine(`CLAUDE_CODE_OAUTH_TOKEN=${token}`);
+    p.log.success(brandBody('Wrote CLAUDE_CODE_OAUTH_TOKEN to .env from your Claude Code subscription.'));
+    setupLog.step('auth', 'ok', 0, { METHOD: 'subscription' });
+    return;
+  }
+
+  const promptLabel = method === 'oauth' ? 'Paste your OAuth token (sk-ant-oat…):' : 'Paste your Anthropic API key (sk-ant-api…):';
+  const envKey = method === 'oauth' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY';
+  const value = ensureAnswer(
+    await p.password({
+      message: promptLabel,
+      validate: (v) => (v && v.trim().length > 10 ? undefined : 'Looks too short.'),
+    }),
+  );
+  appendEnvLine(`${envKey}=${value.trim()}`);
+  p.log.success(brandBody(`Wrote ${envKey} to .env.`));
+  setupLog.step('auth', 'ok', 0, { METHOD: method });
+}
+
 // ─── auth step (select → branch) ────────────────────────────────────────
 
 async function runAuthStep(): Promise<void> {
   if (anthropicSecretExists()) {
-    p.log.success('Your Claude account is already connected.');
+    p.log.success(brandBody('Your Claude account is already connected.'));
     setupLog.step('auth', 'skipped', 0, { REASON: 'secret-already-present' });
     return;
   }
@@ -666,11 +949,37 @@ async function runAuthStep(): Promise<void> {
           label: 'Paste an Anthropic API key',
           hint: 'pay-per-use via console.anthropic.com',
         },
+        {
+          value: 'skip',
+          label: "Skip — I'll connect later",
+          hint: 'not recommended — Claude helps debug setup issues',
+        },
       ],
     }),
-  ) as 'subscription' | 'oauth' | 'api';
+  ) as 'subscription' | 'oauth' | 'api' | 'skip';
   setupLog.userInput('auth_method', method);
   phEmit('auth_method_chosen', { method });
+
+  if (method === 'skip') {
+    const confirmed = ensureAnswer(
+      await p.confirm({
+        message:
+          "Skip Claude sign-in? The agent won't be able to run until you connect, and we won't be able to help debug setup errors.",
+        initialValue: false,
+      }),
+    );
+    if (!confirmed) {
+      // Loop back to the auth picker so they can choose a real method.
+      return runAuthStep();
+    }
+    setupLog.step('auth', 'skipped', 0, { REASON: 'user-skipped' });
+    p.log.warn(
+      brandBody(
+        'Claude sign-in skipped. Re-run setup or run `bash nanoclaw.sh` to finish later.',
+      ),
+    );
+    return;
+  }
 
   if (method === 'subscription') {
     await runSubscriptionAuth();
@@ -680,7 +989,7 @@ async function runAuthStep(): Promise<void> {
 }
 
 async function runSubscriptionAuth(): Promise<void> {
-  p.log.step('Opening the Claude sign-in flow…');
+  p.log.step(brandBody('Opening the Claude sign-in flow…'));
   console.log(k.dim('   (a browser will open for sign-in; this part is interactive)'));
   console.log();
   const start = Date.now();
@@ -699,7 +1008,7 @@ async function runSubscriptionAuth(): Promise<void> {
     );
   }
   setupLog.step('auth', 'interactive', durationMs, { METHOD: 'subscription' });
-  p.log.success('Claude account connected.');
+  p.log.success(brandBody('Claude account connected.'));
 }
 
 async function runPasteAuth(method: 'oauth' | 'api'): Promise<void> {
@@ -709,16 +1018,27 @@ async function runPasteAuth(method: 'oauth' | 'api'): Promise<void> {
   const answer = ensureAnswer(
     await p.password({
       message: `Paste your ${label}`,
+      clearOnError: true,
       validate: (v) => {
-        if (!v || !v.trim()) return 'Required';
-        if (!v.trim().startsWith(prefix)) {
+        // Strip any internal whitespace so a line-wrapped paste that did
+        // survive into clack can still validate. The mid-token-newline
+        // case where clack only sees the first line is caught by the
+        // shape check below.
+        const cleaned = (v ?? '').replace(/\s+/g, '');
+        if (!cleaned) return 'Required';
+        if (!cleaned.startsWith(prefix)) {
           return `Should start with ${prefix}…`;
+        }
+        if (method === 'oauth' && !/^sk-ant-oat[A-Za-z0-9_-]{80,500}AA$/.test(cleaned)) {
+          return cleaned.length < 90
+            ? 'Token looks truncated — line breaks in the paste can cut it off. Widen your terminal so the token fits on one line, then paste again.'
+            : "Token shape doesn't look right (expected sk-ant-oat…AA).";
         }
         return undefined;
       },
     }),
   );
-  const token = (answer as string).trim();
+  const token = (answer as string).replace(/\s+/g, '');
 
   const res = await runQuietChild(
     'auth',
@@ -817,6 +1137,122 @@ async function runCustomEndpointAuth(
   // user has configured a custom endpoint; standard installs don't load
   // the file at all.
   appendProviderImport('./claude.js');
+}
+
+/**
+ * Pick the setup-helper CLI (Claude Code or OpenAI Codex) and persist
+ * the choice to `.env` as `NANOCLAW_AI_CODING_CLI=<name>`. Three paths:
+ *
+ *   1. Already-configured: `NANOCLAW_AI_CODING_CLI` is set, the named
+ *      adapter exists, and the binary is installed → skip the prompt.
+ *      If the configured CLI is missing (env var stale, or the user
+ *      uninstalled it), fall through and re-pick with a warning.
+ *   2. Auto-pick: exactly one CLI installed → silently persist that
+ *      choice and continue.
+ *   3. Picker: zero or two-or-more installed. With ≥2 we ask which
+ *      one. With 0 we offer to install Claude Code via its install
+ *      script (Codex has no scriptable installer in this fork) and
+ *      bail if declined.
+ *
+ * `opts.force` skips path 1 (always re-prompt or auto-pick from current
+ * install state). Used by the `--reconfigure-cli` mode.
+ */
+async function pickAiCodingCli(opts: { force?: boolean } = {}): Promise<void> {
+  const installed = listAiCodingClis().filter((c) => c.isInstalled());
+  const configured = (process.env.NANOCLAW_AI_CODING_CLI ?? '').toLowerCase().trim();
+
+  // Path 1: already-configured + still installed (skipped under --force).
+  if (configured && !opts.force) {
+    const match = installed.find((c) => c.name === configured);
+    if (match) {
+      setupLog.userInput('setup_cli', `${match.name} (preconfigured)`);
+      return;
+    }
+    p.log.warn(
+      brandBody(
+        `NANOCLAW_AI_CODING_CLI is set to "${configured}" but that CLI isn't installed. Re-picking.`,
+      ),
+    );
+  }
+
+  // Path 3a: nothing installed — offer Claude Code's install script.
+  if (installed.length === 0) {
+    const claude = listAiCodingClis().find((c) => c.installScript);
+    if (!claude) {
+      p.log.warn(
+        brandBody(
+          'No setup-helper CLI is installed and none of the registered adapters has a scriptable installer. ' +
+            'Install Claude Code or OpenAI Codex manually, then re-run setup.',
+        ),
+      );
+      return;
+    }
+    const install = ensureAnswer(
+      await p.confirm({
+        message: `No setup-helper CLI found. Install ${claude.displayName} now?`,
+        initialValue: true,
+      }),
+    );
+    if (!install) {
+      p.log.warn(
+        brandBody(
+          `Continuing without a setup-helper. If a step fails I won't be able to hand you off — install ${claude.displayName} or OpenAI Codex and re-run setup to enable that.`,
+        ),
+      );
+      return;
+    }
+    if (!claude.installScript) return;
+    const code = spawnSync('bash', [claude.installScript], {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+    }).status;
+    if (code !== 0 || !claude.isInstalled()) {
+      p.log.error(`Couldn't install ${claude.displayName}.`);
+      return;
+    }
+    p.log.success(`${claude.displayName} installed.`);
+    persistAiCodingCli(claude);
+    return;
+  }
+
+  // Path 2: exactly one installed — auto-pick silently. Under --force
+  // we surface a one-line confirmation since the user explicitly asked
+  // to reconfigure and would otherwise see nothing happen.
+  if (installed.length === 1) {
+    persistAiCodingCli(installed[0]);
+    setupLog.userInput('setup_cli', `${installed[0].name} (auto-picked)`);
+    if (opts.force) {
+      p.log.success(
+        brandBody(`Only ${installed[0].displayName} is installed — keeping it as the setup-helper CLI.`),
+      );
+    }
+    return;
+  }
+
+  // Path 3b: ≥2 installed — ask which one. Default to the currently-
+  // configured CLI if it's still installed (so under --force the user
+  // can hit Enter to keep their existing pick).
+  const initial = installed.find((c) => c.name === configured)?.name ?? installed[0].name;
+  const pick = ensureAnswer(
+    await brightSelect<string>({
+      message: 'Which coding-assistant CLI should setup use for diagnostics?',
+      options: installed.map((c) => ({
+        value: c.name,
+        label: c.displayName,
+        hint: c.binary,
+      })),
+      initialValue: initial,
+    }),
+  ) as string;
+  const chosen = installed.find((c) => c.name === pick);
+  if (!chosen) return;
+  persistAiCodingCli(chosen);
+  setupLog.userInput('setup_cli', `${chosen.name} (picked)`);
+}
+
+function persistAiCodingCli(cli: AiCodingCli): void {
+  process.env.NANOCLAW_AI_CODING_CLI = cli.name;
+  writeEnvLine('NANOCLAW_AI_CODING_CLI', cli.name);
 }
 
 function writeEnvLine(key: string, value: string): void {
@@ -918,13 +1354,15 @@ async function runTimezoneStep(): Promise<void> {
 
   let tz: string | null = isValidTimezone(raw) ? raw : null;
   if (!tz) {
-    if (claudeCliAvailable()) {
-      tz = await resolveTimezoneViaClaude(raw);
+    if (aiCodingCliAvailable()) {
+      tz = await resolveTimezoneViaCli(raw);
     } else {
       p.log.warn(
-        wrapForGutter(
-          "That's not a standard IANA zone and I can't call Claude to interpret it here — try again with a zone like `America/New_York` or `Europe/London`.",
-          4,
+        brandBody(
+          wrapForGutter(
+            "That's not a standard IANA zone and I don't have a setup-helper CLI installed to interpret it here — try again with a zone like `America/New_York` or `Europe/London`.",
+            4,
+          ),
         ),
       );
     }
@@ -967,7 +1405,7 @@ async function runTimezoneStep(): Promise<void> {
 async function askDisplayName(fallback: string): Promise<string> {
   const answer = ensureAnswer(
     await p.text({
-      message: 'What should your assistant call you?',
+      message: `What should your assistant call ${accentGreen('you')}?`,
       placeholder: fallback,
       defaultValue: fallback,
     }),
@@ -979,29 +1417,66 @@ async function askDisplayName(fallback: string): Promise<string> {
 
 async function askChannelChoice(): Promise<ChannelChoice> {
   const isMac = process.platform === 'darwin';
+
+  // Probe .env so a channel that already has credentials gets a "✓ already
+  // configured" hint and pre-focused selection. Channels with QR/pair-code
+  // bootstraps (whatsapp; signal at first run) have no fixed pre-cred env
+  // var and are listed here only when their post-pair value lands.
+  const configured = {
+    telegram: !!readEnvKey('TELEGRAM_BOT_TOKEN'),
+    discord: !!readEnvKey('DISCORD_BOT_TOKEN'),
+    slack: !!readEnvKey('SLACK_BOT_TOKEN'),
+    teams: !!readEnvKey('TEAMS_APP_ID'),
+    signal: !!readEnvKey('SIGNAL_ACCOUNT'),
+    imessage: !!(readEnvKey('IMESSAGE_LOCAL') || readEnvKey('IMESSAGE_API_KEY')),
+  };
+  const configuredHint = '✓ already configured';
+
+  // Pre-focus the first configured channel, else the existing default.
+  const initialValue =
+    (Object.entries(configured).find(([, v]) => v)?.[0] as ChannelChoice | undefined) ?? 'telegram';
+
   const choice = ensureAnswer(
     await brightSelect<ChannelChoice>({
       message: 'Want to chat with your assistant from your phone?',
+      initialValue,
       options: [
-        { value: 'telegram', label: 'Yes, connect Telegram', hint: 'recommended' },
-        { value: 'discord', label: 'Yes, connect Discord' },
+        {
+          value: 'telegram',
+          label: 'Yes, connect Telegram',
+          hint: configured.telegram ? configuredHint : 'recommended',
+        },
+        {
+          value: 'discord',
+          label: 'Yes, connect Discord',
+          hint: configured.discord ? configuredHint : undefined,
+        },
         { value: 'whatsapp', label: 'Yes, connect WhatsApp' },
         {
           value: 'signal',
           label: 'Yes, connect Signal',
-          hint: 'needs signal-cli installed',
+          hint: configured.signal ? configuredHint : 'needs signal-cli installed',
         },
         {
           value: 'imessage',
           label: 'Yes, connect iMessage (experimental)',
-          hint: isMac ? 'local macOS mode' : 'remote Photon only',
+          hint: configured.imessage
+            ? configuredHint
+            : isMac
+              ? 'local macOS mode'
+              : 'remote Photon only',
         },
         {
           value: 'slack',
           label: 'Yes, connect Slack (experimental)',
-          hint: 'needs public URL',
+          hint: configured.slack ? configuredHint : 'needs public URL',
         },
-        { value: 'teams', label: 'Yes, connect Microsoft Teams', hint: 'complex setup' },
+        {
+          value: 'teams',
+          label: 'Yes, connect Microsoft Teams',
+          hint: configured.teams ? configuredHint : 'complex setup',
+        },
+        { value: 'other', label: 'Other…', hint: 'install via /add-<name> after setup' },
         { value: 'skip', label: 'Skip for now', hint: "I'll just use the terminal" },
       ],
     }),
@@ -1011,7 +1486,51 @@ async function askChannelChoice(): Promise<ChannelChoice> {
   return choice;
 }
 
+async function askOtherChannelName(): Promise<void | typeof BACK_TO_CHANNEL_SELECTION> {
+  const action = ensureAnswer(
+    await brightSelect<'type' | 'back'>({
+      message: 'Which channel would you like to install?',
+      options: [
+        {
+          value: 'type',
+          label: 'Type the channel name',
+          hint: 'e.g. matrix, github, linear, webex',
+        },
+        { value: 'back', label: '← Back to channel selection' },
+      ],
+      initialValue: 'type',
+    }),
+  );
+  if (action === 'back') return BACK_TO_CHANNEL_SELECTION;
+
+  const answer = ensureAnswer(
+    await p.text({
+      message: 'Channel name',
+      placeholder: 'e.g. matrix, github, linear, webex',
+    }),
+  );
+  const name = (answer as string).trim().toLowerCase().replace(/^\/?(add-)?/, '');
+  setupLog.userInput('other_channel', name);
+  phEmit('channel_other_named', { channel: name });
+  p.log.info(
+    brandBody(
+      wrapForGutter(
+        `No bash installer for ${k.bold(name)} — open Claude Code after setup and run ${k.bold(`/add-${name}`)} to install it.`,
+        4,
+      ),
+    ),
+  );
+}
+
 // ─── interactive / env helpers ─────────────────────────────────────────
+
+function ensureLocalBinOnPath(): void {
+  const localBin = path.join(os.homedir(), '.local', 'bin');
+  const current = process.env.PATH ?? '';
+  const segments = current.split(path.delimiter).filter(Boolean);
+  if (segments.includes(localBin)) return;
+  process.env.PATH = current ? `${localBin}${path.delimiter}${current}` : localBin;
+}
 
 function anthropicSecretExists(): boolean {
   try {
@@ -1089,10 +1608,12 @@ function maybeReexecUnderSg(): void {
   if (!/permission denied/i.test(err)) return;
   if (spawnSync('which', ['sg'], { stdio: 'ignore' }).status !== 0) return;
 
-  p.log.warn('Docker socket not accessible in current group. Re-executing under `sg docker`.');
+  p.log.warn(brandBody('Docker socket not accessible in current group. Re-executing under `sg docker`.'));
+  const existingSkip = (process.env.NANOCLAW_SKIP ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const skipList = [...new Set([...existingSkip, ...setupLog.completedStepNames()])].join(',');
   const res = spawnSync('sg', ['docker', '-c', 'pnpm run setup:auto'], {
     stdio: 'inherit',
-    env: { ...process.env, NANOCLAW_REEXEC_SG: '1' },
+    env: { ...process.env, NANOCLAW_REEXEC_SG: '1', ...(skipList ? { NANOCLAW_SKIP: skipList } : {}) },
   });
   process.exit(res.status ?? 1);
 }
