@@ -42,6 +42,7 @@ this file is the sequencing layer.
 | **Phase 1.10 — TA role, class base persona, usage aggregator cache fix** — TA per-role access model, shared class base persona via symlink + `class-base.ts` handlers, usage aggregator `tokensCached` fix (reads `cacheRead` from content JSON, provider-specific adjustment for codex vs claude billing). | `main` (commits `beb2e46`, `a50855e`) |
 | **Phase 5 — agent export** — five-format zip (claude/openai/gemini/openclaw/universal) + `WHAT-I-BUILT.md`. `GET /api/drafts/:folder/export`. | `main` (merged `9ba6631`) |
 | **Phase 5b — agent library + save/swap UX** — named agent portfolio per user (Agents tab, save/load/delete/rename, active slot, dirty detection, seed at provision). Phases E (default templates) + G (per-entry export) added 2026-05-21. | `main` (merged `9ba6631`) |
+| **Phase 7A — RAG text + BM25** — corpus CRUD, text/HTML extraction, sentence+fixed chunkers, SQLite FTS5 BM25 index, fire-and-forget pipeline, Sources tab (upload/ingest/inspect), Retrieval tab (BM25 query + ranked results). Zero new packages. | `main` (commits `955c100`..`7740b5f`) |
 
 **Phase 1 status: complete.** All 9 build-order items shipped; refactor merged; deploy guide written; two follow-ups shipped (ufw doc, lost-link form). Phase 2 unblocked.
 
@@ -444,6 +445,7 @@ dependency tracking.
 5. ✅ **classroom Phase 5 — agent export tooling.** Shipped `main` (merged `9ba6631`).
 5b. ✅ **classroom Phase 5b — Agent library + save/swap UX.** Shipped `main` (merged `9ba6631`).
 6. **classroom Phase 7 — expert system builder + RAG strategies.**
+   **Phase 7A shipped** `main` (commits `955c100`..`7740b5f`): text sources + BM25/FTS5 + Sources tab + Retrieval tab. Zero new packages. Remaining: 7B (PDF + dense embeddings), 7C (video/complex/data), 7D (agent MCP tool `knowledge_search`).
    Pipeline framework + named strategies + UI. Cost-economical only
    after Phase 1 #8 (local-LLM runbook) lands. Spec in
    [classroom-web-multiuser.md §Phase 7](classroom-web-multiuser.md).
