@@ -231,22 +231,36 @@ export class CodexProvider implements AgentProvider {
       // Read the per-spawn provider + model from container.json so the
       // config.toml we write reflects whatever /provider or the Models tab
       // last set. Falls back to 'codex' + this.model if container.json is
-      // missing or partial.
+      // missing, partial, or malformed.
+      //
+      // container.json is read ONCE here, before the turn loop below — so
+      // the resolved model is fixed for the lifetime of this query (one
+      // poll-loop batch of pending messages). A model switch made mid-batch
+      // is picked up on the *next* query, not the next turn.
+      type ContainerJson = {
+        provider?: string;
+        model?: string;
+        skills?: string[] | 'all';
+        /**
+         * Reasoning effort for codex turns (low|medium|high). Default
+         * 'low' — see TurnParams.effort docs in codex-app-server.ts.
+         * Set to undefined or omit to let codex use the model's own
+         * default (typically 'medium' on gpt-5.x).
+         */
+        codexEffort?: 'low' | 'medium' | 'high';
+      };
       const containerJsonPath = '/workspace/agent/container.json';
-      const containerJson = fs.existsSync(containerJsonPath)
-        ? (JSON.parse(fs.readFileSync(containerJsonPath, 'utf-8')) as {
-            provider?: string;
-            model?: string;
-            skills?: string[] | 'all';
-            /**
-             * Reasoning effort for codex turns (low|medium|high). Default
-             * 'low' — see TurnParams.effort docs in codex-app-server.ts.
-             * Set to undefined or omit to let codex use the model's own
-             * default (typically 'medium' on gpt-5.x).
-             */
-            codexEffort?: 'low' | 'medium' | 'high';
-          })
-        : {};
+      let containerJson: ContainerJson = {};
+      try {
+        if (fs.existsSync(containerJsonPath)) {
+          containerJson = JSON.parse(fs.readFileSync(containerJsonPath, 'utf-8')) as ContainerJson;
+        }
+      } catch {
+        // existsSync passes for a mid-write (partial) file — the Models tab
+        // writes container.json from a separate process, a real TOCTOU.
+        // Fall back to defaults rather than killing the generator.
+        containerJson = {};
+      }
       const proxyBaseUrl = (process.env.OPENAI_BASE_URL ?? 'http://host.docker.internal:3001/openai/v1')
         .replace(/\/(openai|omlx)\/v1$/, '');
       const activeProvider = containerJson.provider ?? 'codex';
@@ -506,9 +520,13 @@ export async function* runOneTurn(
   let tokensOut = 0;
   let tokensCached = 0;
   // Dedup guard: thread/tokenUsage/updated may fire twice for the same LLM
-  // response (we saw consecutive identical totals in the empirical capture).
-  // Emit a model_call ProviderEvent only when `last.totalTokens` advances.
-  let lastSeenCallTotal = 0;
+  // response (we saw consecutive identical payloads in the empirical
+  // capture). Dedup on the thread-cumulative `total.totalTokens`, which
+  // strictly advances per distinct response — so two responses with
+  // identical per-response `last` totals are still both counted, while a
+  // duplicate notification (unchanged cumulative total) is dropped. (The
+  // earlier `last.totalTokens` key wrongly merged two equal-sized responses.)
+  let lastSeenCumulativeTotal = -1;
   // Set by item/completed(agentMessage) and consumed once by the next model_call
   // emission so tool-use calls (which produce no agentMessage) don't carry stale text.
   let pendingResponsePreview: string | undefined;
@@ -593,15 +611,26 @@ export async function* runOneTurn(
         //     event, which is therefore per-turn, not cumulative.
         // Deduped on last.totalTokens since the notification can fire twice
         // with the same values.
-        const usage = params.tokenUsage as { last?: Record<string, number> } | undefined;
+        const usage = params.tokenUsage as
+          | { total?: Record<string, number>; last?: Record<string, number> }
+          | undefined;
         const last = usage?.last;
+        // Prefer the thread-cumulative total as the dedup key; fall back to
+        // the per-response total only if codex omits `total` from the payload.
+        const dedupKey =
+          typeof usage?.total?.totalTokens === 'number'
+            ? usage.total.totalTokens
+            : typeof last?.totalTokens === 'number'
+              ? last.totalTokens
+              : undefined;
         if (
           last &&
           typeof last.totalTokens === 'number' &&
           last.totalTokens > 0 &&
-          last.totalTokens !== lastSeenCallTotal
+          dedupKey !== undefined &&
+          dedupKey !== lastSeenCumulativeTotal
         ) {
-          lastSeenCallTotal = last.totalTokens;
+          lastSeenCumulativeTotal = dedupKey;
           const callIn = typeof last.inputTokens === 'number' ? last.inputTokens : 0;
           const callOut = typeof last.outputTokens === 'number' ? last.outputTokens : 0;
           const callCached = typeof last.cachedInputTokens === 'number' ? last.cachedInputTokens : 0;

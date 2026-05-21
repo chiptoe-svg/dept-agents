@@ -11,6 +11,10 @@
  * session's `userId` so the class feature can lock students down to
  * persona edits without this file knowing anything about the class
  * feature.
+ *
+ * Every `/api/drafts/:folder` GET route consults `canReadDraft` so an
+ * authenticated user cannot read another agent group's persona, skill
+ * list, or custom-skill files by guessing the folder name.
  */
 import fs from 'fs';
 import http from 'http';
@@ -34,6 +38,7 @@ import { getActiveSessions, updateSession } from '../../db/sessions.js';
 import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
 import { checkDraftMutation } from '../playground-gate-registry.js';
+import { canReadDraft } from './draft-read-gate.js';
 import { getPlatformPrefix, getSetupConfig } from './adapter.js';
 import type { PlaygroundSession } from './auth-store.js';
 import { readJsonBody, send } from './http-helpers.js';
@@ -286,6 +291,7 @@ export async function route(
   const personaGet = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/persona$/);
   if (method === 'GET' && personaGet) {
     const draftFolder = personaGet[1]!;
+    if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     try {
       const personaPath = path.join(GROUPS_DIR, draftFolder, 'CLAUDE.local.md');
       const text = fs.existsSync(personaPath) ? fs.readFileSync(personaPath, 'utf8') : '';
@@ -335,6 +341,7 @@ export async function route(
   // GET /api/drafts/:folder/persona-layers — provider-uniform layered view
   const personaLayersMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/persona-layers$/);
   if (method === 'GET' && personaLayersMatch) {
+    if (!canReadDraft(personaLayersMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
     const result = handlePersonaLayers(personaLayersMatch[1]!);
     return send(res, result.status, result.body);
   }
@@ -446,6 +453,7 @@ export async function route(
   const skillsMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/skills$/);
   if (method === 'GET' && skillsMatch) {
     const draftFolder = skillsMatch[1]!;
+    if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     try {
       const cfg = readContainerConfig(draftFolder);
       return send(res, 200, { skills: cfg.skills });
@@ -477,6 +485,7 @@ export async function route(
   // GET /api/drafts/:folder/custom-skills — this agent's custom skills
   const customSkillsListMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills$/);
   if (method === 'GET' && customSkillsListMatch) {
+    if (!canReadDraft(customSkillsListMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
     return send(res, 200, { entries: listCustomSkills(customSkillsListMatch[1]!) });
   }
 
@@ -485,6 +494,7 @@ export async function route(
     /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/files$/,
   );
   if (method === 'GET' && customSkillFilesMatch) {
+    if (!canReadDraft(customSkillFilesMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
     return send(res, 200, { files: listCustomSkillFiles(customSkillFilesMatch[1]!, customSkillFilesMatch[2]!) });
   }
 
@@ -497,6 +507,7 @@ export async function route(
     const name = customSkillFileMatch[2]!;
     const relPath = url.searchParams.get('path') || 'SKILL.md';
     if (method === 'GET') {
+      if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
       const text = readCustomSkillFile(draftFolder, name, relPath);
       if (text === undefined) return send(res, 404, { error: 'not found' });
       return send(res, 200, { text });
@@ -504,7 +515,12 @@ export async function route(
     if (method === 'PUT') {
       const decision = checkDraftMutation(draftFolder, 'skills_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
-      const body = await readJsonBody(req);
+      let body: Record<string, unknown>;
+      try {
+        body = await readJsonBody(req, { maxBytes: 512 * 1024 });
+      } catch (err) {
+        return send(res, 413, { error: (err as Error).message });
+      }
       if (typeof body.content !== 'string') {
         return send(res, 400, { error: 'content (string) required' });
       }
@@ -531,6 +547,7 @@ export async function route(
   // PUT /api/drafts/:folder/models — set allowedModels
   const modelsMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/models$/);
   if (method === 'GET' && modelsMatch) {
+    if (!canReadDraft(modelsMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
     const r = await handleGetModels(modelsMatch[1]!);
     return send(res, r.status, r.body);
   }
@@ -672,6 +689,7 @@ export async function route(
   const streamMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/stream$/);
   if (method === 'GET' && streamMatch) {
     const draftFolder = streamMatch[1]!;
+    if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',

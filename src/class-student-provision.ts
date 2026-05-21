@@ -17,11 +17,11 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, GROUPS_DIR } from './config.js';
-import { createAgentGroup, getAgentGroupByFolder } from './db/agent-groups.js';
-import { upsertRosterEntry } from './db/classroom-roster.js';
+import { createAgentGroup, deleteAgentGroup, getAgentGroupByFolder } from './db/agent-groups.js';
+import { removeRosterEntry, upsertRosterEntry } from './db/classroom-roster.js';
 import { getDb } from './db/connection.js';
-import { addMember } from './modules/permissions/db/agent-group-members.js';
-import { upsertUser } from './modules/permissions/db/users.js';
+import { addMember, removeMember } from './modules/permissions/db/agent-group-members.js';
+import { deleteUser, upsertUser } from './modules/permissions/db/users.js';
 import { readContainerConfig, writeContainerConfig, type ContainerConfig } from './container-config.js';
 import { collectSkeletonMounts } from './skeleton-mount-registry.js';
 import type { AgentGroup } from './types.js';
@@ -238,7 +238,9 @@ export interface ProvisionStudentResult {
  *
  * All four DB rows go in one transaction — `agent_group_members.user_id`
  * has a FK to `users(id)`, so the `users` row must land first, and a
- * failure must not leave a half-provisioned agent group behind.
+ * failure must not leave a half-provisioned agent group behind. If the
+ * on-disk scaffold then fails, the committed rows are rolled back too,
+ * so a retry reissues the same `student_NN` rather than orphaning it.
  *
  * The caller is responsible for rejecting duplicate emails — this
  * upserts the roster row unconditionally.
@@ -271,48 +273,66 @@ export function provisionStudent(opts: {
     addMember({ user_id: userId, agent_group_id: group.id, added_by: opts.addedBy, added_at: now });
   })();
 
-  // 2. on-disk group dir — persona + composed CLAUDE.md.
-  const groupDir = path.join(GROUPS_DIR, folder);
-  fs.mkdirSync(groupDir, { recursive: true });
-  const personaPath = path.join(groupDir, 'CLAUDE.local.md');
-  if (!fs.existsSync(personaPath)) fs.writeFileSync(personaPath, STUDENT_PERSONA(opts.name));
-  const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
-  if (!fs.existsSync(claudeMdPath)) fs.writeFileSync(claudeMdPath, STUDENT_CLAUDE_MD);
+  try {
+    // 2. on-disk group dir — persona + composed CLAUDE.md.
+    const groupDir = path.join(GROUPS_DIR, folder);
+    fs.mkdirSync(groupDir, { recursive: true });
+    const personaPath = path.join(groupDir, 'CLAUDE.local.md');
+    if (!fs.existsSync(personaPath)) fs.writeFileSync(personaPath, STUDENT_PERSONA(opts.name));
+    const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+    if (!fs.existsSync(claudeMdPath)) fs.writeFileSync(claudeMdPath, STUDENT_CLAUDE_MD);
 
-  // 3. .class-shared.md symlink → the instructor-editable shared stance.
-  const classSharedSrc = ensureClassSharedTarget();
-  const classSharedLink = path.join(groupDir, '.class-shared.md');
-  if (!fs.existsSync(classSharedLink)) {
-    try {
-      fs.symlinkSync(classSharedSrc, classSharedLink);
-    } catch {
-      fs.copyFileSync(classSharedSrc, classSharedLink);
+    // 3. .class-shared.md symlink → the instructor-editable shared stance.
+    const classSharedSrc = ensureClassSharedTarget();
+    const classSharedLink = path.join(groupDir, '.class-shared.md');
+    if (!fs.existsSync(classSharedLink)) {
+      try {
+        fs.symlinkSync(classSharedSrc, classSharedLink);
+      } catch {
+        fs.copyFileSync(classSharedSrc, classSharedLink);
+      }
     }
-  }
 
-  // 4. container.json — only this folder's. kb/wiki from class-config.json.
-  // collectSkeletonMounts contributes Drive mounts when /add-classroom-gws
-  // is installed (empty otherwise — no extensions barrel imported here).
-  const classConfig = readClassConfig();
-  const extraMounts = collectSkeletonMounts({
-    studentFolder: folder,
-    studentName: opts.name,
-    classConfig,
-    argv: [],
-  });
-  writeContainerConfig(
-    folder,
-    makeContainerConfig({
-      kb: (classConfig.kb as string | null) ?? null,
-      wiki: (classConfig.wiki as string | null) ?? null,
+    // 4. container.json — only this folder's. kb/wiki from class-config.json.
+    // collectSkeletonMounts contributes Drive mounts when /add-classroom-gws
+    // is installed (empty otherwise — no extensions barrel imported here).
+    const classConfig = readClassConfig();
+    const extraMounts = collectSkeletonMounts({
+      studentFolder: folder,
+      studentName: opts.name,
+      classConfig,
+      argv: [],
+    });
+    writeContainerConfig(
       folder,
-      extraMounts,
-      isStudent: true,
-    }),
-  );
+      makeContainerConfig({
+        kb: (classConfig.kb as string | null) ?? null,
+        wiki: (classConfig.wiki as string | null) ?? null,
+        folder,
+        extraMounts,
+        isStudent: true,
+      }),
+    );
 
-  // 5. keep class-config.json's roster in sync.
-  appendStudentToClassConfig({ name: opts.name, folder });
+    // 5. keep class-config.json's roster in sync.
+    appendStudentToClassConfig({ name: opts.name, folder });
+  } catch (err) {
+    // The DB rows are committed but the on-disk scaffold is not. Roll the
+    // rows back so a retry reissues this same student_NN instead of
+    // orphaning it (nextStudentFolder() scans agent_groups). Delete order
+    // respects FKs: membership/roster reference users + agent_groups.
+    try {
+      getDb().transaction(() => {
+        removeMember(userId, group.id);
+        removeRosterEntry(opts.email);
+        deleteUser(userId);
+        deleteAgentGroup(group.id);
+      })();
+    } catch (rollbackErr) {
+      console.error('  [error] provisionStudent: DB rollback after FS failure also failed:', rollbackErr);
+    }
+    throw err;
+  }
 
   return { folder, agentGroupId: group.id, userId, name: opts.name, email: opts.email };
 }

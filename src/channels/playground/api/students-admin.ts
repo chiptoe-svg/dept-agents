@@ -24,6 +24,16 @@ function campusBaseUrl(): string {
   return (url || 'http://localhost:3002').replace(/\/+$/, '');
 }
 
+/** Drop ASCII control characters (a name/email is single-line plain text). */
+function stripControlChars(s: string): string {
+  let out = '';
+  for (const ch of s) {
+    const code = ch.codePointAt(0)!;
+    if (code >= 0x20 && code !== 0x7f) out += ch;
+  }
+  return out;
+}
+
 export interface AddStudentResponse {
   ok: true;
   folder: string;
@@ -44,8 +54,10 @@ export async function handleAddStudent(
     return { status: 403, body: { error: 'owner role required' } };
   }
 
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  // Strip control chars and cap length: `name` flows into the agent
+  // persona, `email` into the roster and the class-login token.
+  const name = typeof body.name === 'string' ? stripControlChars(body.name).trim().slice(0, 100) : '';
+  const email = typeof body.email === 'string' ? stripControlChars(body.email).trim().toLowerCase().slice(0, 200) : '';
   const external = body.external === true;
 
   if (!name) return { status: 400, body: { error: 'name is required' } };

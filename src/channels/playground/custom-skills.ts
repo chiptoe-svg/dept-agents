@@ -21,6 +21,11 @@ import { GROUPS_DIR } from '../../config.js';
 /** Skill-directory name validator — no traversal, no dotfiles. */
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 
+/** Per-file byte cap — a custom-skill file is prose/markdown, not a blob. */
+const MAX_FILE_BYTES = 256 * 1024;
+/** Per-skill file-count cap — bounds editor-driven host-disk growth. */
+const MAX_FILES_PER_SKILL = 50;
+
 export interface CustomSkillEntry {
   name: string;
   description: string;
@@ -112,13 +117,29 @@ export function customSkillExists(folder: string, name: string): boolean {
   return NAME_RE.test(name) && fs.existsSync(path.join(customSkillsRoot(folder), name, 'SKILL.md'));
 }
 
-/** Create or overwrite one file inside a custom skill. Throws on a bad name/path. */
+/**
+ * Create or overwrite one file inside a custom skill. Throws on a bad
+ * name/path, an oversized file, or a skill that already holds the
+ * maximum number of files.
+ */
 export function writeCustomSkillFile(folder: string, name: string, relPath: string, content: string): void {
   if (!NAME_RE.test(name)) {
     throw new Error('skill name must be alphanumeric (dashes, dots, underscores allowed)');
   }
   const full = resolveSkillFile(folder, name, relPath);
   if (!full) throw new Error(`invalid file path: ${relPath}`);
+  const bytes = Buffer.byteLength(content, 'utf-8');
+  if (bytes > MAX_FILE_BYTES) {
+    throw new Error(`file too large: ${bytes} bytes (max ${MAX_FILE_BYTES})`);
+  }
+  // File-count cap — only enforced when adding a NEW file; overwriting an
+  // existing one keeps the count flat.
+  if (!fs.existsSync(full)) {
+    const count = listCustomSkillFiles(folder, name).filter((f) => !f.isDir).length;
+    if (count >= MAX_FILES_PER_SKILL) {
+      throw new Error(`skill "${name}" already has ${count} files (max ${MAX_FILES_PER_SKILL})`);
+    }
+  }
   fs.mkdirSync(path.dirname(full), { recursive: true });
   fs.writeFileSync(full, content);
 }

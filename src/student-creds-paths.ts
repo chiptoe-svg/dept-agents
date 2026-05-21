@@ -25,7 +25,18 @@ export function studentGwsCredentialsPath(userId: string): string {
   return path.join(DATA_DIR, 'student-google-auth', sanitizeUserIdForPath(userId), 'credentials.json');
 }
 
-/** `data/student-provider-creds/<sanitized>/<providerId>.json` */
+/**
+ * `data/student-provider-creds/<sanitized-userId>/<sanitized-providerId>.json`
+ *
+ * `providerId` is an internal constant today, but it is sanitized the
+ * same way as `userId` so a future caller that threads it from
+ * less-trusted input cannot escape the credentials directory.
+ */
 export function studentProviderCredsPath(userId: string, providerId: string): string {
-  return path.join(DATA_DIR, 'student-provider-creds', sanitizeUserIdForPath(userId), `${providerId}.json`);
+  return path.join(
+    DATA_DIR,
+    'student-provider-creds',
+    sanitizeUserIdForPath(userId),
+    `${sanitizeUserIdForPath(providerId)}.json`,
+  );
 }

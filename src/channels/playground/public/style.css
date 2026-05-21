@@ -732,6 +732,17 @@ select.model-changed {
 .skills-browser { flex: 0 0 210px; }
 .skills-layout .library-panel #skills-list { flex: 1; overflow-y: auto; }
 
+/* Shown at the top of the list when GET /api/skills/library failed. */
+.skills-load-error {
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* File-browser rows: a clickable green toggle + the skill name. */
 .skill-entry {
   display: flex;

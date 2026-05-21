@@ -219,7 +219,7 @@ describe('composeRuntimeIdentity', () => {
   });
 });
 
-describe('runOneTurn — model_call responsePreview', () => {
+describe('runOneTurn — model_call events', () => {
   // Minimal AppServer stand-in: any request written to stdin is immediately
   // acknowledged with an empty result, so the generator clears `turn/start`
   // and advances into its notification loop — where the test drives the
@@ -278,6 +278,12 @@ describe('runOneTurn — model_call responsePreview', () => {
     return { tokenUsage: { total: { ...last }, last } };
   }
 
+  // `total` (thread-cumulative) and `last` (this response) set independently
+  // — needed to exercise the dedup, which keys off the cumulative total.
+  function usage(total: Record<string, number>, last: Record<string, number>): Record<string, unknown> {
+    return { tokenUsage: { total, last } };
+  }
+
   it('attaches the agentMessage text to the model_call that follows it', async () => {
     const events = await drive([
       { method: 'item/completed', params: { item: { type: 'agentMessage', text: 'Hello there!' } } },
@@ -327,5 +333,57 @@ describe('runOneTurn — model_call responsePreview', () => {
     if (modelCall?.type === 'model_call') {
       expect(modelCall.responsePreview?.length).toBe(5000);
     }
+  });
+
+  it('sums each response delta into the per-turn result token totals', async () => {
+    const events = await drive([
+      {
+        method: 'thread/tokenUsage/updated',
+        params: usage({ totalTokens: 100 }, { inputTokens: 80, outputTokens: 20, cachedInputTokens: 10, totalTokens: 100 }),
+      },
+      {
+        method: 'thread/tokenUsage/updated',
+        params: usage({ totalTokens: 250 }, { inputTokens: 100, outputTokens: 50, cachedInputTokens: 5, totalTokens: 150 }),
+      },
+      { method: 'turn/completed', params: {} },
+    ]);
+    const result = events.find((e) => e.type === 'result');
+    expect(result).toBeDefined();
+    if (result?.type === 'result') {
+      // Per-turn sum of the `last` deltas, not codex's cumulative `total`.
+      expect(result.tokens).toEqual({ input: 180, output: 70, cacheRead: 15 });
+    }
+  });
+
+  it('counts two responses with identical per-response totals (dedup keys off the cumulative total)', async () => {
+    const events = await drive([
+      {
+        method: 'thread/tokenUsage/updated',
+        params: usage({ totalTokens: 100 }, { inputTokens: 80, outputTokens: 20, totalTokens: 100 }),
+      },
+      // Same `last` as above; only the cumulative `total` advanced. The old
+      // `last.totalTokens` dedup wrongly merged this into one model_call.
+      {
+        method: 'thread/tokenUsage/updated',
+        params: usage({ totalTokens: 200 }, { inputTokens: 80, outputTokens: 20, totalTokens: 100 }),
+      },
+      { method: 'turn/completed', params: {} },
+    ]);
+    expect(events.filter((e) => e.type === 'model_call').length).toBe(2);
+  });
+
+  it('drops a duplicate tokenUsage notification with an unchanged cumulative total', async () => {
+    const events = await drive([
+      {
+        method: 'thread/tokenUsage/updated',
+        params: usage({ totalTokens: 100 }, { inputTokens: 80, outputTokens: 20, totalTokens: 100 }),
+      },
+      {
+        method: 'thread/tokenUsage/updated',
+        params: usage({ totalTokens: 100 }, { inputTokens: 80, outputTokens: 20, totalTokens: 100 }),
+      },
+      { method: 'turn/completed', params: {} },
+    ]);
+    expect(events.filter((e) => e.type === 'model_call').length).toBe(1);
   });
 });

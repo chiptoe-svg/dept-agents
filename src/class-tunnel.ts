@@ -10,6 +10,13 @@
  * One tunnel at a time, host-process-scoped. It self-terminates after 60
  * minutes; a host restart also kills it. Started on demand by the
  * playground "Add Student → external guest" flow.
+ *
+ * SECURITY: while live, the tunnel publicly exposes the whole playground
+ * port. That is only safe because every non-public route requires the
+ * session cookie — the login page and token-consumption endpoint are the
+ * sole unauthenticated surface. Anything that widens that surface — in
+ * particular `BENCH_MODE=1`, which bypasses playground auth in
+ * `server.ts` — must NOT be combined with a live guest tunnel.
  */
 import { spawn, type ChildProcess } from 'child_process';
 import fs from 'fs';
@@ -32,6 +39,13 @@ interface TunnelState extends GuestTunnelInfo {
 }
 
 let current: TunnelState | null = null;
+
+// In-flight start. cloudflared takes up to 30s to report its URL and
+// `current` isn't assigned until then, so a second concurrent call (a
+// double-click on "Add Student → external") would clear the `current`
+// guard and spawn a second, orphaned `cloudflared`. Concurrent callers
+// share this Promise instead; it is cleared once the start settles.
+let starting: Promise<GuestTunnelInfo> | null = null;
 
 /** Extract the first `https://<sub>.trycloudflare.com` URL from a log chunk. */
 export function parseTunnelUrl(chunk: string): string | null {
@@ -68,12 +82,30 @@ export function stopGuestTunnel(): boolean {
 
 /**
  * Start (or reuse) a cloudflared quick tunnel for the playground port.
- * Self-terminates after 60 minutes. Only one tunnel runs at a time —
- * a caller arriving while one is live gets the existing one back.
+ * Self-terminates after 60 minutes. Only one tunnel runs at a time — a
+ * caller arriving while one is live, or while one is still starting,
+ * gets that same tunnel back rather than spawning a second process.
  */
-export async function startGuestTunnel(): Promise<GuestTunnelInfo> {
-  if (current) return getGuestTunnel()!;
+export function startGuestTunnel(): Promise<GuestTunnelInfo> {
+  if (current) return Promise.resolve(getGuestTunnel()!);
+  if (starting) return starting;
+  starting = spawnGuestTunnel();
+  // Clear the in-flight slot once the start settles: on success `current`
+  // is set so the guard above takes over; on failure the next call retries.
+  // The success/failure handlers also mark `starting` as handled so its
+  // rejection (still surfaced to the caller) is not an unhandled rejection.
+  starting.then(
+    () => {
+      starting = null;
+    },
+    () => {
+      starting = null;
+    },
+  );
+  return starting;
+}
 
+async function spawnGuestTunnel(): Promise<GuestTunnelInfo> {
   // spawn() with an explicit argv array — no shell, no interpolation.
   const proc = spawn(cloudflaredBin(), ['tunnel', '--url', `http://localhost:${PLAYGROUND_PORT}`], {
     stdio: ['ignore', 'pipe', 'pipe'],
