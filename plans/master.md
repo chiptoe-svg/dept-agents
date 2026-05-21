@@ -181,7 +181,7 @@ reality; living with it. Revisit when one of:
   this fork; `/add-classroom-provider-auth` and the
   `classroom-x7-provider-auth` branch are now redundant.
 
-## Phase 1.8 — agent-harness benchmark suite (B1 implemented, B2+ planned)
+## Phase 1.8 — agent-harness benchmark suite (B1+B2 implemented, B3+ planned)
 
 Triggered by the 2026-05-18 cost spike: a single "yolo" message on
 codex/gpt-5.4 billed at $1.10 because codex makes 6–10 internal API
@@ -209,21 +209,24 @@ gpt-5.4 + gpt-5.4-mini, two local MLX models). Three assessment
 layers: token/cost/latency (auto), programmatic correctness per
 request (deterministic), claude-haiku-as-judge quality rubric.
 
-**Status.** B1 runner implemented and in `main`: `scripts/bench.ts`,
-`bench-db.ts`, `bench-gates.ts`, `bench-fixture-server.ts`,
+**Status.** B1+B2 implemented in `main`. Scripts: `bench.ts`,
+`bench-db.ts`, `bench-gates.ts`, `bench-judge.ts`, `bench-fixture-server.ts`,
 `bench-prompts.json`, `bench-fixtures/`. BENCH_MODE session fix landed
 (`server.ts` now mints bench sessions as owner so `canReadDraft`
-passes on the bench agent group's SSE stream). Run via:
+passes on the bench agent group's SSE stream). B2 judge calls the
+credential proxy directly (no playground round-trip) with
+`claude-haiku-4-5-20251001`; score + rationale land in `runs.quality_score`
++ `runs.notes`. Run via:
 ```
 BENCH_MODE=1 pnpm run dev   # in one terminal
 pnpm exec tsx scripts/bench.ts --source <folder> --systems claude-sonnet --reps 3
 pnpm exec tsx scripts/bench-report.ts
 ```
 
-**Phasing.** B1 ✅ baseline runner against `claude-sonnet-4-6` →
-B2 LLM-judge quality rubric (1 hr) → B3 multi-system matrix + report
-(1 hr) → B4 full matrix run, first diagnostic dataset (1 hr).
-~3 hr remaining to land B2–B4.
+**Phasing.** B1 ✅ baseline runner → B2 ✅ LLM-judge quality rubric →
+B3 multi-system matrix + report (add haiku + codex systems to `SYSTEMS`
+map in `bench.ts`, ~1 hr) → B4 full matrix run, first diagnostic dataset
+(~1 hr). ~2 hr remaining to land B3–B4.
 
 Detailed plan: [`agent-benchmark-suite.md`](./agent-benchmark-suite.md).
 
