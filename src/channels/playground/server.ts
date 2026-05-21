@@ -44,6 +44,7 @@ import { handleGoogleAuthCallback, handleGoogleAuthStart } from './api/google-au
 import { handleOAuthCallback, handleOAuthStart } from './google-oauth.js';
 import { parseCookie, readJsonBody, send } from './http-helpers.js';
 import { readEnvFile } from '../../env.js';
+import { getOwners } from '../../modules/permissions/db/user-roles.js';
 // ── class-enrollment-passcode:imports START ────────────────────────────────
 import { handleGetClassPasscode, handleRotateClassPasscode, handleEnroll } from './api/enrollment.js';
 // ── class-enrollment-passcode:imports END ──────────────────────────────────
@@ -293,7 +294,11 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   if (method === 'GET' && url.pathname === '/api/bench/session') {
     const benchMode = process.env.BENCH_MODE ?? readEnvFile(['BENCH_MODE']).BENCH_MODE;
     if (benchMode === '1') {
-      const benchSession = mintSessionForUser(null);
+      // Mint session as the owner so the bench script can read SSE streams
+      // and mutate draft configs (checkDraftMutation + canReadDraft both
+      // require a non-null userId that has owner/admin/member access).
+      const ownerUserId = getOwners()[0]?.user_id ?? null;
+      const benchSession = mintSessionForUser(ownerUserId);
       res.writeHead(200, {
         'content-type': 'application/json',
         'set-cookie': formatSessionCookie(benchSession.cookieValue),

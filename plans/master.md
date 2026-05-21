@@ -38,6 +38,7 @@ this file is the sequencing layer.
 | Playground UI redesign — A (theme unification, dark → light, lobster mascot), B (brand palette + favicon + topbar), D (mode-tabs as pills, agent-markdown rendering, multi-line chat + ⌘↵, file dirty indicator, themed scrollbars, mobile breakpoint), bug fixes (duplicate escapeHtml, #mode-chat specificity, no-cache headers, cache-bust) | `main` (commits `3d4cdd1`, `db51afe`, `702939d`, `60ab860`, `62df9aa`, `27eb5f4`) |
 | Playground trace panel — tool-call / tool-result surfacing via new ProviderEvents → messages_out kind=`trace` → playground SSE → right-side trace panel. Claude SDK provider only; Codex/OpenCode/Ollama follow-up. | `main` (commit `a83794d`) |
 | **Agent Playground v3 — student-first 4-tab redesign** (Chat / Persona / Skills / Models, 3-tier library, model whitelist, per-message cost annotations, provider-uniform persona-layers helper). Spec: [`docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html`](../docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html). Plan: [`docs/superpowers/plans/2026-05-13-agent-playground-v3.html`](../docs/superpowers/plans/2026-05-13-agent-playground-v3.html). | `worktree-playground-v3` branch, commit range `01c0e5f`..`cbd3974` (24 tasks across 7 phases + prettier hygiene, awaiting `/ultrareview` + merge to `main`) |
+| **Phase 1.9 — playground UX + Skills authoring + student provisioning** — add-student button (Home tab), per-agent custom skills with multi-file editor (3-panel Skills tab redesign), chat dropdown hides unauthenticated providers, codex/local model switch without container respawn, OMLX probe auth fix, per-turn codex cost accounting, IDOR gate on all `/api/drafts/:folder` GETs, tunnel single-flight fix, provisionStudent DB rollback on FS failure. Plan: [`plans/skills-tab-redesign.md`](skills-tab-redesign.md), [`plans/external-classroom-access.md`](external-classroom-access.md), review fixes: [`plans/pr4-review-fixes.md`](pr4-review-fixes.md). | `main` (merge `c2f689d1`, PR #4) |
 
 **Phase 1 status: complete.** All 9 build-order items shipped; refactor merged; deploy guide written; two follow-ups shipped (ufw doc, lost-link form). Phase 2 unblocked.
 
@@ -180,7 +181,7 @@ reality; living with it. Revisit when one of:
   this fork; `/add-classroom-provider-auth` and the
   `classroom-x7-provider-auth` branch are now redundant.
 
-## Phase 1.8 — agent-harness benchmark suite (planned)
+## Phase 1.8 — agent-harness benchmark suite (B1 implemented, B2+ planned)
 
 Triggered by the 2026-05-18 cost spike: a single "yolo" message on
 codex/gpt-5.4 billed at $1.10 because codex makes 6–10 internal API
@@ -208,10 +209,21 @@ gpt-5.4 + gpt-5.4-mini, two local MLX models). Three assessment
 layers: token/cost/latency (auto), programmatic correctness per
 request (deterministic), claude-haiku-as-judge quality rubric.
 
-**Phasing.** B1 baseline runner against `claude-sonnet-4-6` (2 hr) →
-B2 gates + judge (1 hr) → B3 matrix + report (1 hr) → B4 full matrix
-run, first diagnostic dataset (1 hr setup + run-time). ~5 hr to land
-B1–B4. B5 (harness-config knobs) optional.
+**Status.** B1 runner implemented and in `main`: `scripts/bench.ts`,
+`bench-db.ts`, `bench-gates.ts`, `bench-fixture-server.ts`,
+`bench-prompts.json`, `bench-fixtures/`. BENCH_MODE session fix landed
+(`server.ts` now mints bench sessions as owner so `canReadDraft`
+passes on the bench agent group's SSE stream). Run via:
+```
+BENCH_MODE=1 pnpm run dev   # in one terminal
+pnpm exec tsx scripts/bench.ts --source <folder> --systems claude-sonnet --reps 3
+pnpm exec tsx scripts/bench-report.ts
+```
+
+**Phasing.** B1 ✅ baseline runner against `claude-sonnet-4-6` →
+B2 LLM-judge quality rubric (1 hr) → B3 multi-system matrix + report
+(1 hr) → B4 full matrix run, first diagnostic dataset (1 hr).
+~3 hr remaining to land B2–B4.
 
 Detailed plan: [`agent-benchmark-suite.md`](./agent-benchmark-suite.md).
 

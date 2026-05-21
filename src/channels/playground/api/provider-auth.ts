@@ -211,6 +211,7 @@ export async function handleProviderAuthExchange(
 }
 
 export function handleGetProviderStatus(providerId: string, session: { userId: string }): ApiResult<unknown> {
+  if (!getProviderSpec(providerId)) return { status: 404, body: { error: 'unknown provider' } };
   const creds = loadStudentProviderCreds(session.userId, providerId);
   if (!creds) return { status: 200, body: { hasApiKey: false, hasOAuth: false, active: null } };
   return {

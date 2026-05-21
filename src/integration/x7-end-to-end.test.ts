@@ -22,8 +22,8 @@ import { setStudentCredsHook, studentCredsHook } from '../credential-proxy.js';
 import { resolveStudentCreds, setRosterLookupForTests } from '../classroom-provider-resolver.js';
 import { loadStudentProviderCreds } from '../student-provider-auth.js';
 
-// Sanitised path: alice@x.edu → alice_at_x.edu
-const CLEANUP_DIR = path.join(process.cwd(), 'data/student-provider-creds/alice_at_x.edu');
+// Sanitised path: alice@x.edu → alice_x_edu (sanitizeUserIdForPath squashes all non-alphanum to _)
+const CLEANUP_DIR = path.join(process.cwd(), 'data/student-provider-creds/alice_x_edu');
 
 beforeAll(() => {
   setRosterLookupForTests((gid) => (gid === 'alice-gid' ? { userId: 'alice@x.edu', classId: 'default' } : null));
