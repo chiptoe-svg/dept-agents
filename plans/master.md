@@ -419,9 +419,14 @@ dependency tracking.
    Adds the homepage UI for students to manage their own provider
    OAuth + GWS OAuth + temp-code redemption.
 7. **classroom Phase 5 — agent export tooling.**
-   `nanoclaw / claude-code / codex / json` formats; `GET
-   /api/draft/<folder>/export?format=…`. Spec in
-   [classroom-web-multiuser.md §Phase 5](classroom-web-multiuser.md).
+   Five formats (Claude Code / OpenAI Codex / Gemini CLI / OpenClaw
+   self-hosted / Universal portable) + `WHAT-I-BUILT.md` summary.
+   `GET /api/drafts/:folder/export` returns a zip with one subfolder
+   per target system, each including persona, memory, skills, and a
+   step-by-step README. Class takeaway for day-1/day-2 students.
+   Spec: [`docs/superpowers/specs/2026-05-21-agent-export-design.md`](../docs/superpowers/specs/2026-05-21-agent-export-design.md).
+   Plan: [`docs/superpowers/plans/2026-05-21-agent-export.md`](../docs/superpowers/plans/2026-05-21-agent-export.md).
+   ~3.5 hr to implement.
 7b. **NEW: classroom Phase 5b — Agent library + save/swap UX
    (UNPLANNED).** Distinct from §5 (which is one-direction export
    for take-home). 5b is the in-playground File-menu-for-agents:
