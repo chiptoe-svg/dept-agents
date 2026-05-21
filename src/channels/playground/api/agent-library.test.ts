@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -10,11 +10,13 @@ import path from 'path';
 // agent-library.ts constructs.
 
 import {
+  DEFAULT_AGENTS_DIR,
   deleteEntry,
   entryDir,
   generateSlug,
   isEntryDirty,
   libraryRoot,
+  listDefaultAgents,
   listLibrary,
   loadEntry,
   readActiveSlot,
@@ -531,6 +533,81 @@ describe('seedInitialLibraryEntry', () => {
 
     // 'initial' should NOT have been created
     expect(readMeta(folder, 'initial')).toBeNull();
+
+    fs.rmSync(groupDir, { recursive: true, force: true });
+    fs.rmSync(libraryRoot(folder), { recursive: true, force: true });
+  });
+});
+
+// ── listDefaultAgents ─────────────────────────────────────────────────────
+
+describe('listDefaultAgents', () => {
+  it('returns [] when the default-agents directory does not exist', () => {
+    // Spy on existsSync to simulate the directory being absent for this call.
+    const spy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
+      if (p === DEFAULT_AGENTS_DIR) return false;
+      return fs.existsSync(p as string);
+    });
+    try {
+      expect(listDefaultAgents()).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('returns entries sorted by name when templates exist', () => {
+    // Use the real library/default-agents/ directory created as part of Phase E.
+    // The research-assistant template must be present.
+    if (!fs.existsSync(DEFAULT_AGENTS_DIR)) {
+      // Skip gracefully if the directory was not shipped in this environment.
+      return;
+    }
+    const entries = listDefaultAgents();
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries.length).toBeGreaterThan(0);
+    // Entries should have the expected shape.
+    const first = entries[0]!;
+    expect(typeof first.slug).toBe('string');
+    expect(typeof first.name).toBe('string');
+    expect(first.isActive).toBe(false);
+    expect(first.isDirty).toBe(false);
+    // Verify the research-assistant template is present.
+    const ra = entries.find((e) => e.slug === 'research-assistant');
+    expect(ra).toBeDefined();
+    expect(ra!.name).toBe('Research Assistant');
+  });
+});
+
+// ── handleFromTemplate ────────────────────────────────────────────────────
+
+describe('handleFromTemplate', () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it('returns 404 when templateSlug is not found', async () => {
+    // Mock canReadDraft to bypass DB dependency.
+    vi.doMock('../draft-read-gate.js', () => ({ canReadDraft: () => true }));
+    // Mock container-runner and db modules that killGroupContainer needs.
+    vi.doMock('../../../../db/sessions.js', () => ({ getActiveSessions: () => [] }));
+    vi.doMock('../../../../db/agent-groups.js', () => ({ getAgentGroupByFolder: () => null }));
+    vi.doMock('../../../../container-runner.js', () => ({ isContainerRunning: () => false, killContainer: () => {} }));
+
+    const { handleFromTemplate } = await import('./agent-library-handlers.js');
+
+    const folder = 'tpl-404-test';
+    const groupDir = libraryRoot(folder).replace('/library', '');
+    fs.mkdirSync(groupDir, { recursive: true });
+    write(path.join(groupDir, 'CLAUDE.md'), '# Agent');
+    write(path.join(groupDir, 'container.json'), '{}');
+    seedInitialLibraryEntry(folder);
+
+    const result = handleFromTemplate(folder, 'user-1', {
+      templateSlug: 'nonexistent-template-xyz',
+      name: 'My Copy',
+    });
+
+    expect(result.status).toBe(404);
 
     fs.rmSync(groupDir, { recursive: true, force: true });
     fs.rmSync(libraryRoot(folder), { recursive: true, force: true });

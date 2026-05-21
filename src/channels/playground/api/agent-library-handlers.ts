@@ -12,6 +12,7 @@ import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
 import { isContainerRunning, killContainer } from '../../../container-runner.js';
 import { canReadDraft } from '../draft-read-gate.js';
 import {
+  DEFAULT_AGENTS_DIR,
   deleteEntry,
   entryDir,
   generateSlug,
@@ -25,6 +26,7 @@ import {
   writeMeta,
 } from './agent-library.js';
 import fs from 'fs';
+import path from 'path';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -182,4 +184,74 @@ export function handleDeleteEntry(
 
   const deleted = deleteEntry(folder, slug);
   return { status: 200, body: { ok: deleted } };
+}
+
+export function handleFromTemplate(
+  folder: string,
+  userId: string | null | undefined,
+  body: { templateSlug?: unknown; name?: unknown; description?: unknown },
+): { status: number; body: unknown } {
+  if (!canReadDraft(folder, userId)) return { status: 403, body: { error: 'Forbidden' } };
+
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (!name) return { status: 400, body: { error: 'name is required' } };
+  if (name.length > 64) return { status: 400, body: { error: 'name must be 64 characters or fewer' } };
+
+  const templateSlug = typeof body.templateSlug === 'string' ? body.templateSlug.trim() : '';
+  if (!templateSlug) return { status: 400, body: { error: 'templateSlug is required' } };
+
+  const count = entryCount(folder);
+  if (count >= 20) return { status: 409, body: { error: 'Library full — delete an agent to continue (max 20)' } };
+
+  const templateDir = path.join(DEFAULT_AGENTS_DIR, templateSlug);
+  if (!fs.existsSync(templateDir)) {
+    return { status: 404, body: { error: `Template "${templateSlug}" not found` } };
+  }
+
+  const description = typeof body.description === 'string' ? body.description.trim() : '';
+  const existing = existingSlugs(folder);
+  const newSlug = generateSlug(name, existing);
+  const now = new Date().toISOString();
+  const dst = entryDir(folder, newSlug);
+
+  try {
+    fs.mkdirSync(dst, { recursive: true });
+
+    // Copy CLAUDE.md
+    const claudeSrc = path.join(templateDir, 'CLAUDE.md');
+    if (fs.existsSync(claudeSrc)) fs.copyFileSync(claudeSrc, path.join(dst, 'CLAUDE.md'));
+
+    // Copy container.json
+    const containerSrc = path.join(templateDir, 'container.json');
+    if (fs.existsSync(containerSrc)) fs.copyFileSync(containerSrc, path.join(dst, 'container.json'));
+
+    // Copy custom-skills/ if present
+    const customSrc = path.join(templateDir, 'custom-skills');
+    if (fs.existsSync(customSrc)) {
+      copyDirRecursive(customSrc, path.join(dst, 'custom-skills'));
+    }
+
+    writeMeta(folder, newSlug, { name, description, createdAt: now, updatedAt: now });
+    loadEntry(folder, newSlug);
+    killGroupContainer(folder);
+    return { status: 200, body: { slug: newSlug } };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
+}
+
+/** Copy a directory recursively — duplicated from agent-library.ts to avoid circular deps. */
+function copyDirRecursive(src: string, dst: string): void {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(dst, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const s = path.join(src, entry.name);
+    const d = path.join(dst, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(s, d);
+    } else {
+      fs.copyFileSync(s, d);
+    }
+  }
 }

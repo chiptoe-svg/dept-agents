@@ -23,8 +23,11 @@ export function mountAgents(el) {
           <button id="agents-save-btn" class="btn btn-primary agents-save-btn" type="button">Save</button>
           <button id="agents-saveas-btn" class="btn agents-saveas-btn" type="button">Save As…</button>
           <button id="agents-new-btn" class="btn agents-new-btn" type="button">+ New Agent</button>
+          <button id="agents-templates-btn" class="btn agents-templates-btn" type="button">Browse templates</button>
         </div>
       </header>
+
+      <div id="agents-templates-panel" class="agents-templates-panel" hidden></div>
 
       <div id="agents-grid" class="agents-grid">
         <div class="agents-loading">Loading agents…</div>
@@ -185,6 +188,7 @@ function wireHeaderButtons(el, folder) {
   });
   el.querySelector('#agents-saveas-btn').addEventListener('click', () => showSaveAsModal(el, folder));
   el.querySelector('#agents-new-btn').addEventListener('click', () => showNewAgentModal(el, folder));
+  el.querySelector('#agents-templates-btn').addEventListener('click', () => toggleTemplatesPanel(el, folder));
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────
@@ -497,6 +501,140 @@ function showConfirmModal(title, message, confirmLabel, onConfirm) {
   const close = () => { root.innerHTML = ''; };
   cancelBtn.addEventListener('click', close);
   okBtn.addEventListener('click', () => { close(); onConfirm(); });
+}
+
+// ── Templates panel ───────────────────────────────────────────────────────
+
+function toggleTemplatesPanel(el, folder) {
+  const panel = el.querySelector('#agents-templates-panel');
+  const btn = el.querySelector('#agents-templates-btn');
+  if (!panel.hidden) {
+    panel.hidden = true;
+    btn.textContent = 'Browse templates';
+    return;
+  }
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+  fetch('/api/library/defaults', { credentials: 'same-origin' })
+    .then((r) => (r.ok ? r.json() : { templates: [] }))
+    .then((data) => {
+      renderTemplatesPanel(el, folder, panel, data.templates || []);
+      panel.hidden = false;
+      btn.textContent = 'Hide templates';
+    })
+    .catch(() => {
+      renderTemplatesPanel(el, folder, panel, []);
+      panel.hidden = false;
+      btn.textContent = 'Hide templates';
+    })
+    .finally(() => {
+      btn.disabled = false;
+    });
+}
+
+function renderTemplatesPanel(el, folder, panel, templates) {
+  panel.replaceChildren();
+  const heading = document.createElement('div');
+  heading.className = 'agents-templates-heading';
+  heading.textContent = 'Default templates';
+  panel.appendChild(heading);
+
+  if (templates.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'agents-templates-empty';
+    empty.textContent = 'No templates available.';
+    panel.appendChild(empty);
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'agents-templates-grid';
+  for (const tpl of templates) {
+    grid.appendChild(buildTemplateCard(el, folder, tpl));
+  }
+  panel.appendChild(grid);
+}
+
+function buildTemplateCard(el, folder, tpl) {
+  const card = document.createElement('div');
+  card.className = 'agent-card agents-template-card';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'agent-card-name';
+  nameEl.textContent = tpl.name;
+  card.appendChild(nameEl);
+
+  if (tpl.description) {
+    const desc = document.createElement('div');
+    desc.className = 'agent-card-desc';
+    desc.textContent = tpl.description;
+    card.appendChild(desc);
+  }
+
+  const useBtn = document.createElement('button');
+  useBtn.type = 'button';
+  useBtn.className = 'btn btn-primary agents-template-use';
+  useBtn.textContent = 'Use this template';
+  useBtn.addEventListener('click', () => showFromTemplateModal(el, folder, tpl));
+  card.appendChild(useBtn);
+
+  return card;
+}
+
+function showFromTemplateModal(el, folder, tpl) {
+  buildModalShell(`Use template: ${tpl.name}`, (modal) => {
+    const p1 = document.createElement('p');
+    const lbl1 = document.createElement('label');
+    lbl1.textContent = 'Name ';
+    const inp = document.createElement('input');
+    inp.id = 'modal-name';
+    inp.type = 'text';
+    inp.maxLength = 64;
+    inp.value = tpl.name;
+    inp.autocomplete = 'off';
+    lbl1.appendChild(inp);
+    p1.appendChild(lbl1);
+    modal.insertBefore(p1, modal.querySelector('.modal-actions'));
+
+    const p2 = document.createElement('p');
+    const lbl2 = document.createElement('label');
+    lbl2.textContent = 'Description (optional) ';
+    const inp2 = document.createElement('input');
+    inp2.id = 'modal-desc';
+    inp2.type = 'text';
+    inp2.maxLength = 200;
+    inp2.value = tpl.description || '';
+    inp2.autocomplete = 'off';
+    lbl2.appendChild(inp2);
+    p2.appendChild(lbl2);
+    modal.insertBefore(p2, modal.querySelector('.modal-actions'));
+
+    const ok = modal.querySelector('#modal-ok');
+    ok.className = 'btn btn-primary';
+    ok.textContent = 'Create from template';
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  }, (modal) => {
+    const name = modal.querySelector('#modal-name').value.trim();
+    if (!name) { modal.querySelector('#modal-name').focus(); return true; }
+    const desc = modal.querySelector('#modal-desc').value.trim();
+    fetch(`/api/drafts/${folder}/library/from-template`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ templateSlug: tpl.slug, name, description: desc }),
+    })
+      .then((r) => (r.ok ? r.json() : r.json().then((e) => { throw new Error(e.error || r.status); })))
+      .then(() => {
+        showToast(`”${name}” created from template and loaded.`);
+        // Collapse the templates panel and refresh the agent list
+        const templatePanel = el.querySelector('#agents-templates-panel');
+        const templateBtn = el.querySelector('#agents-templates-btn');
+        if (templatePanel) templatePanel.hidden = true;
+        if (templateBtn) templateBtn.textContent = 'Browse templates';
+        loadAgents(el, folder);
+      })
+      .catch((err) => showToast(`Create failed: ${String(err)}`, 'error'));
+  });
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────

@@ -54,12 +54,14 @@ import { handlePersonaLayers } from './api/persona-layers.js';
 import { handleExport } from './api/export.js';
 import {
   handleDeleteEntry,
+  handleFromTemplate,
   handleListAgentLibrary,
   handleLoadEntry,
   handleRenameEntry,
   handleSaveExisting,
   handleSaveNew,
 } from './api/agent-library-handlers.js';
+import { listDefaultAgents } from './api/agent-library.js';
 import {
   handleAutoFillCatalog,
   handleGetModels,
@@ -399,6 +401,11 @@ export async function route(
     return send(res, r.status, r.body);
   }
 
+  // GET /api/library/defaults — read-only default agent template catalog
+  if (method === 'GET' && url.pathname === '/api/library/defaults') {
+    return send(res, 200, { templates: listDefaultAgents() });
+  }
+
   // GET /api/library — returns all three tiers
   if (method === 'GET' && url.pathname === '/api/library') {
     const r = handleListLibrary(session.userId ?? '');
@@ -712,6 +719,17 @@ export async function route(
   // Agent library routes — /api/drafts/:folder/library[/:slug[/save|load]]
   // These must be checked before the generic export route to avoid slug
   // collisions with path suffixes.
+
+  // POST /api/drafts/:folder/library/from-template — create a new library
+  // entry from a default template. Checked before slug routes so "from-template"
+  // is not mistaken for a user slug.
+  const fromTemplateMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/from-template$/);
+  if (method === 'POST' && fromTemplateMatch) {
+    const body = await readJsonBody(req);
+    const r = handleFromTemplate(fromTemplateMatch[1]!, session.userId, body as never);
+    return send(res, r.status, r.body);
+  }
+
   const libBase = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/library$/);
   if (libBase) {
     const draftFolder = libBase[1]!;

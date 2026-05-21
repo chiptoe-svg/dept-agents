@@ -311,6 +311,71 @@ export function isEntryDirty(folder: string, slug: string): boolean {
   }
 }
 
+// ── Phase E: default-agent templates ─────────────────────────────────────
+
+const DEFAULT_AGENTS_DIR = path.join(process.cwd(), 'library', 'default-agents');
+
+/**
+ * List read-only default agent templates from `library/default-agents/`.
+ * Returns [] when the directory doesn't exist.
+ */
+export function listDefaultAgents(): LibraryEntry[] {
+  if (!fs.existsSync(DEFAULT_AGENTS_DIR)) return [];
+
+  const entries: LibraryEntry[] = [];
+
+  for (const dirent of fs.readdirSync(DEFAULT_AGENTS_DIR, { withFileTypes: true })) {
+    if (!dirent.isDirectory() || dirent.name.startsWith('.')) continue;
+    const slug = dirent.name;
+    const templateDir = path.join(DEFAULT_AGENTS_DIR, slug);
+
+    const metaPath = path.join(templateDir, 'meta.json');
+    if (!fs.existsSync(metaPath)) continue;
+    let meta: AgentMeta;
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as AgentMeta;
+    } catch {
+      continue;
+    }
+
+    const containerPath = path.join(templateDir, 'container.json');
+    let provider = 'claude';
+    let model = '';
+    let builtinSkills: string[] = [];
+    if (fs.existsSync(containerPath)) {
+      try {
+        const cfg = JSON.parse(fs.readFileSync(containerPath, 'utf-8')) as {
+          provider?: string;
+          model?: string;
+          skills?: unknown;
+        };
+        provider = cfg.provider ?? 'claude';
+        model = cfg.model ?? '';
+        builtinSkills = Array.isArray(cfg.skills) ? (cfg.skills as string[]) : [];
+      } catch {
+        // malformed — use defaults
+      }
+    }
+
+    entries.push({
+      slug,
+      name: meta.name,
+      description: meta.description,
+      updatedAt: meta.updatedAt,
+      isActive: false,
+      isDirty: false,
+      provider,
+      model,
+      builtinSkills,
+      customSkillCount: countCustomSkills(path.join(templateDir, 'custom-skills')),
+    });
+  }
+
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export { DEFAULT_AGENTS_DIR };
+
 // ── Phase D: provisioning seed ────────────────────────────────────────────
 
 /**
