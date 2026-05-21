@@ -16,6 +16,7 @@
 import { getAgentGroupByFolder } from '../../db/agent-groups.js';
 import { canAccessAgentGroup } from '../../modules/permissions/access.js';
 import { PLAYGROUND_AUTH_BYPASS } from '../../config.js';
+import { checkDraftMutation as _checkMutation } from '../playground-gate-registry.js';
 
 /**
  * True when `userId` may read the draft/agent-group `folder`.
@@ -31,4 +32,13 @@ export function canReadDraft(folder: string, userId: string | null | undefined):
   if (!group) return true;
   if (!userId) return false;
   return canAccessAgentGroup(userId, group.id).allowed;
+}
+
+/**
+ * Returns null if the mutation is allowed, or an error string if denied.
+ * Delegates to the gate registry with action 'file_put' as a generic default.
+ */
+export function checkDraftMutation(folder: string, userId: string | null | undefined): string | null {
+  const decision = _checkMutation(folder, 'file_put', userId ?? null);
+  return decision.allow ? null : (decision.reason ?? 'Forbidden');
 }
