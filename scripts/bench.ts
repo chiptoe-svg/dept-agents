@@ -24,6 +24,7 @@ import { fileURLToPath } from 'url';
 
 import { startFixtureServer, stopFixtureServer, FIXTURE_PORT } from './bench-fixture-server.js';
 import { computeCost, insertEvent, insertRun } from './bench-db.js';
+import { judgeOutput } from './bench-judge.js';
 import { runGate } from './bench-gates.js';
 import { CONTAINER_HOST_GATEWAY } from '../src/container-runtime.js';
 
@@ -640,6 +641,22 @@ async function runBench(
         totalCacheCreation || null,
       );
 
+      // B2: LLM-judge quality score (best-effort — non-fatal on failure).
+      let qualityScore: number | null = null;
+      let judgeRationale: string | null = null;
+      if (runSuccess && outputText) {
+        const requestText = rawPrompts.join('\n\n---\n\n');
+        process.stdout.write('    Judging…');
+        const judgeResult = await judgeOutput(requestText, outputText);
+        if (judgeResult) {
+          qualityScore = judgeResult.score;
+          judgeRationale = judgeResult.rationale;
+          process.stdout.write(` ${qualityScore}/5\n`);
+        } else {
+          process.stdout.write(' (skipped)\n');
+        }
+      }
+
       // Write run record
       insertRun({
         run_id: runId,
@@ -661,9 +678,9 @@ async function runBench(
         num_tool_calls: totalToolCalls || null,
         latency_ms: totalLatency || null,
         cost_usd: costUsd,
-        quality_score: null,
+        quality_score: qualityScore,
         programmatic_pass: gatePass ? 1 : 0,
-        notes,
+        notes: judgeRationale ?? notes,
       });
 
       // Write raw events for forensics
@@ -675,7 +692,8 @@ async function runBench(
       const gateStr = gatePass ? 'PASS' : 'FAIL';
       const costStr = costUsd != null ? ` · $${costUsd.toFixed(5)}` : '';
       const tokStr = totalIn > 0 ? ` · ${totalIn}in/${totalOut}out` : '';
-      console.log(`    ${gateStr}${tokStr}${costStr}`);
+      const qualStr = qualityScore != null ? ` · quality ${qualityScore}/5` : '';
+      console.log(`    ${gateStr}${tokStr}${costStr}${qualStr}`);
     }
   }
 

@@ -228,6 +228,12 @@ export function insertEvent(runId: string, seq: number, eventJson: string): void
     .run(runId, seq, eventJson);
 }
 
+export function updateRunQuality(runId: string, qualityScore: number, notes: string | null): void {
+  getBenchDb()
+    .prepare('UPDATE runs SET quality_score = ?, notes = ? WHERE run_id = ?')
+    .run(qualityScore, notes, runId);
+}
+
 export function getRuns(runGroupId?: string): RunRecord[] {
   const db = getBenchDb();
   if (runGroupId) {
