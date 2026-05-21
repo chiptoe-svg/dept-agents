@@ -157,6 +157,13 @@ function buildCard(el, folder, entry) {
     actions.appendChild(activeLabel);
   }
 
+  const exportLink = document.createElement('a');
+  exportLink.className = 'btn agent-card-export';
+  exportLink.href = `/api/drafts/${folder}/library/${encodeURIComponent(entry.slug)}/export`;
+  exportLink.textContent = 'Export ↓';
+  exportLink.title = 'Download this agent as a zip for use in Claude Code, Codex, Gemini CLI, and more';
+  actions.appendChild(exportLink);
+
   const renameBtn = document.createElement('button');
   renameBtn.type = 'button';
   renameBtn.className = 'btn agent-card-rename';

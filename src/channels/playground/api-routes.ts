@@ -51,7 +51,7 @@ import {
 } from './custom-skills.js';
 import { getLibraryCacheStat, listLibrary, listSkillFiles, readSkillFile } from './library.js';
 import { handlePersonaLayers } from './api/persona-layers.js';
-import { handleExport } from './api/export.js';
+import { handleExport, handleLibraryEntryExport } from './api/export.js';
 import {
   handleDeleteEntry,
   handleFromTemplate,
@@ -772,6 +772,28 @@ export async function route(
       const r = handleDeleteEntry(libSlug[1]!, session.userId, libSlug[2]!);
       return send(res, r.status, r.body);
     }
+  }
+
+  // GET /api/drafts/:folder/library/:slug/export — download a specific library entry as zip
+  const libExportMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)\/export$/,
+  );
+  if (method === 'GET' && libExportMatch) {
+    const draftFolder = libExportMatch[1]!;
+    const slug = libExportMatch[2]!;
+    const format = url.searchParams.get('format') ?? 'all';
+    const result = await handleLibraryEntryExport(draftFolder, slug, session.userId, format);
+    if ('buffer' in result) {
+      res.writeHead(200, {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${result.filename}"`,
+        'content-length': result.buffer.length,
+        'cache-control': 'no-store',
+      });
+      res.end(result.buffer);
+      return;
+    }
+    return send(res, result.status, { error: result.error });
   }
 
   // GET /api/drafts/:folder/export — download agent as zip bundle

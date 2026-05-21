@@ -84,8 +84,25 @@ function readBuiltinSkill(name: string): BuiltinSkillEntry | null {
   return { name: fm.name ?? name, description: fm.description ?? '', body };
 }
 
-export function readAgentSources(folder: string): AgentSources | null {
-  const groupDir = path.join(GROUPS_DIR, folder);
+function collectFiles(baseDir: string, dir: string, out: Record<string, string>): void {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const fullPath = path.join(dir, entry.name);
+    const relPath = path.relative(baseDir, fullPath);
+    if (entry.isDirectory()) {
+      collectFiles(baseDir, fullPath, out);
+    } else {
+      try {
+        out[relPath] = fs.readFileSync(fullPath, 'utf-8');
+      } catch {
+        /* skip */
+      }
+    }
+  }
+}
+
+export function readAgentSources(folder: string, rootDirOverride?: string): AgentSources | null {
+  const groupDir = rootDirOverride ?? path.join(GROUPS_DIR, folder);
   const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
   if (!fs.existsSync(claudeMdPath)) return null;
 
@@ -111,17 +128,42 @@ export function readAgentSources(folder: string): AgentSources | null {
     if (entry) builtinSkills.push(entry);
   }
 
-  const customSkillMetas = listCustomSkills(folder);
-  const customSkills: CustomSkillEntry[] = [];
-  for (const meta of customSkillMetas) {
-    const fileList = listCustomSkillFiles(folder, meta.name);
-    const files: Record<string, string> = {};
-    for (const f of fileList) {
-      if (f.isDir) continue;
-      const content = readCustomSkillFile(folder, meta.name, f.path);
-      if (content !== undefined) files[f.path] = content;
+  let customSkills: CustomSkillEntry[];
+  if (rootDirOverride !== undefined) {
+    // Read custom skills directly from the directory (used for library entries)
+    const customSkillsDir = path.join(groupDir, 'custom-skills');
+    customSkills = [];
+    if (fs.existsSync(customSkillsDir)) {
+      for (const dirent of fs.readdirSync(customSkillsDir, { withFileTypes: true })) {
+        if (!dirent.isDirectory() || dirent.name.startsWith('.')) continue;
+        const skillName = dirent.name;
+        const skillDir = path.join(customSkillsDir, skillName);
+        // Read SKILL.md for frontmatter (description)
+        const skillMdPath = path.join(skillDir, 'SKILL.md');
+        let description = '';
+        if (fs.existsSync(skillMdPath)) {
+          const fm = parseFrontmatter(fs.readFileSync(skillMdPath, 'utf-8'));
+          description = fm.description ?? '';
+        }
+        // Collect all files recursively
+        const files: Record<string, string> = {};
+        collectFiles(skillDir, skillDir, files);
+        customSkills.push({ name: skillName, description, files });
+      }
     }
-    customSkills.push({ name: meta.name, description: meta.description, files });
+  } else {
+    customSkills = [];
+    const customSkillMetas = listCustomSkills(folder);
+    for (const meta of customSkillMetas) {
+      const fileList = listCustomSkillFiles(folder, meta.name);
+      const files: Record<string, string> = {};
+      for (const f of fileList) {
+        if (f.isDir) continue;
+        const content = readCustomSkillFile(folder, meta.name, f.path);
+        if (content !== undefined) files[f.path] = content;
+      }
+      customSkills.push({ name: meta.name, description: meta.description, files });
+    }
   }
 
   return {
@@ -570,6 +612,44 @@ export async function handleExport(
     // Safe filename: folder name stripped of anything that isn't alnum/hyphen/underscore
     const safeName = folder.replace(/[^A-Za-z0-9_-]/g, '-');
     return { buffer, filename: `${safeName}-export.zip` };
+  } catch (err) {
+    return { status: 500, error: `zip assembly failed: ${(err as Error).message}` };
+  }
+}
+
+export async function handleLibraryEntryExport(
+  folder: string,
+  slug: string,
+  userId: string | null | undefined,
+  format: string,
+): Promise<{ buffer: Buffer; filename: string } | { status: number; error: string }> {
+  if (!canReadDraft(folder, userId)) return { status: 403, error: 'Forbidden' };
+  const group = getAgentGroupByFolder(folder);
+  if (!group) return { status: 404, error: `no agent group for folder ${folder}` };
+  const { entryDir } = await import('./agent-library.js');
+  const libraryEntryDir = entryDir(folder, slug);
+  if (!fs.existsSync(libraryEntryDir)) return { status: 404, error: `Library entry "${slug}" not found` };
+
+  const sources = readAgentSources(folder, libraryEntryDir);
+  if (!sources) return { status: 404, error: `CLAUDE.md not found for library entry "${slug}"` };
+
+  let usage = null;
+  try {
+    const u = aggregateAgentUsage(group.id);
+    usage = {
+      thisMonth: { costUsd: u.thisMonth.costUsd, tokensIn: u.thisMonth.tokensIn, tokensOut: u.thisMonth.tokensOut },
+      total: { costUsd: u.total.costUsd, tokensIn: u.total.tokensIn, tokensOut: u.total.tokensOut },
+    };
+  } catch {
+    /* non-fatal */
+  }
+
+  const whatIBuilt = generateWhatIBuilt(sources, usage);
+  try {
+    const buffer = await buildExportZip(sources, whatIBuilt, format);
+    const safeName = folder.replace(/[^A-Za-z0-9_-]/g, '-');
+    const safeSlug = slug.replace(/[^A-Za-z0-9_-]/g, '-');
+    return { buffer, filename: `${safeName}-${safeSlug}-export.zip` };
   } catch (err) {
     return { status: 500, error: `zip assembly failed: ${(err as Error).message}` };
   }
