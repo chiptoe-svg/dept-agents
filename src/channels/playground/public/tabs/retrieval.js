@@ -26,6 +26,7 @@ export function mountRetrieval(el) {
             <option value="10">10</option>
           </select>
         </label>
+        <span id="ret-strategy-badge" style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg-subtle,#eee);color:var(--text-muted,#555)"></span>
       </div>
 
       <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem">
@@ -49,6 +50,14 @@ export function mountRetrieval(el) {
   const searchBtn = el.querySelector('#ret-search-btn');
   const resultsEl = el.querySelector('#ret-results');
 
+  function updateStrategyBadge() {
+    const opt = corpusSelect.options[corpusSelect.selectedIndex];
+    const strategy = opt?.dataset?.strategy ?? '';
+    const badge = el.querySelector('#ret-strategy-badge');
+    if (badge) badge.textContent = strategy ? `strategy: ${strategy}` : '';
+  }
+  corpusSelect.addEventListener('change', updateStrategyBadge);
+
   async function loadCorpora() {
     try {
       const res = await fetch(apiBase, { headers, credentials: 'same-origin' });
@@ -61,8 +70,9 @@ export function mountRetrieval(el) {
         return;
       }
       corpusSelect.innerHTML = ready.map((c) =>
-        `<option value="${esc(c.id)}">${esc(c.name)}</option>`
+        `<option value="${esc(c.id)}" data-strategy="${esc(c.storeStrategy ?? 'bm25')}">${esc(c.name)} [${esc(c.storeStrategy ?? 'bm25')}]</option>`
       ).join('');
+      updateStrategyBadge();
     } catch {
       corpusSelect.innerHTML = '<option value="">— error loading —</option>';
     }
@@ -96,24 +106,58 @@ export function mountRetrieval(el) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const results = data.results ?? [];
+      const selectedOpt = corpusSelect.options[corpusSelect.selectedIndex];
+      const strategy = selectedOpt?.dataset?.strategy ?? 'bm25';
+
       if (!results.length) {
         resultsEl.innerHTML = '<p style="color:var(--text-muted,#888)">No results found.</p>';
         return;
       }
-      resultsEl.innerHTML = results.map((r) => {
-        const text = String(r.chunk?.text ?? '');
-        const truncated = text.length > 400 ? text.slice(0, 400) + '…' : text;
-        const score = typeof r.score === 'number' ? r.score.toFixed(3) : String(r.score ?? '');
-        return `
-          <div class="result-card">
-            <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem">
-              <span class="result-score">score: ${esc(score)}</span>
-              <span class="result-source">${esc(r.chunk?.source ?? '')} · chunk ${esc(String(r.chunk?.index ?? ''))}</span>
-            </div>
-            <div style="font-size:14px;line-height:1.5;white-space:pre-wrap">${esc(truncated)}</div>
-          </div>
+
+      if (strategy === 'hybrid') {
+        resultsEl.innerHTML = `
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="text-align:left;border-bottom:2px solid var(--border,#ddd)">
+                <th style="padding:6px 8px;width:55%">Chunk</th>
+                <th style="padding:6px 8px;width:15%;text-align:right">BM25</th>
+                <th style="padding:6px 8px;width:15%;text-align:right">Dense</th>
+                <th style="padding:6px 8px;width:15%;text-align:right">Fused</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${results.map((r) => {
+                const text = String(r.chunk?.text ?? '');
+                const truncated = text.length > 300 ? text.slice(0, 300) + '…' : text;
+                const fmt = (n) => (typeof n === 'number' ? n.toFixed(3) : '—');
+                return `<tr style="border-bottom:1px solid var(--border,#eee);vertical-align:top">
+                  <td style="padding:6px 8px;white-space:pre-wrap">${esc(truncated)}<br>
+                    <span style="font-size:11px;opacity:0.6">${esc(r.chunk?.source ?? '')} &middot; chunk ${esc(String(r.chunk?.index ?? ''))}</span>
+                  </td>
+                  <td style="padding:6px 8px;text-align:right">${esc(fmt(r.bm25Score))}</td>
+                  <td style="padding:6px 8px;text-align:right">${esc(fmt(r.denseScore))}</td>
+                  <td style="padding:6px 8px;text-align:right;font-weight:600">${esc(fmt(r.score))}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
         `;
-      }).join('');
+      } else {
+        resultsEl.innerHTML = results.map((r) => {
+          const text = String(r.chunk?.text ?? '');
+          const truncated = text.length > 400 ? text.slice(0, 400) + '…' : text;
+          const score = typeof r.score === 'number' ? r.score.toFixed(3) : String(r.score ?? '');
+          return `
+            <div class="result-card">
+              <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem">
+                <span class="result-score">score: ${esc(score)}</span>
+                <span class="result-source">${esc(r.chunk?.source ?? '')} &middot; chunk ${esc(String(r.chunk?.index ?? ''))}</span>
+              </div>
+              <div style="font-size:14px;line-height:1.5;white-space:pre-wrap">${esc(truncated)}</div>
+            </div>
+          `;
+        }).join('');
+      }
     } catch (err) {
       resultsEl.innerHTML = `<p style="color:var(--text-muted,#888)">Search failed: ${esc(String(err.message ?? err))}</p>`;
     } finally {

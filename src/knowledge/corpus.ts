@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
-import type { CorpusMeta, CorpusStatus, SourceType } from './types.js';
+import type { CorpusMeta, CorpusStatus, SourceType, StoreStrategy } from './types.js';
 
 export function corporaDir(folder: string): string {
   return path.join(folder, 'knowledge', 'corpora');
@@ -21,7 +21,10 @@ export function writeMeta(folder: string, id: string, meta: CorpusMeta): void {
   fs.writeFileSync(path.join(corpusDir(folder, id), 'meta.json'), JSON.stringify(meta, null, 2));
 }
 
-export function createCorpus(folder: string, opts: { name: string; sourceType: SourceType }): CorpusMeta {
+export function createCorpus(
+  folder: string,
+  opts: { name: string; sourceType: SourceType; storeStrategy?: StoreStrategy },
+): CorpusMeta {
   const id = randomBytes(8).toString('hex');
   const dir = corpusDir(folder, id);
   fs.mkdirSync(path.join(dir, 'raw'), { recursive: true });
@@ -31,7 +34,7 @@ export function createCorpus(folder: string, opts: { name: string; sourceType: S
     name: opts.name,
     sourceType: opts.sourceType,
     chunkStrategy: 'sentence',
-    storeStrategy: 'bm25',
+    storeStrategy: opts.storeStrategy ?? 'bm25',
     status: 'empty',
     createdAt: now,
     updatedAt: now,

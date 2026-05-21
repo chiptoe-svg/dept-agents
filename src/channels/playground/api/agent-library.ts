@@ -181,7 +181,7 @@ function copyFileIfExists(src: string, dst: string): void {
   fs.copyFileSync(src, dst);
 }
 
-function copyDirRecursive(src: string, dst: string): void {
+export function copyDirRecursive(src: string, dst: string): void {
   if (!fs.existsSync(src)) return;
   fs.mkdirSync(dst, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {

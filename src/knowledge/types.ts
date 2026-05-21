@@ -1,7 +1,7 @@
 export type CorpusStatus = 'empty' | 'ingesting' | 'ready' | 'error';
 export type SourceType = 'text' | 'pdf';
 export type ChunkStrategy = 'fixed' | 'sentence';
-export type StoreStrategy = 'bm25';
+export type StoreStrategy = 'bm25' | 'dense' | 'hybrid';
 
 export interface CorpusMeta {
   id: string;

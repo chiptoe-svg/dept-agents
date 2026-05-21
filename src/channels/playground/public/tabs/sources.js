@@ -18,9 +18,29 @@ export function mountSources(el) {
       </div>
 
       <div id="src-new-form" style="display:none;border:1px solid var(--border,#ddd);border-radius:6px;padding:1rem;margin-bottom:1rem">
-        <label style="display:block;margin-bottom:0.5rem">Corpus name
+        <label style="display:block;margin-bottom:0.75rem">Corpus name
           <input id="src-corpus-name" type="text" style="display:block;width:100%;margin-top:0.25rem;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font:inherit" placeholder="e.g. Lecture 3 notes">
         </label>
+
+        <div style="margin-bottom:0.75rem">
+          <div style="font-size:13px;font-weight:600;margin-bottom:0.4rem;color:var(--text-muted,#555)">Retrieval strategy</div>
+          <div id="src-strategy-cards" style="display:flex;gap:0.5rem;flex-wrap:wrap">
+            <div class="strategy-card strategy-selected" data-strategy="bm25" style="flex:1;min-width:140px;border:2px solid var(--accent,#5b6ee1);border-radius:6px;padding:0.6rem 0.75rem;cursor:pointer">
+              <div style="font-weight:600;font-size:13px">BM25 / Quick</div>
+              <div style="font-size:11px;color:var(--text-muted,#666);margin-top:2px">Keyword search. Fast, no API cost.</div>
+            </div>
+            <div class="strategy-card" data-strategy="dense" style="flex:1;min-width:140px;border:2px solid transparent;border-radius:6px;padding:0.6rem 0.75rem;cursor:pointer;background:var(--bg-subtle,#f5f5f5)">
+              <div style="font-weight:600;font-size:13px">Dense</div>
+              <div style="font-size:11px;color:var(--text-muted,#666);margin-top:2px">Semantic embeddings. Requires OpenAI key.</div>
+            </div>
+            <div class="strategy-card" data-strategy="hybrid" style="flex:1;min-width:140px;border:2px solid transparent;border-radius:6px;padding:0.6rem 0.75rem;cursor:pointer;background:var(--bg-subtle,#f5f5f5)">
+              <div style="font-weight:600;font-size:13px">Hybrid</div>
+              <div style="font-size:11px;color:var(--text-muted,#666);margin-top:2px">BM25 + dense. Side-by-side scores.</div>
+            </div>
+          </div>
+          <input id="src-store-strategy" type="hidden" value="bm25">
+        </div>
+
         <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
           <button id="src-create-btn" class="btn btn-primary">Create</button>
           <button id="src-cancel-btn" class="btn">Cancel</button>
@@ -74,6 +94,7 @@ export function mountSources(el) {
       <div class="corpus-card" data-id="${esc(c.id)}" style="cursor:pointer">
         <span class="corpus-name">${esc(c.name)}</span>
         <span class="corpus-meta">${c.chunkCount ?? 0} chunks</span>
+        <span class="corpus-meta" style="font-size:11px;opacity:0.7">${esc(c.storeStrategy ?? 'bm25')}</span>
         <span class="status-badge status-${esc(c.status)}">${esc(c.status)}</span>
         <button class="btn btn-danger" data-del="${esc(c.id)}" title="Delete" style="padding:2px 8px;font-size:12px">&#10005;</button>
       </div>
@@ -146,6 +167,24 @@ export function mountSources(el) {
   el.querySelector('#src-cancel-btn').addEventListener('click', () => {
     el.querySelector('#src-new-form').style.display = 'none';
     el.querySelector('#src-corpus-name').value = '';
+    el.querySelector('#src-store-strategy').value = 'bm25';
+    const cards = el.querySelectorAll('.strategy-card');
+    cards.forEach((c, i) => {
+      c.style.border = i === 0 ? '2px solid var(--accent,#5b6ee1)' : '2px solid transparent';
+      c.style.background = i === 0 ? '' : 'var(--bg-subtle,#f5f5f5)';
+    });
+  });
+
+  el.querySelectorAll('.strategy-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      el.querySelector('#src-store-strategy').value = card.dataset.strategy;
+      el.querySelectorAll('.strategy-card').forEach((c) => {
+        c.style.border = '2px solid transparent';
+        c.style.background = 'var(--bg-subtle,#f5f5f5)';
+      });
+      card.style.border = '2px solid var(--accent,#5b6ee1)';
+      card.style.background = '';
+    });
   });
 
   el.querySelector('#src-create-btn').addEventListener('click', async () => {
@@ -155,7 +194,7 @@ export function mountSources(el) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ name, sourceType: 'text' }),
+      body: JSON.stringify({ name, sourceType: 'text', storeStrategy: el.querySelector('#src-store-strategy').value || 'bm25' }),
     });
     el.querySelector('#src-corpus-name').value = '';
     el.querySelector('#src-new-form').style.display = 'none';

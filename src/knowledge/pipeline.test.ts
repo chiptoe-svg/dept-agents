@@ -1,10 +1,14 @@
 // src/knowledge/pipeline.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { createCorpus, corpusDir, readMeta } from './corpus.js';
 import { runTextPipeline, readChunks } from './pipeline.js';
+
+vi.mock('./stages/embed.js', () => ({
+  embedChunks: vi.fn().mockResolvedValue(new Map()),
+}));
 
 let tmpFolder: string;
 
@@ -39,6 +43,42 @@ describe('runTextPipeline', () => {
     await runTextPipeline(tmpFolder, meta.id);
     const updated = readMeta(tmpFolder, meta.id);
     expect(updated.status).toBe('error');
+  });
+
+  it('calls embedChunks when storeStrategy is dense', async () => {
+    const { embedChunks } = await import('./stages/embed.js');
+    (embedChunks as ReturnType<typeof vi.fn>).mockClear();
+
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-dense-'));
+    try {
+      const meta = createCorpus(folder, { name: 'test', sourceType: 'text', storeStrategy: 'dense' });
+      fs.writeFileSync(path.join(corpusDir(folder, meta.id), 'raw', 'a.txt'), 'Hello world.');
+      await runTextPipeline(folder, meta.id);
+
+      expect(embedChunks).toHaveBeenCalledTimes(1);
+      const finalMeta = readMeta(folder, meta.id);
+      expect(finalMeta.status).toBe('ready');
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  it('calls embedChunks and builds bm25.db when storeStrategy is hybrid', async () => {
+    const { embedChunks } = await import('./stages/embed.js');
+    (embedChunks as ReturnType<typeof vi.fn>).mockClear();
+
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-hybrid-'));
+    try {
+      const meta = createCorpus(folder, { name: 'test', sourceType: 'text', storeStrategy: 'hybrid' });
+      fs.writeFileSync(path.join(corpusDir(folder, meta.id), 'raw', 'a.txt'), 'Hello world.');
+      await runTextPipeline(folder, meta.id);
+
+      expect(embedChunks).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(path.join(corpusDir(folder, meta.id), 'bm25.db'))).toBe(true);
+      expect(readMeta(folder, meta.id).status).toBe('ready');
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
   });
 });
 

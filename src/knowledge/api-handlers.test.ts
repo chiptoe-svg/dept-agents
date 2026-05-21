@@ -12,6 +12,12 @@ import {
   handleInspect,
   handleQuery,
 } from './api-handlers.js';
+import { updateStatus } from './corpus.js';
+import type { CorpusMeta } from './types.js';
+
+vi.mock('./stages/embed.js', () => ({
+  embedChunks: vi.fn().mockResolvedValue(new Map([['__query__', new Float32Array([1, 0, 0, 0])]])),
+}));
 
 let tmpFolder: string;
 
@@ -144,5 +150,39 @@ describe('handleQuery', () => {
   it('returns 404 for unknown corpus', async () => {
     const r = await handleQuery(tmpFolder, 'nope', 'fox', 5);
     expect(r.status).toBe(404);
+  });
+});
+
+describe('handleCreateCorpus — storeStrategy', () => {
+  it('defaults storeStrategy to bm25', async () => {
+    const result = await handleCreateCorpus(tmpFolder, { name: 'test' });
+    expect(result.status).toBe(201);
+    expect((result.body as CorpusMeta).storeStrategy).toBe('bm25');
+  });
+
+  it('accepts storeStrategy dense', async () => {
+    const result = await handleCreateCorpus(tmpFolder, { name: 'dense-test', storeStrategy: 'dense' });
+    expect(result.status).toBe(201);
+    expect((result.body as CorpusMeta).storeStrategy).toBe('dense');
+  });
+
+  it('accepts storeStrategy hybrid', async () => {
+    const result = await handleCreateCorpus(tmpFolder, { name: 'hybrid-test', storeStrategy: 'hybrid' });
+    expect(result.status).toBe(201);
+    expect((result.body as CorpusMeta).storeStrategy).toBe('hybrid');
+  });
+});
+
+describe('handleQuery — dense strategy', () => {
+  it('calls embedChunks for query and returns results array', async () => {
+    const { embedChunks } = await import('./stages/embed.js');
+    const createResult = await handleCreateCorpus(tmpFolder, { name: 'd', storeStrategy: 'dense' });
+    const meta = createResult.body as CorpusMeta;
+    updateStatus(tmpFolder, meta.id, 'ready');
+
+    const result = await handleQuery(tmpFolder, meta.id, 'hello', 5);
+    expect(result.status).toBe(200);
+    expect(embedChunks).toHaveBeenCalled();
+    expect((result.body as { results: unknown[] }).results).toBeInstanceOf(Array);
   });
 });
