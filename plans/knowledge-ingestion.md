@@ -34,6 +34,65 @@ extraction/chunking settings.
 
 ---
 
+## UI: progressive disclosure
+
+All source categories and all extraction/storage strategies are available,
+but nothing is overwhelming on first contact. Entry point is a source
+picker + named preset cards; depth is revealed by expanding steps.
+
+### Three disclosure layers
+
+**Layer 0 — always visible**
+Source picker (Upload / YouTube / URL / GWS / …) and four preset cards.
+Selecting a source + preset and hitting "Build corpus" is the complete
+happy path. A live cost estimate updates as selections change.
+
+**Layer 1 — expand a preset (one click per step)**
+The preset unfolds into its pipeline steps as expandable pills. Each pill
+shows what the preset chose; clicking it opens Layer 2 for that step.
+
+```
+Extract → [V2: Whisper]   Chunk → [sentence]   Store → [hybrid]
+```
+
+**Layer 2 — step settings**
+Model pickers, numeric controls, prompt overrides. For example, expanding
+the Extract pill on a video corpus reveals the V1–V5 selector and, for V3+,
+the frame interval and vision model choice.
+
+### Named presets
+
+Presets are the pedagogical on-ramp. Each is a fully specified pipeline
+that a student can use as-is or fork. Forking one variable updates the
+preset label to "Standard (modified)" and recalculates the cost estimate —
+that delta IS the lesson.
+
+| Preset | Extract | Chunk | Store | Cost |
+|---|---|---|---|---|
+| **Quick** | V1 transcript / text strip | fixed-512 | BM25 keyword | free |
+| **Standard** | V2 Whisper / PyMuPDF | sentence boundary | hybrid BM25 + embedding | low |
+| **Deep** | V4 transcript-guided frames | section / hierarchical | hybrid + parent-child | medium |
+| **Frontier** | V5 video snippets / full multimodal | semantic breakpoints | hybrid + graph | high |
+
+Non-video sources use the equivalent extraction tier (V1 = existing
+transcript or plain text; V2 = Whisper / OCR; V4 = LLM-guided extraction;
+V5 = vision model over figures/pages).
+
+### Corpus inspection panel
+
+Before committing a corpus build, students see:
+- Raw extracted text sample (first 3 chunks)
+- Chunk count + estimated token total
+- Cost breakdown per step (embedding tokens, vision model calls, Whisper
+  minutes)
+- For video: a sample frame with its generated description
+
+This is not a confirmation dialog — it is part of the curriculum. Seeing
+that a 90-minute lecture yields 3,200 chunks at $0.32 with ada-002 vs.
+$0.00 with BGE-small is a concrete data point, not a footnote.
+
+---
+
 ## Source taxonomy
 
 ### Category 1 — Clean text
