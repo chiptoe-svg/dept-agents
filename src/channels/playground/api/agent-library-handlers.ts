@@ -12,6 +12,7 @@ import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
 import { isContainerRunning, killContainer } from '../../../container-runner.js';
 import { canReadDraft } from '../draft-read-gate.js';
 import {
+  copyDirRecursive,
   DEFAULT_AGENTS_DIR,
   deleteEntry,
   entryDir,
@@ -240,21 +241,5 @@ export function handleFromTemplate(
     return { status: 200, body: { slug: newSlug } };
   } catch (err) {
     return { status: 500, body: { error: (err as Error).message } };
-  }
-}
-
-/** Copy a directory recursively — duplicated from agent-library.ts to avoid circular deps. */
-function copyDirRecursive(src: string, dst: string): void {
-  if (!fs.existsSync(src)) return;
-  fs.mkdirSync(dst, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
-    const s = path.join(src, entry.name);
-    const d = path.join(dst, entry.name);
-    if (entry.isDirectory()) {
-      copyDirRecursive(s, d);
-    } else {
-      fs.copyFileSync(s, d);
-    }
   }
 }
