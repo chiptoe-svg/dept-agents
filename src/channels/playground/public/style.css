@@ -729,13 +729,49 @@ select.model-changed {
   padding: 8px;
   min-height: 0;
 }
+.skills-browser { flex: 0 0 210px; }
 .skills-layout .library-panel #skills-list { flex: 1; overflow-y: auto; }
-.skill-entry.skill-incompatible { color: #a44; }
-.skill-entry.skill-partial { color: #b88; }
-.preview-footer {
-  padding: 6px 10px;
-  border-top: 1px solid #eee;
-  background: #fafafa;
+
+/* Shown at the top of the list when GET /api/skills/library failed. */
+.skills-load-error {
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* File-browser rows: a clickable green toggle + the skill name. */
+.skill-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.skill-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-entry.skill-incompatible .skill-name { color: #a44; }
+.skill-entry.skill-partial .skill-name { color: #b88; }
+.skill-toggle {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #bbb;
+  background: #fff;
+  cursor: pointer;
+}
+.skill-toggle:hover { border-color: #2ea043; }
+.skill-toggle.active {
+  background: #2ea043;
+  border-color: #2ea043;
 }
 .file-pane {
   display: flex;
@@ -769,51 +805,77 @@ select.model-changed {
   white-space: pre-wrap;
   background: #fff;
 }
-.skills-active h3 { margin: 0; padding: 8px 10px; font-size: 12px; border-bottom: 1px solid #eee; }
-.active-skills {
-  list-style: none;
-  margin: 0;
-  padding: 6px;
-  overflow-y: auto;
-  flex: 1;
-  font-size: 12px;
+/* Right panel — the skill editor. The file strip picks which file of the
+   skill is in the textarea; the name input sits in the footer with Save. */
+.editor-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 10px;
+  border-bottom: 1px solid #eee;
+  background: #fafafa;
 }
-.active-entry {
+.editor-file {
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background: #fff;
+  color: #555;
+  cursor: pointer;
+}
+.editor-file:hover { border-color: #4a90e2; }
+.editor-file.active {
+  background: #e6f0ff;
+  border-color: #4a90e2;
+  color: #1a4d8f;
+  font-weight: 600;
+}
+.editor-file-add {
+  color: #2ea043;
+  border-style: dashed;
+}
+.editor-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid #eee;
+  background: #fafafa;
+}
+.editor-name {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-bottom: 4px;
-  background: #fff;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #555;
 }
-.active-cost { margin-left: auto; color: #888; font-size: 11px; }
-.skill-active { background: #fff8dc; border-left: 3px solid #d4a017; padding-left: 4px; }
-.active-all-banner { padding: 6px 8px; background: #fff8dc; border: 1px solid #e8d780; border-radius: 4px; font-size: 12px; color: #6b5b1a; margin-bottom: 6px; }
-.active-entry-builtin { /* provenance signalled by icon — no special bg */ }
-.active-remove {
-  background: none;
-  border: none;
-  color: #a44;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-}
-.active-empty,
-.active-all {
-  font-style: italic;
-  color: #888;
-  padding: 6px;
+.editor-name input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
 }
 .cost-rollup {
-  padding: 8px 10px;
+  padding: 5px 10px;
   border-top: 1px solid #eee;
   background: #fafafa;
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "+ New skill" lives in the editor header, pushed to the right edge. */
+.preview-header .btn {
+  margin-left: auto;
+  padding: 2px 8px;
 }
 
 /* ── Models tab ───────────────────────────────────────────────────────── */
@@ -1082,6 +1144,16 @@ select.model-changed {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ── Add-a-student card ──────────────────────────────────────────────────── */
+.home-form { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.home-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #555; }
+.home-form label.cc-check { flex-direction: row; align-items: center; gap: 6px; }
+.home-form input[type="text"],
+.home-form input[type="email"] { font-size: 13px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 4px; }
+.add-student-result { margin-top: 12px; padding: 10px 12px; background: #f0f7f1; border: 1px solid #cfe6d3; border-radius: 6px; font-size: 13px; }
+.as-link-row { display: flex; gap: 6px; margin: 4px 0; }
+.as-link { flex: 1; font-family: ui-monospace, monospace; font-size: 12px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
 
 /* ── classroom-provider-auth:class-controls-providers START ──────────────────── */
 .cc-banner-warn { padding: 8px 12px; background: #fff7e6; color: #b8741a; border: 1px solid #f0d49a; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }

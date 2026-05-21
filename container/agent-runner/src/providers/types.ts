@@ -155,4 +155,6 @@ export type ProviderEvent =
       tokensCached: number;
       tokensOut: number;
       tokensReasoning: number;
+      /** Text the model generated for this call (absent on tool-use-only calls). */
+      responsePreview?: string;
     };

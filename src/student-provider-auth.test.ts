@@ -1,7 +1,26 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Capture tmpDir before the factory runs so the factory closure can close
+// over it. Reassigned per-test in beforeEach; the factory reads `tmpDir` at
+// call time, so assignments before each test are visible. Same pattern as
+// student-google-auth.test.ts — student-creds-paths.ts resolves DATA_DIR at
+// module load, so the path helper must be mocked rather than chdir'd around.
+let tmpDir = '';
+
+// Inline regex: can't import the real sanitizeUserIdForPath here (would defeat the mock).
+// Mirror: provider-auth.test.ts uses the same factory body.
+vi.mock('./student-creds-paths.js', () => ({
+  sanitizeUserIdForPath: (userId: string) => userId.replace(/[^A-Za-z0-9_-]/g, '_'),
+  studentProviderCredsPath: (userId: string, providerId: string) => {
+    const sanitized = userId.replace(/[^A-Za-z0-9_-]/g, '_');
+    return path.join(tmpDir, 'student-provider-creds', sanitized, `${providerId}.json`);
+  },
+}));
+
 import {
   addApiKey,
   addOAuth,
@@ -11,18 +30,12 @@ import {
   setActiveMethod,
 } from './student-provider-auth.js';
 
-let tmpRoot: string;
-let originalCwd: string;
-
 beforeEach(() => {
-  originalCwd = process.cwd();
-  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'spa-test-'));
-  process.chdir(tmpRoot);
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spa-test-'));
 });
 
 afterEach(() => {
-  process.chdir(originalCwd);
-  fs.rmSync(tmpRoot, { recursive: true, force: true });
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('student-provider-auth', () => {
@@ -86,14 +99,14 @@ describe('student-provider-auth', () => {
 
   it('sanitizes user_id for filesystem (slashes, colons, dots)', () => {
     addApiKey('playground:alice@x.edu', 'claude', 'sk-1');
-    const sanitized = 'playground_alice_at_x.edu';
-    const expectedPath = path.join(tmpRoot, 'data', 'student-provider-creds', sanitized, 'claude.json');
+    const sanitized = 'playground_alice_x_edu';
+    const expectedPath = path.join(tmpDir, 'student-provider-creds', sanitized, 'claude.json');
     expect(fs.existsSync(expectedPath)).toBe(true);
   });
 
   it('file is created with mode 0600 and dir with mode 0700', () => {
     addApiKey('alice', 'claude', 'sk-1');
-    const dir = path.join(tmpRoot, 'data', 'student-provider-creds', 'alice');
+    const dir = path.join(tmpDir, 'student-provider-creds', 'alice');
     const file = path.join(dir, 'claude.json');
     expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);

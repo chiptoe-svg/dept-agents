@@ -23,6 +23,11 @@ describe('models API', () => {
         return [];
       }),
     }));
+    vi.doMock('../../../model-providers/index.js', () => ({
+      getModelProvider: (name: string) => ({
+        getAuth: () => (name === 'claude' ? { name: 'x-api-key', value: 'k' } : null),
+      }),
+    }));
     const { handleGetModels } = await import('./models.js');
     const result = await handleGetModels('draft_demo');
     expect(result.status).toBe(200);
@@ -32,6 +37,38 @@ describe('models API', () => {
     expect(body.discovered).toHaveLength(1);
     const discovered = body.discovered as unknown[];
     expect(discovered[0]).toEqual({ provider: 'claude', id: 'claude-opus' });
+  });
+
+  it('GET reports per-provider auth: cloud via getAuth, local via reachability', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true })),
+    );
+    vi.doMock('../../../model-catalog.js', () => ({
+      getModelCatalog: () => [
+        { id: 'claude-haiku-4-5', provider: 'claude' },
+        { id: 'gpt-5-mini', provider: 'codex' },
+        { id: 'Qwen3.6-35B', provider: 'local' },
+      ],
+    }));
+    vi.doMock('../../../container-config.js', () => ({
+      readContainerConfig: () => ({ skills: 'all' }),
+    }));
+    vi.doMock('../../../model-discovery.js', () => ({
+      listAllForProvider: vi.fn(async () => []),
+    }));
+    vi.doMock('../../../model-providers/index.js', () => ({
+      // claude has a host key; codex does not.
+      getModelProvider: (name: string) => ({
+        getAuth: () => (name === 'claude' ? { name: 'x-api-key', value: 'k' } : null),
+      }),
+    }));
+    const { handleGetModels } = await import('./models.js');
+    const result = await handleGetModels('draft_demo');
+    expect(result.status).toBe(200);
+    const body = result.body as { providerAuth: Record<string, boolean> };
+    expect(body.providerAuth).toEqual({ claude: true, codex: false, local: true });
+    vi.unstubAllGlobals();
   });
 
   it('PUT replaces the whitelist', async () => {

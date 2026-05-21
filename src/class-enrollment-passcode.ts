@@ -23,11 +23,9 @@ const SCRYPT_KEY_LEN = 32;
 const SCRYPT_N = 16384;
 
 interface PasscodeRow {
-  id: number;
   passcode_hash: string;
   passcode_salt: string;
   created_at: string;
-  rotated_by_user_id: string | null;
 }
 
 // Module-local cache: created_at → cleartext.
@@ -50,10 +48,10 @@ function randomDigits(n: number): string {
 }
 
 /** Get the current passcode row from the DB (hash + metadata). */
-export function getCurrentPasscode(): { passcode_hash: string; passcode_salt: string; created_at: string } | null {
+function getCurrentPasscode(): PasscodeRow | null {
   const row = getDb()
     .prepare('SELECT passcode_hash, passcode_salt, created_at FROM class_enrollment_passcodes LIMIT 1')
-    .get() as Pick<PasscodeRow, 'passcode_hash' | 'passcode_salt' | 'created_at'> | undefined;
+    .get() as PasscodeRow | undefined;
   return row ?? null;
 }
 
@@ -108,9 +106,4 @@ export function verifyPasscode(plain: string): boolean {
 
   if (candidateHash.length !== storedHash.length) return false;
   return crypto.timingSafeEqual(candidateHash, storedHash);
-}
-
-/** Test hook — clear the in-memory cleartext cache. */
-export function _resetCleartextCacheForTest(): void {
-  cleartextCache.clear();
 }
