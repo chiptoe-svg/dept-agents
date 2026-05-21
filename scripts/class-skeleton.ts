@@ -54,9 +54,15 @@ import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.
 import { upsertRosterEntry } from '../src/db/classroom-roster.js';
 import { initDb, getDb } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrations/index.js';
-import { readContainerConfig, writeContainerConfig, type ContainerConfig } from '../src/container-config.js';
+import { writeContainerConfig } from '../src/container-config.js';
 import { collectSkeletonMounts } from '../src/skeleton-mount-registry.js';
 import type { AgentGroup } from '../src/types.js';
+import {
+  STUDENT_PERSONA,
+  STUDENT_CLAUDE_MD,
+  classSharedStudentMd,
+  makeContainerConfig,
+} from '../src/class-student-provision.js';
 
 import './class-skeleton-extensions.js';
 
@@ -150,31 +156,6 @@ function instructorFolder(n: number): string {
   return `instructor_${String(n).padStart(2, '0')}`;
 }
 
-const STUDENT_PERSONA = (name: string): string => `# ${name}'s agent
-
-You are ${name}'s personal class agent. Help with class assignments,
-research, and questions about course material.
-
-## Quirk
-
-End every response with a short dad joke (one line, groan-worthy). The
-student can remove this section if they don't like it.
-
-## Resources you have
-
-- \`/workspace/kb/\` — class knowledgebase (read-only). Course material,
-  syllabus, lecture notes. Check here before saying you don't know.
-- \`/workspace/wiki/\` — class wiki (read/write). Shared with all classmates.
-  Contributions are git-attributed to ${name}.
-- \`/workspace/drive/\` — ${name}'s personal Google Drive folder when the
-  Workspace skill is installed. Files saved here sync to ${name}'s Drive.
-
-## Customize me
-
-Edit this file in the playground (\`/playground\` on Telegram) to change my
-persona, behavior, and tone. The default above is just a starting point.
-`;
-
 const TA_PERSONA = (name: string): string => `# ${name}'s TA agent
 
 You are ${name}, a teaching assistant for this class. Your job is to help
@@ -223,138 +204,9 @@ Edit this file in the playground to change my persona, behavior, and tone.
 The default above is just a starting point.
 `;
 
-/**
- * Default content for `data/class-shared-students.md`. Symlinked into
- * each student's group dir as `.class-shared.md`. The instructor can
- * edit this one file to change the class-wide stance for every student.
- *
- * The "How students reach the playground" section reflects the two
- * routes available after Phase 2 of plans/classroom-web-multiuser.md:
- *   - Web (Google sign-in) — preferred for students with a Google
- *     account on the class roster. URL substituted from
- *     PLAYGROUND_PUBLIC_URL at provisioning time.
- *   - Telegram magic link — fallback for instructors and anyone whose
- *     email isn't on the roster yet.
- */
-function classSharedStudentMd(): string {
-  const playgroundUrl = process.env.PLAYGROUND_PUBLIC_URL || process.env.NANOCLAW_PUBLIC_URL || null;
-  const webHowto = playgroundUrl
-    ? `Visit ${playgroundUrl}/login and sign in with the Google account on the
-class roster. You'll land on a home page; click "Open Playground" to
-edit my persona, skills, and provider settings.`
-    : `(Ask your instructor for the playground URL. Sign in with the Google
-account on the class roster.)`;
-
-  return `## How students reach the playground
-
-You can iterate on my persona / skills / provider any time via the
-**playground** — a web workbench scoped to your draft.
-
-**Web sign-in (preferred):** ${webHowto}
-
-**Telegram fallback:** if you don't have a Google account on the class
-roster, send \`/playground\` to the class bot on Telegram and it will
-DM you a magic-link URL that opens the same workbench. Same multi-user
-session store as the web path — your session won't kick out anyone
-else's.
-
-## How you teach
-
-Approach learning Socratically. When a student asks a question, prefer
-asking *them* a question that nudges them toward the answer over
-delivering the answer directly. When they're stuck on code, ask what
-they've tried. When they're confused about a concept, ask what part is
-fuzziest.
-
-Don't be obstructionist — if they truly can't make progress after a
-couple of nudges, give the answer with a brief explanation of *why*.
-Socratic isn't synonymous with cryptic.
-
-When you do give an answer, frame it so the student can verify it
-themselves rather than just trusting you.
-
-## Web hosting
-
-When publishing a website, always use \`/var/www/sites/<your-folder>/<sitename>/\`
-where \`<your-folder>\` is your group folder name (e.g. \`student_07\`,
-\`ta_03\`, \`instructor_01\`). This keeps your sites separate from your
-classmates' sites — never write to \`/var/www/sites/\` directly.
-
-The host's Caddy server serves your site at
-\`http://<host>/<your-folder>/<sitename>/\`. Send the URL when done.
-`;
-}
-
-const STUDENT_CLAUDE_MD = `@./.claude-shared.md
-@./.class-shared.md
-@./CLAUDE.local.md
-`;
-
 const NON_STUDENT_CLAUDE_MD = `@./.claude-shared.md
 @./CLAUDE.local.md
 `;
-
-/**
- * Resolve the instructor's currently-active skill set. New student agents
- * inherit from this so the class starts in a consistent skill state. If no
- * instructor agent exists (or the read fails), fall back to the global
- * default (empty list).
- */
-function inheritedSkills(): ContainerConfig['skills'] {
-  try {
-    // Prefer instructor_01 (class instructor convention); fall back to any
-    // dm-with-* group (single-user installs without classroom scaffolding).
-    const instructor =
-      getAgentGroupByFolder('instructor_01') ||
-      (getDb()
-        .prepare("SELECT * FROM agent_groups WHERE folder LIKE 'dm-with-%' ORDER BY created_at ASC LIMIT 1")
-        .get() as AgentGroup | undefined) ||
-      null;
-    if (instructor) {
-      const cfg = readContainerConfig(instructor.folder);
-      if (cfg.skills === 'all' || Array.isArray(cfg.skills)) return cfg.skills;
-    }
-  } catch (err) {
-    console.warn('  [warn] inheritedSkills failed, defaulting to empty:', err);
-  }
-  return [];
-}
-
-function makeContainerConfig(opts: {
-  kb: string | null;
-  wiki: string | null;
-  folder: string;
-  extraMounts: ContainerConfig['additionalMounts'];
-  isStudent?: boolean;
-}): ContainerConfig {
-  const additionalMounts: ContainerConfig['additionalMounts'] = [];
-  if (opts.kb) {
-    additionalMounts.push({ hostPath: opts.kb, containerPath: '/workspace/kb', readonly: true });
-  }
-  if (opts.wiki) {
-    additionalMounts.push({ hostPath: opts.wiki, containerPath: '/workspace/wiki', readonly: false });
-  }
-  for (const mount of opts.extraMounts) {
-    additionalMounts.push(mount);
-  }
-  return {
-    mcpServers: {},
-    packages: { apt: [], npm: [] },
-    additionalMounts,
-    // Student agents inherit the instructor's currently-active skill set
-    // at creation time. TAs / instructors / non-classroom groups use the
-    // generic empty default (manual curation via Skills tab afterwards).
-    skills: opts.isStudent ? inheritedSkills() : [],
-    // All class-skeleton-provisioned groups (students AND TAs) run codex.
-    // Class-pool architecture is Codex/OpenAI funded via CLASS_OPENAI_API_KEY;
-    // running the Claude SDK for TAs would route their messages through
-    // Anthropic. Hard-code 'codex' unconditionally.
-    // TODO: make configurable when classes diverge (CLI flag or class-config).
-    provider: 'codex',
-    groupName: opts.folder,
-    assistantName: opts.folder,
-  };
-}
 
 interface ProvisionTarget {
   name: string;

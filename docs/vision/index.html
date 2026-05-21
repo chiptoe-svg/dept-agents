@@ -844,9 +844,10 @@
       <div class="concept">
         <dt class="concept-name">Knowledge retrieval<span class="subtle">what an agent knows beyond its training</span></dt>
         <dd class="concept-body">
-          Build pipelines — chunk → embed → retrieve → rerank — and run them against shared
-          documents. Compare strategies on the same query and see where each one breaks.
-          <span class="concept-loc future">RAG tab · forthcoming</span>
+          Build corpora from PDFs, video, text, and data in the Sources lab bench, then design
+          retrieve–rerank–prompt pipelines in the Retrieval lab bench. Compare strategies on
+          the same query and see where each one breaks.
+          <span class="concept-loc future">Sources + Retrieval tabs · forthcoming</span>
         </dd>
       </div>
       <div class="concept">
@@ -1114,15 +1115,17 @@
 <section id="tomorrow">
   <div class="container">
     <p class="section-eyebrow">Section 04 — Tabs forthcoming</p>
-    <h2>Four new tabs — Bench, Harness, Knowledge, Eval.</h2>
+    <h2>Five new tabs — Bench, Harness, Sources, Retrieval, Eval.</h2>
     <p>
       The shipped tabs cover authoring and operating one agent at a time. The forthcoming tabs
-      add the four things that matter when you're teaching what's <em>inside</em> agents and
+      add the five things that matter when you're teaching what's <em>inside</em> agents and
       comparing across them: <strong>Bench</strong> measures cost and quality across systems,
-      <strong>Harness</strong> exposes the agent's memory and context window, <strong>Knowledge</strong>
-      is where retrieval pipelines and expert assistants get built, and <strong>Eval</strong>
-      compares strategies side by side. Below are schematic mockups drawn before implementation,
-      to settle the visual language and the user's mental model before any code lands.
+      <strong>Harness</strong> exposes the agent's memory and context window,
+      <strong>Sources</strong> is where corpora get built from PDFs, video, text, and data,
+      <strong>Retrieval</strong> is where retrieval pipelines get designed and tested, and
+      <strong>Eval</strong> compares strategies side by side. Below are schematic mockups drawn
+      before implementation, to settle the visual language and the user's mental model before
+      any code lands.
     </p>
 
     <div class="tab-gallery">
@@ -1147,7 +1150,8 @@
             <span class="mk-tab">Models</span>
             <span class="mk-tab active">Bench</span>
             <span class="mk-tab">Harness</span>
-            <span class="mk-tab">Know.</span>
+            <span class="mk-tab">Src.</span>
+            <span class="mk-tab">Ret.</span>
             <span class="mk-tab">Eval</span>
           </div>
           <div class="mk-body">
@@ -1253,7 +1257,8 @@
             <span class="mk-tab">Models</span>
             <span class="mk-tab">Bench</span>
             <span class="mk-tab active">Harness</span>
-            <span class="mk-tab">Know.</span>
+            <span class="mk-tab">Src.</span>
+            <span class="mk-tab">Ret.</span>
             <span class="mk-tab">Eval</span>
           </div>
           <div class="mk-body">
@@ -1294,17 +1299,18 @@
         </div>
       </div>
 
-      <!-- KNOWLEDGE / RAG / EXPERT ASSISTANT -->
+      <!-- SOURCES — corpus building lab bench -->
       <div class="tab-card coming">
         <div class="tab-meta">
-          <span class="tab-name">Knowledge</span>
-          <span class="tab-tag future">○ Phase 4 · planned</span>
+          <span class="tab-name">Sources</span>
+          <span class="tab-tag future">○ Phase 7 · planned</span>
         </div>
         <p class="tab-summary">
-          Where RAG strategies and expert assistants get built. Author retrieval pipelines —
-          chunk, embed, retrieve, rerank — save them as named strategies, and query them
-          through Chat to turn the assembled corpus into a subject-matter expert students can
-          interrogate.
+          Lab bench for building named corpora. Pick a source sub-tab (PDF, Video, Text,
+          Complex, Data), choose an extraction and storage preset, and inspect raw chunks
+          and a live cost estimate before committing. The Video sub-tab exposes a five-rung
+          extraction ladder — from free transcript-only up to frontier video-snippet analysis
+          — so students can measure cost against quality directly.
         </p>
         <div class="tab-mockup">
           <div class="mk-topbar">
@@ -1313,34 +1319,74 @@
             <span class="mk-tab">Models</span>
             <span class="mk-tab">Bench</span>
             <span class="mk-tab">Harness</span>
-            <span class="mk-tab active">Know.</span>
+            <span class="mk-tab active">Src.</span>
+            <span class="mk-tab">Ret.</span>
             <span class="mk-tab">Eval</span>
           </div>
           <div class="mk-body">
             <div class="mk-card">
-              <div class="mk-card-head">Strategy · "default-naive" · saved</div>
-              <div style="display:flex; gap:4px; align-items:center; margin-top:8px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:9px;">
-                <span class="mk-chip on">corpus</span>
-                <span style="color:var(--text-faint);">→</span>
-                <span class="mk-chip on">chunk · 512</span>
-                <span style="color:var(--text-faint);">→</span>
-                <span class="mk-chip on">embed · ada-002</span>
-                <span style="color:var(--text-faint);">→</span>
-                <span class="mk-chip on">top-k · 5</span>
-                <span style="color:var(--text-faint);">→</span>
-                <span class="mk-chip on">prompt · default</span>
+              <div class="mk-card-head">Source · Video</div>
+              <div style="display:flex; gap:4px; margin-top:6px; font-family:'IBM Plex Mono',monospace; font-size:9px;">
+                <span class="mk-chip">PDF</span>
+                <span class="mk-chip on">Video</span>
+                <span class="mk-chip">Text</span>
+                <span class="mk-chip">Complex</span>
+                <span class="mk-chip">Data</span>
               </div>
+              <div class="mk-row" style="margin-top:6px;"><span class="mk-row-name">Input</span><span class="mk-row-value">lecture-recording.mp4</span></div>
+              <div class="mk-row"><span class="mk-row-name">Extraction</span><span class="mk-row-value">V4 · transcript-guided frames</span></div>
             </div>
             <div class="mk-card">
-              <div class="mk-card-head">Strategy · "rerank-tighter" · draft</div>
+              <div class="mk-card-head">Preset · Standard (modified)</div>
+              <div style="display:flex; gap:4px; align-items:center; margin-top:8px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:9px;">
+                <span class="mk-chip on">V4 frames</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">sentence chunks</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="mk-chip on">hybrid BM25+BGE</span>
+              </div>
+              <div style="font-size:9px; color:var(--text-muted); margin-top:6px; font-family:'IBM Plex Mono',monospace;">modified from Standard · est. $0.14 · 1,820 chunks</div>
+            </div>
+            <div class="mk-card">
+              <div class="mk-card-head">Corpus preview</div>
+              <div class="mk-row"><span class="mk-row-name">chunks</span><span class="mk-row-value">1,820 · ~320k tokens</span></div>
+              <div class="mk-row"><span class="mk-row-name">embedding</span><span class="mk-row-value">BGE-small · local · free</span></div>
+              <div class="mk-row"><span class="mk-row-name">vision calls</span><span class="mk-row-value">47 frames · $0.14</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RETRIEVAL — pipeline design lab bench -->
+      <div class="tab-card coming">
+        <div class="tab-meta">
+          <span class="tab-name">Retrieval</span>
+          <span class="tab-tag future">○ Phase 7 · planned</span>
+        </div>
+        <p class="tab-summary">
+          Lab bench for designing retrieval pipelines. Select a corpus, configure the
+          retrieve–rerank–prompt chain, and type a test query to see results update live.
+          Swap a corpus or change a reranker and see what changes. Compare named pipelines
+          against the same query before wiring one into Chat.
+        </p>
+        <div class="tab-mockup">
+          <div class="mk-topbar">
+            <span class="mk-tab">Home</span>
+            <span class="mk-tab">Chat</span>
+            <span class="mk-tab">Models</span>
+            <span class="mk-tab">Bench</span>
+            <span class="mk-tab">Harness</span>
+            <span class="mk-tab">Src.</span>
+            <span class="mk-tab active">Ret.</span>
+            <span class="mk-tab">Eval</span>
+          </div>
+          <div class="mk-body">
+            <div class="mk-card">
+              <div class="mk-card-head">Pipeline · "rerank-tighter" · draft</div>
               <div style="display:flex; gap:4px; align-items:center; margin-top:8px; flex-wrap:wrap; font-family:'IBM Plex Mono',monospace; font-size:9px;">
                 <span class="mk-chip on">corpus</span>
                 <span style="color:var(--text-faint);">→</span>
-                <span class="mk-chip on">chunk · 256</span>
-                <span style="color:var(--text-faint);">→</span>
-                <span class="mk-chip on">embed · BGE</span>
-                <span style="color:var(--text-faint);">→</span>
-                <span class="mk-chip on">top-k · 20</span>
+                <span class="mk-chip on">hybrid · top-20</span>
                 <span style="color:var(--text-faint);">→</span>
                 <span class="mk-chip on">rerank · cohere</span>
                 <span style="color:var(--text-faint);">→</span>
@@ -1375,7 +1421,8 @@
             <span class="mk-tab">Models</span>
             <span class="mk-tab">Bench</span>
             <span class="mk-tab">Harness</span>
-            <span class="mk-tab">Know.</span>
+            <span class="mk-tab">Src.</span>
+            <span class="mk-tab">Ret.</span>
             <span class="mk-tab active">Eval</span>
           </div>
           <div class="mk-body">

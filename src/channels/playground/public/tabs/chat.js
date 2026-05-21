@@ -103,8 +103,13 @@ function loadModelDropdowns(el, folder) {
       const providerAllowed = isOwner || !ac
         ? null
         : (p) => !!(ac.providers && ac.providers[p] && ac.providers[p].allow);
+      // Hide providers the host can't authenticate (no API key / OAuth, or
+      // the local server is offline) — selecting one would only produce a
+      // failed call. Applies to everyone, owner included. A provider absent
+      // from the map stays visible (defensive: don't hide on partial data).
+      const providerAuth = data.providerAuth || {};
       const providers = [...new Set(visible.map((m) => m.provider))].filter(
-        (p) => !providerAllowed || providerAllowed(p),
+        (p) => (!providerAllowed || providerAllowed(p)) && providerAuth[p] !== false,
       );
       provSel.innerHTML = '';
       for (const p of providers) provSel.add(new Option(p, p));
@@ -139,10 +144,15 @@ function loadModelDropdowns(el, folder) {
           renderModels();
           return;
         }
-        const ok = await showProviderSwitchModal(lastProvider, newProvider);
-        if (!ok) {
-          provSel.value = lastProvider;
-          return;
+        const log = el.querySelector('#chat-log');
+        // Only warn when there's a live conversation to lose — switching on
+        // a fresh chat costs nothing, so don't pop a modal for it.
+        if (log && log.querySelector('.msg.user, .msg.agent')) {
+          const ok = await showProviderSwitchModal(lastProvider, newProvider);
+          if (!ok) {
+            provSel.value = lastProvider;
+            return;
+          }
         }
         try {
           const r = await fetch(`/api/drafts/${folder}/provider`, {
@@ -172,17 +182,24 @@ function loadModelDropdowns(el, folder) {
         const newModel = modelSel.value;
         if (newModel === lastModel) return;
 
-        // In agent mode the model is wired into container.json + agent_groups.model
-        // and read at spawn time, so switching means restarting the session
-        // container — which drops the running conversation. Warn first.
+        // In agent mode the model is persisted to container.json +
+        // agent_groups.model. The codex/local provider re-reads container.json
+        // each turn, so a same-provider switch applies on the next message —
+        // no respawn, conversation intact. The claude provider freezes its
+        // model at container spawn, so switching it needs a respawn: warn
+        // first and clear the dropped conversation.
         // In direct mode the dropdown directly controls the request body, no
         // persisted state changes and no container involved.
         const isAgentMode = el.querySelector('#mode-agent')?.classList.contains('active');
         if (isAgentMode) {
-          const ok = await showModelSwitchModal(lastModel, newModel);
-          if (!ok) {
-            modelSel.value = lastModel;
-            return;
+          const needsRespawn = provSel.value === 'claude';
+          // Only warn (respawn case) when there's a live conversation to lose.
+          if (needsRespawn && log.querySelector('.msg.user, .msg.agent')) {
+            const ok = await showModelSwitchModal(lastModel, newModel);
+            if (!ok) {
+              modelSel.value = lastModel;
+              return;
+            }
           }
           try {
             const r = await fetch(`/api/drafts/${folder}/active-model`, {
@@ -193,8 +210,12 @@ function loadModelDropdowns(el, folder) {
             });
             if (!r.ok) throw new Error(`status ${r.status}`);
             lastModel = newModel;
-            log.innerHTML = '';
-            appendSystemNote(log, `— model switched to ${newModel}; container respawning —`);
+            if (needsRespawn) {
+              log.replaceChildren();
+              appendSystemNote(log, `— model switched to ${newModel}; container respawning —`);
+            } else {
+              appendChatNote(log, `— model switched to ${newModel}; next reply will use it —`);
+            }
           } catch (err) {
             appendChatNote(log, `Model switch failed: ${String(err)}`);
             modelSel.value = lastModel;
@@ -498,7 +519,6 @@ function finalizeTurn(turnEl) {
   const modelCalls = turnEl.querySelectorAll('.trace-model-call');
   const agentCall = turnEl.querySelector('.trace-agent-call');
   let tokensIn = 0, tokensOut = 0, tokensCached = 0, tokensReasoning = 0, cost = 0;
-  let threadCumulative = null;
   if (modelCalls.length > 0) {
     // Codex-style turn — sum the per-call deltas.
     for (const li of modelCalls) {
@@ -507,16 +527,6 @@ function finalizeTurn(turnEl) {
       tokensCached   += parseFloat(li.dataset.tokensCached   || '0') || 0;
       tokensReasoning += parseFloat(li.dataset.tokensReasoning || '0') || 0;
       cost           += parseFloat(li.dataset.cost           || '0') || 0;
-    }
-    // Surface the thread-cumulative number too, so heavy threads have
-    // visible context for instructors planning class budgets.
-    if (agentCall) {
-      const tIn  = parseFloat(agentCall.dataset.tokensIn  || '0') || 0;
-      const tOut = parseFloat(agentCall.dataset.tokensOut || '0') || 0;
-      const tCost = parseFloat(agentCall.dataset.cost     || '0') || 0;
-      if (tIn > 0 || tOut > 0 || tCost > 0) {
-        threadCumulative = { tIn, tOut, tCost };
-      }
     }
   } else if (agentCall) {
     // Claude-style turn — agent_call IS the turn (single API call).
@@ -536,24 +546,13 @@ function finalizeTurn(turnEl) {
   const parts = [];
   if (tokensIn > 0) parts.push(`${tokensIn} in`);
   if (tokensCached > 0) parts.push(`${tokensCached} cached`);
-  if (tokensReasoning > 0) parts.push(`${tokensReasoning} reasoning`);
-  if (tokensOut > 0) parts.push(`${tokensOut} out`);
-  if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
-  let footText = `turn total: ${parts.join(' · ')}`;
-  if (threadCumulative) {
-    const tcParts = [];
-    if (threadCumulative.tIn > 0) tcParts.push(`${threadCumulative.tIn} in`);
-    if (threadCumulative.tOut > 0) tcParts.push(`${threadCumulative.tOut} out`);
-    if (threadCumulative.tCost > 0) {
-      tcParts.push(
-        threadCumulative.tCost < 0.001
-          ? `$${threadCumulative.tCost.toFixed(5)}`
-          : `$${threadCumulative.tCost.toFixed(4)}`,
-      );
-    }
-    if (tcParts.length > 0) footText += `\nthread cumulative: ${tcParts.join(' · ')}`;
+  // Reasoning is a subset of output tokens, not a separate bucket — show it
+  // in parens after `out`, matching how each model-call row renders it.
+  if (tokensOut > 0) {
+    parts.push(tokensReasoning > 0 ? `${tokensOut} out (${tokensReasoning} reasoning)` : `${tokensOut} out`);
   }
-  foot.textContent = footText;
+  if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
+  foot.textContent = `turn total: ${parts.join(' · ')}`;
 }
 
 /**
@@ -813,7 +812,7 @@ function escapeHtml(s) {
 function appendModelCallTrace(trace, data) {
   if (!trace) return;
   const li = document.createElement('li');
-  li.className = 'trace trace-model_call';
+  li.className = 'trace-event trace-model-call';
   const provSel = document.getElementById('provider-sel');
   const modelSel = document.getElementById('model-sel');
   const provider = provSel ? provSel.value : '';
@@ -828,14 +827,42 @@ function appendModelCallTrace(trace, data) {
   // bill cached input at the cheaper rate (mirrors direct-chat.ts:priceFor).
   const cost = computeAgentCallCost(provider, model, tokensIn, tokensOut, cached);
   const costText = cost != null ? (cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`) : '';
-  const summary = `${tokensIn} in${cachedNote} · ${outBreakdown}${costText ? ` · ${costText}` : ''}`;
-  li.innerHTML = `
-    <div class="trace-event-head">
-      <span class="trace-event-kind">model call</span>
-      <code>${escapeHtml(provider)}/${escapeHtml(model)}</code>
-    </div>
-    <div class="trace-event-body">${escapeHtml(summary)}</div>
-  `;
+  const summaryText = `${tokensIn} in${cachedNote} · ${outBreakdown}${costText ? ` · ${costText}` : ''}`;
+
+  const head = document.createElement('div');
+  head.className = 'trace-event-head';
+  const kindSpan = document.createElement('span');
+  kindSpan.className = 'trace-event-kind';
+  kindSpan.textContent = 'model call';
+  const codeEl = document.createElement('code');
+  codeEl.textContent = `${provider}/${model}`;
+  head.appendChild(kindSpan);
+  head.appendChild(codeEl);
+  li.appendChild(head);
+
+  const responseText = typeof data.responsePreview === 'string' ? data.responsePreview : null;
+  if (responseText) {
+    const details = document.createElement('details');
+    details.className = 'trace-details';
+    const summaryEl = document.createElement('summary');
+    summaryEl.className = 'trace-summary';
+    const bodySpan = document.createElement('span');
+    bodySpan.className = 'trace-event-body';
+    bodySpan.textContent = summaryText;
+    summaryEl.appendChild(bodySpan);
+    details.appendChild(summaryEl);
+    const bodyEl = document.createElement('pre');
+    bodyEl.className = 'trace-body';
+    bodyEl.textContent = responseText;
+    details.appendChild(bodyEl);
+    li.appendChild(details);
+  } else {
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'trace-event-body';
+    bodyDiv.textContent = summaryText;
+    li.appendChild(bodyDiv);
+  }
+
   li.dataset.tokensIn = tokensIn;
   li.dataset.tokensOut = tokensOut;
   li.dataset.tokensCached = cached;
@@ -869,14 +896,49 @@ function appendAgentTraceCall(trace, data) {
   if (typeof data.latencyMs === 'number') parts.push(`${(data.latencyMs / 1000).toFixed(1)}s`);
   const cost = computeAgentCallCost(data.provider, data.model, tokensIn, tokensOut, cacheRead, cacheCreation);
   if (cost != null) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
-  const body = parts.length > 0 ? parts.join(' · ') : '(no usage reported)';
-  li.innerHTML = `
-    <div class="trace-event-head">
-      <span class="trace-event-kind">agent call</span>
-      <code>${escapeHtml(data.provider)}/${escapeHtml(data.model)}</code>
-    </div>
-    <div class="trace-event-body">${escapeHtml(body)}</div>
-  `;
+  const summaryText = parts.length > 0 ? parts.join(' · ') : '(no usage reported)';
+
+  const head = document.createElement('div');
+  head.className = 'trace-event-head';
+  const kindSpan = document.createElement('span');
+  kindSpan.className = 'trace-event-kind';
+  kindSpan.textContent = 'agent turn sum';
+  const codeEl = document.createElement('code');
+  codeEl.textContent = `${data.provider || ''}/${data.model || ''}`;
+  head.appendChild(kindSpan);
+  head.appendChild(codeEl);
+  li.appendChild(head);
+
+  // Response text rides in the same SSE payload as the chat bubble — the
+  // turn's final assistant text. Disclose it so the trace pane can show
+  // what the model actually produced, not just the token/cost summary.
+  let responseText = null;
+  if (typeof data.content === 'string') responseText = data.content;
+  else if (data.content && typeof data.content === 'object' && typeof data.content.text === 'string') {
+    responseText = data.content.text;
+  }
+  if (responseText) {
+    const details = document.createElement('details');
+    details.className = 'trace-details';
+    const summaryEl = document.createElement('summary');
+    summaryEl.className = 'trace-summary';
+    const bodySpan = document.createElement('span');
+    bodySpan.className = 'trace-event-body';
+    bodySpan.textContent = summaryText;
+    summaryEl.appendChild(bodySpan);
+    details.appendChild(summaryEl);
+    const bodyEl = document.createElement('pre');
+    bodyEl.className = 'trace-body';
+    bodyEl.textContent = responseText;
+    details.appendChild(bodyEl);
+    li.appendChild(details);
+  } else {
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'trace-event-body';
+    bodyDiv.textContent = summaryText;
+    li.appendChild(bodyDiv);
+  }
+
   if (tokensIn != null) li.dataset.tokensIn = tokensIn;
   if (tokensOut != null) li.dataset.tokensOut = tokensOut;
   if (cacheCreation > 0) li.dataset.tokensCacheCreation = cacheCreation;

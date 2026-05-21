@@ -1,5 +1,18 @@
 # Trace-call disclosure — model_call and agent_call
 
+## Status — 2026-05-20: response disclosure shipped (prompt disclosure deferred)
+
+Landed a focused subset of this plan — **response text only**, no feature flag, no full request bodies:
+
+- `model_call` (Codex) carries an optional `responsePreview` (the turn's `agentMessage` text, capped 5000 chars). Set on `item/completed(agentMessage)`, consumed by the next `model_call` emission so tool-use-only calls don't inherit stale text. `types.ts` + `codex.ts` + `poll-loop.ts` pass-through.
+- `agent_call` needs **no provider change** — the assistant text is already in the chat-reply SSE payload (`data.content.text`); `appendAgentTraceCall` just renders it now. Covers Claude (which emits no per-call `model_call` — its turn *is* the `agent_call`).
+- `chat.js`: `appendModelCallTrace` / `appendAgentTraceCall` wrap the summary line in a `<details>`/`<summary>` when response text is present (reuses the existing `.trace-details` CSS from the tool-call disclosure).
+- Tests: `codex.factory.test.ts` drives `runOneTurn` against a fake app-server — verifies preview attaches after `agentMessage`, is absent on tool-use-only calls, isn't carried onto a later call, and truncates at 5000.
+
+Still deferred (out of scope of the 2026-05-20 pass): `promptPreview`, the `tracePayloadDetail` knob, full request/response bodies, and key redaction. Revisit per the "Why deferred" note below if an instructor needs prompt-side visibility.
+
+---
+
 Today's Phase 1.7 trace panel rework added:
 - Turn-grouping with timestamp header + totals footer
 - Visible disclosure triangle (▶ / ▼) on **tool** entries that already carry rich payload

@@ -47,6 +47,10 @@ groups/*
 
 agents-sdk-docs
 
+# Playwright MCP artifacts — per-session browser-automation output
+# (screenshots, console logs, page snapshots). Local debug aids, not source.
+.playwright-mcp/
+
 # /add-admintools — locally-installed admin tools (copied from `admin` branch).
 # Only the Telegram-command surface (handlers + auth-mode switch + interactive
 # script) is opt-in. The model-discovery / model-switch / model-providers

@@ -11,6 +11,10 @@
  * session's `userId` so the class feature can lock students down to
  * persona edits without this file knowing anything about the class
  * feature.
+ *
+ * Every `/api/drafts/:folder` GET route consults `canReadDraft` so an
+ * authenticated user cannot read another agent group's persona, skill
+ * list, or custom-skill files by guessing the folder name.
  */
 import fs from 'fs';
 import http from 'http';
@@ -34,9 +38,17 @@ import { getActiveSessions, updateSession } from '../../db/sessions.js';
 import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
 import { checkDraftMutation } from '../playground-gate-registry.js';
+import { canReadDraft } from './draft-read-gate.js';
 import { getPlatformPrefix, getSetupConfig } from './adapter.js';
 import type { PlaygroundSession } from './auth-store.js';
 import { readJsonBody, send } from './http-helpers.js';
+import {
+  deleteCustomSkill,
+  listCustomSkillFiles,
+  listCustomSkills,
+  readCustomSkillFile,
+  writeCustomSkillFile,
+} from './custom-skills.js';
 import { getLibraryCacheStat, listLibrary, listSkillFiles, readSkillFile } from './library.js';
 import { handlePersonaLayers } from './api/persona-layers.js';
 import {
@@ -48,6 +60,7 @@ import {
   handleToggleDefaultModel,
 } from './api/models.js';
 import { handleGetClassControls, handlePutClassControls } from './api/class-controls.js';
+import { handleAddStudent, handleGetTunnel, handleStopTunnel } from './api/students-admin.js';
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
@@ -278,6 +291,7 @@ export async function route(
   const personaGet = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/persona$/);
   if (method === 'GET' && personaGet) {
     const draftFolder = personaGet[1]!;
+    if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     try {
       const personaPath = path.join(GROUPS_DIR, draftFolder, 'CLAUDE.local.md');
       const text = fs.existsSync(personaPath) ? fs.readFileSync(personaPath, 'utf8') : '';
@@ -287,7 +301,14 @@ export async function route(
     }
   }
 
-  // PUT /api/drafts/:folder/persona — write CLAUDE.local.md
+  // PUT /api/drafts/:folder/persona — write CLAUDE.local.md, then recycle
+  // any running container for the agent group so the change actually
+  // reaches the agent. The persona is composed into the system prompt
+  // (codex `baseInstructions`) at container spawn and bound to the codex
+  // thread, so a file write alone never reaches a live session — the
+  // container must respawn. Mirrors the provider-switch recycle above;
+  // the codex thread continuation lives in the container-owned
+  // outbound.db, so a host-side respawn is the only clean lever.
   if (method === 'PUT' && personaGet) {
     const draftFolder = personaGet[1]!;
     const body = await readJsonBody(req);
@@ -297,7 +318,21 @@ export async function route(
       const personaPath = path.join(GROUPS_DIR, draftFolder, 'CLAUDE.local.md');
       fs.mkdirSync(path.dirname(personaPath), { recursive: true });
       fs.writeFileSync(personaPath, text);
-      return send(res, 200, { ok: true, bytes: Buffer.byteLength(text) });
+      let containersRecycled = 0;
+      const group = getAgentGroupByFolder(draftFolder);
+      if (group) {
+        for (const s of getActiveSessions()) {
+          if (s.agent_group_id !== group.id) continue;
+          if (!isContainerRunning(s.id)) continue;
+          try {
+            killContainer(s.id, 'persona updated');
+            containersRecycled += 1;
+          } catch {
+            /* best-effort — a stale container is reaped by the next sweep */
+          }
+        }
+      }
+      return send(res, 200, { ok: true, bytes: Buffer.byteLength(text), containersRecycled });
     } catch (err) {
       return send(res, 500, { error: (err as Error).message });
     }
@@ -306,6 +341,7 @@ export async function route(
   // GET /api/drafts/:folder/persona-layers — provider-uniform layered view
   const personaLayersMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/persona-layers$/);
   if (method === 'GET' && personaLayersMatch) {
+    if (!canReadDraft(personaLayersMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
     const result = handlePersonaLayers(personaLayersMatch[1]!);
     return send(res, result.status, result.body);
   }
@@ -417,6 +453,7 @@ export async function route(
   const skillsMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/skills$/);
   if (method === 'GET' && skillsMatch) {
     const draftFolder = skillsMatch[1]!;
+    if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     try {
       const cfg = readContainerConfig(draftFolder);
       return send(res, 200, { skills: cfg.skills });
@@ -445,10 +482,72 @@ export async function route(
     }
   }
 
+  // GET /api/drafts/:folder/custom-skills — this agent's custom skills
+  const customSkillsListMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills$/);
+  if (method === 'GET' && customSkillsListMatch) {
+    if (!canReadDraft(customSkillsListMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    return send(res, 200, { entries: listCustomSkills(customSkillsListMatch[1]!) });
+  }
+
+  // GET /api/drafts/:folder/custom-skills/:name/files — file list of one custom skill
+  const customSkillFilesMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/files$/,
+  );
+  if (method === 'GET' && customSkillFilesMatch) {
+    if (!canReadDraft(customSkillFilesMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    return send(res, 200, { files: listCustomSkillFiles(customSkillFilesMatch[1]!, customSkillFilesMatch[2]!) });
+  }
+
+  // GET/PUT /api/drafts/:folder/custom-skills/:name/file?path=<relPath> — one file
+  const customSkillFileMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)\/file$/,
+  );
+  if (customSkillFileMatch) {
+    const draftFolder = customSkillFileMatch[1]!;
+    const name = customSkillFileMatch[2]!;
+    const relPath = url.searchParams.get('path') || 'SKILL.md';
+    if (method === 'GET') {
+      if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+      const text = readCustomSkillFile(draftFolder, name, relPath);
+      if (text === undefined) return send(res, 404, { error: 'not found' });
+      return send(res, 200, { text });
+    }
+    if (method === 'PUT') {
+      const decision = checkDraftMutation(draftFolder, 'skills_put', session.userId);
+      if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+      let body: Record<string, unknown>;
+      try {
+        body = await readJsonBody(req, { maxBytes: 512 * 1024 });
+      } catch (err) {
+        return send(res, 413, { error: (err as Error).message });
+      }
+      if (typeof body.content !== 'string') {
+        return send(res, 400, { error: 'content (string) required' });
+      }
+      try {
+        writeCustomSkillFile(draftFolder, name, relPath, body.content);
+        return send(res, 200, { ok: true });
+      } catch (err) {
+        return send(res, 400, { error: (err as Error).message });
+      }
+    }
+  }
+
+  // DELETE /api/drafts/:folder/custom-skills/:name — delete a whole custom skill
+  const customSkillMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)$/,
+  );
+  if (method === 'DELETE' && customSkillMatch) {
+    const decision = checkDraftMutation(customSkillMatch[1]!, 'skills_put', session.userId);
+    if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    return send(res, 200, { ok: deleteCustomSkill(customSkillMatch[1]!, customSkillMatch[2]!) });
+  }
+
   // GET /api/drafts/:folder/models — catalog + current whitelist
   // PUT /api/drafts/:folder/models — set allowedModels
   const modelsMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/models$/);
   if (method === 'GET' && modelsMatch) {
+    if (!canReadDraft(modelsMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
     const r = await handleGetModels(modelsMatch[1]!);
     return send(res, r.status, r.body);
   }
@@ -566,12 +665,31 @@ export async function route(
     return send(res, result.status, result.body);
   }
 
+  // POST /api/admin/students — provision one new class student. Owner-only;
+  // the handler does its own role check.
+  if (method === 'POST' && url.pathname === '/api/admin/students') {
+    const body = await readJsonBody(req);
+    const r = await handleAddStudent(session, body);
+    return send(res, r.status, r.body);
+  }
+  // GET /api/admin/tunnel — current guest-tunnel status. Owner-only.
+  if (method === 'GET' && url.pathname === '/api/admin/tunnel') {
+    const r = handleGetTunnel(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/admin/tunnel/stop — tear down the guest tunnel. Owner-only.
+  if (method === 'POST' && url.pathname === '/api/admin/tunnel/stop') {
+    const r = handleStopTunnel(session);
+    return send(res, r.status, r.body);
+  }
+
   // GET /api/drafts/:folder/stream — Server-Sent Events for outbound messages.
   // Same folder-name loosening as the messages POST above so classroom
   // students get a live stream from their student_NN agent.
   const streamMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/stream$/);
   if (method === 'GET' && streamMatch) {
     const draftFolder = streamMatch[1]!;
+    if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',

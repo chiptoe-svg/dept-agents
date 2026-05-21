@@ -92,15 +92,14 @@ async function onSaveToLibrary() {
 }
 
 function gatherActiveSkills() {
-  // The Skills tab renders active skills as `<li class="active-entry">` with the skill name as the first <span>'s text.
-  // If the Skills tab hasn't been mounted, this returns [] — acceptable, the save still works.
+  // The Skills tab renders each skill as `<li class="skill-entry" data-name>`;
+  // an active skill carries a `.skill-toggle.active` button. If the Skills
+  // tab hasn't been mounted, this returns [] — acceptable, the save still works.
   const out = [];
-  for (const li of document.querySelectorAll('#active-skills .active-entry')) {
-    const span = li.querySelector('span:first-child');
-    if (!span) continue;
-    // Strip the leading "🔧 " emoji + space.
-    const text = (span.textContent || '').replace(/^\s*🔧\s*/, '').trim();
-    if (text) out.push(text);
+  for (const li of document.querySelectorAll('#skills-list .skill-entry')) {
+    if (li.querySelector('.skill-toggle.active') && li.dataset.name) {
+      out.push(li.dataset.name);
+    }
   }
   return out;
 }

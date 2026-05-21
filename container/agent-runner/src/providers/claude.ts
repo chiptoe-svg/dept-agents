@@ -72,9 +72,11 @@ function mcpAllowPattern(serverName: string): string {
  * a user message's `content` array alongside `{ type: 'text', ... }`
  * blocks. See https://docs.anthropic.com/en/api/messages content-blocks.
  */
+type ImageMediaType = 'image/png' | 'image/gif' | 'image/webp' | 'image/jpeg';
+
 interface ImageBlock {
   type: 'image';
-  source: { type: 'base64'; media_type: string; data: string };
+  source: { type: 'base64'; media_type: ImageMediaType; data: string };
 }
 interface TextBlock {
   type: 'text';
@@ -89,7 +91,7 @@ interface SDKUserMessage {
   session_id: string;
 }
 
-function mimeForExt(p: string): string {
+function mimeForExt(p: string): ImageMediaType {
   const ext = p.slice(p.lastIndexOf('.')).toLowerCase();
   if (ext === '.png') return 'image/png';
   if (ext === '.gif') return 'image/gif';

@@ -1,18 +1,68 @@
 import { showDraftBanner, hideDraftBanner } from '../draft-banner.js';
 
-let originalSkills = null; // 'all' or string[]
+// Active-set state — 'all' (legacy sentinel) or string[].
+let originalSkills = null; // active set at tab-open, for dirty detection
 let currentSkills = null;
+
+// Merged skill list: built-in + Anthropic library + this agent's custom skills.
+let libraryCache = [];
+// False when GET /api/skills/library failed — guards the 'all'→list
+// expansion in toggleActive, which would otherwise drop every library skill.
+let libraryAvailable = true;
+
+let currentSelection = null; // { category, name } highlighted on the left
+// Bumped on every selectSkill; async tails of loadPreview/loadEditor bail
+// when their token no longer matches (a rapid A→B click would otherwise let
+// A's late-resolving fetch clobber B's editor state).
+let selectionSeq = 0;
+// Serializes active-set PUTs so rapid toggles land server-side in click order.
+let saveChain = Promise.resolve();
+
+// Editor working set — the files of the skill being authored / edited.
+//   files:      { relPath: content }
+//   current:    relPath shown in the textarea
+//   customName: name when editing an existing custom skill in place, else null
+//   baseline:   JSON snapshot of files at load, for dirty detection
+let editor = { files: {}, current: null, customName: null, baseline: '{}' };
+
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+
+const CATEGORY_LABEL = { 'built-in': 'Library', skills: 'Anthropic', custom: 'Custom' };
+const CATEGORY_ORDER = ['built-in', 'skills', 'custom'];
+
+const SKILL_TEMPLATE = `---
+name: my-skill
+description: One-line summary of when the agent should use this skill.
+---
+
+# My skill
+
+Describe what the agent should do when this skill is active.
+`;
+
+function enc(s) {
+  return encodeURIComponent(s);
+}
+
+function fetchJson(url, fallback) {
+  return fetch(url, { credentials: 'same-origin' })
+    .then((r) => (r.ok ? r.json() : fallback))
+    .catch(() => fallback);
+}
 
 export function mountSkills(el) {
   const folder = window.__pg.agent.folder;
 
-  el.innerHTML = `
+  el.replaceChildren();
+  el.insertAdjacentHTML(
+    'beforeend',
+    `
     <div class="skills-layout">
-      <aside class="library-panel">
-        <h3>Available skills</h3>
+      <aside class="library-panel skills-browser">
+        <h3>Skills</h3>
         <input id="skill-filter" placeholder="filter…" autocomplete="off">
         <div id="skills-list"></div>
-        <button id="author-skill" class="btn btn-ghost">+ Author my own skill…</button>
+        <footer class="cost-rollup" id="cost-rollup"><span id="rollup-summary">—</span></footer>
       </aside>
 
       <section class="preview-panel">
@@ -22,51 +72,63 @@ export function mountSkills(el) {
         </header>
         <div class="file-pane">
           <ul id="file-tree" class="file-tree"></ul>
-          <pre id="file-body" class="file-body">Click a skill to preview.</pre>
+          <pre id="file-body" class="file-body">Select a skill to preview.</pre>
         </div>
-        <footer class="preview-footer">
-          <button id="add-to-active" class="btn btn-primary" disabled>+ Add to active →</button>
-        </footer>
       </section>
 
-      <section class="active-panel skills-active">
-        <h3>Active skills (this agent)</h3>
-        <ul id="active-skills" class="active-skills"></ul>
-        <footer class="cost-rollup" id="cost-rollup">
-          <div>Estimated cost impact: <strong id="rollup-tokens">—</strong></div>
-          <div>Latency impact: <strong id="rollup-latency">—</strong></div>
+      <section class="preview-panel skills-editor">
+        <header class="preview-header">
+          <span>Edit</span>
+          <button id="author-skill" class="btn btn-ghost" type="button">+ New skill</button>
+        </header>
+        <div id="editor-files" class="editor-files"></div>
+        <textarea id="skill-edit" class="active-text" placeholder="Select a skill on the left to edit it, or click + New skill…"></textarea>
+        <footer class="editor-footer">
+          <label class="editor-name">name <input id="skill-name" placeholder="name your custom skill" autocomplete="off"></label>
+          <button id="skill-save" class="btn btn-primary" disabled>Save custom skill</button>
+          <button id="skill-delete" class="btn btn-ghost" hidden>Delete</button>
         </footer>
       </section>
     </div>
-  `;
+  `,
+  );
 
-  loadSkillLibrary(el, folder);
-  loadActiveSkills(el, folder);
-  wireFilter(el);
-  wireAuthorButton(el);
+  loadSkills(el, folder);
+
+  el.querySelector('#skill-filter').addEventListener('input', () => applyFilter(el));
+  el.querySelector('#author-skill').addEventListener('click', () => authorNewSkill(el));
+  el.querySelector('#skill-save').addEventListener('click', () => saveSkill(el));
+  el.querySelector('#skill-delete').addEventListener('click', () => deleteSkill(el));
+  el.querySelector('#skill-edit').addEventListener('input', () => refreshDraftBanner(el));
 }
 
-let libraryCache = []; // populated by loadSkillLibrary
-
-function loadSkillLibrary(el, folder) {
-  fetch('/api/skills/library', { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : { entries: [] }))
-    .then((data) => {
-      libraryCache = data.entries || [];
-      renderLibraryList(el);
-    })
-    .catch(() => { /* ignore */ });
+/** Fetch the shared library, this agent's custom skills, and the active set. */
+function loadSkills(el, folder) {
+  return Promise.all([
+    // The library fetch reports ok/failed explicitly (unlike fetchJson,
+    // which silently falls back to []) so toggleActive can refuse to
+    // expand 'all' against an incomplete cache.
+    fetch('/api/skills/library', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => ({ ok: true, entries: d.entries || [] }))
+      .catch(() => ({ ok: false, entries: [] })),
+    fetchJson(`/api/drafts/${folder}/custom-skills`, { entries: [] }),
+    fetchJson(`/api/drafts/${folder}/skills`, { skills: [] }),
+  ]).then(([lib, custom, active]) => {
+    libraryAvailable = lib.ok;
+    const customEntries = (custom.entries || []).map((c) => ({
+      category: 'custom',
+      name: c.name,
+      description: c.description || '',
+      compatibility: 'compatible',
+    }));
+    libraryCache = [...lib.entries, ...customEntries];
+    currentSkills = active.skills;
+    originalSkills = Array.isArray(currentSkills) ? [...currentSkills] : currentSkills;
+    renderLibraryList(el);
+    recomputeRollup(el);
+  });
 }
-
-// Category labels shown to the user. Internal API names (`built-in`,
-// `skills`) are mapped here so we don't have to re-flow the data model.
-const CATEGORY_LABEL = {
-  'built-in': 'Library',
-  skills: 'Anthropic',
-  custom: 'Custom built',
-};
-// Display order. Anything not in this list comes after, alphabetical.
-const CATEGORY_ORDER = ['built-in', 'skills', 'custom'];
 
 function isSkillActive(name) {
   if (currentSkills === 'all') return true;
@@ -75,7 +137,14 @@ function isSkillActive(name) {
 
 function renderLibraryList(el) {
   const listEl = el.querySelector('#skills-list');
-  listEl.innerHTML = '';
+  listEl.replaceChildren();
+  if (!libraryAvailable) {
+    const warn = document.createElement('div');
+    warn.className = 'skills-load-error';
+    warn.textContent =
+      '⚠ Skill library failed to load — only custom skills are shown. Reload before changing the active set.';
+    listEl.appendChild(warn);
+  }
   const byCategory = {};
   for (const entry of libraryCache) {
     (byCategory[entry.category] = byCategory[entry.category] || []).push(entry);
@@ -96,38 +165,137 @@ function renderLibraryList(el) {
     section.appendChild(heading);
     const ul = document.createElement('ul');
     for (const entry of byCategory[category]) {
-      const li = document.createElement('li');
-      li.className = 'lib-entry skill-entry';
-      li.dataset.category = entry.category;
-      li.dataset.name = entry.name;
-      const costText = entry.costTokens != null ? ` (+~${entry.costTokens} tok)` : '';
-      const icon = entry.builtin ? '📦' : '🔧';
-      li.textContent = `${icon} ${entry.name}${costText}`;
-      li.title = entry.builtin ? `[host-shipped built-in] ${entry.description || ''}` : entry.description || '';
-      // Yellow highlight when the skill is currently in this agent's active
-      // set. Provenance (built-in vs library) is signalled by the icon, not
-      // by background color — keeps "active" the only meaningful tint.
-      if (isSkillActive(entry.name)) li.classList.add('skill-active');
-      if (entry.compatibility === 'incompatible') li.classList.add('skill-incompatible');
-      if (entry.compatibility === 'partial') li.classList.add('skill-partial');
-      li.addEventListener('click', () => loadSkillPreview(li.closest('.tab-body') || document, entry.category, entry.name));
-      ul.appendChild(li);
+      ul.appendChild(renderEntry(el, entry));
     }
     section.appendChild(ul);
     listEl.appendChild(section);
   }
+  applyFilter(el);
 }
 
-let currentPreview = null; // { category, name }
+/** Re-apply the text filter — list re-renders (e.g. after a save) would
+ *  otherwise drop the active filter and show every row again. */
+function applyFilter(el) {
+  const input = el.querySelector('#skill-filter');
+  const q = (input ? input.value : '').toLowerCase().trim();
+  for (const li of el.querySelectorAll('.skill-entry')) {
+    li.style.display = !q || li.dataset.name.toLowerCase().includes(q) ? '' : 'none';
+  }
+}
 
-function loadSkillPreview(el, category, name) {
-  currentPreview = { category, name };
-  // Update selected highlight.
+function renderEntry(el, entry) {
+  const li = document.createElement('li');
+  li.className = 'lib-entry skill-entry';
+  li.dataset.category = entry.category;
+  li.dataset.name = entry.name;
+  li.title = entry.description || '';
+  if (entry.compatibility === 'incompatible') li.classList.add('skill-incompatible');
+  if (entry.compatibility === 'partial') li.classList.add('skill-partial');
+  if (currentSelection && currentSelection.category === entry.category && currentSelection.name === entry.name) {
+    li.classList.add('selected');
+  }
+
+  // Green toggle — click to activate / deactivate. Stops propagation so it
+  // doesn't also fire the row's select handler.
+  const active = isSkillActive(entry.name);
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = active ? 'skill-toggle active' : 'skill-toggle';
+  toggle.title = active ? 'Active — click to deactivate' : 'Inactive — click to activate';
+  toggle.setAttribute('aria-pressed', active ? 'true' : 'false');
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleActive(el, entry.name);
+  });
+
+  const label = document.createElement('span');
+  label.className = 'skill-name';
+  const icon = entry.category === 'custom' ? '✏️' : entry.builtin ? '📦' : '🔧';
+  const costText = entry.costTokens != null ? ` (+~${entry.costTokens} tok)` : '';
+  label.textContent = `${icon} ${entry.name}${costText}`;
+
+  li.appendChild(toggle);
+  li.appendChild(label);
+  li.addEventListener('click', () => selectSkill(el, entry.category, entry.name));
+  return li;
+}
+
+function toggleActive(el, name) {
+  // Legacy "all" → explicit list (seeded with every known skill) so the
+  // click still reads as a single add/remove.
+  if (currentSkills === 'all') {
+    if (!libraryAvailable) {
+      // libraryCache holds only custom skills right now — expanding 'all'
+      // off it would silently drop every library skill from the draft.
+      alert(
+        'The skill library has not loaded, so changing the active set now ' +
+          'would drop every library skill. Reload the tab and try again.',
+      );
+      return;
+    }
+    currentSkills = libraryCache.map((e) => e.name);
+  }
+  if (currentSkills.includes(name)) {
+    currentSkills = currentSkills.filter((s) => s !== name);
+  } else {
+    currentSkills.push(name);
+  }
+  saveActive(el);
+}
+
+function saveActive(el) {
+  const folder = window.__pg.agent.folder;
+  // Snapshot the active set and chain the PUT so rapid toggles reach the
+  // server in click order — overlapping requests could otherwise land
+  // out of order and leave the draft on a stale set.
+  const snapshot = Array.isArray(currentSkills) ? [...currentSkills] : currentSkills;
+  saveChain = saveChain.then(() =>
+    fetch(`/api/drafts/${folder}/skills`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ skills: snapshot }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+  );
+  saveChain.then(() => {
+    renderLibraryList(el);
+    recomputeRollup(el);
+    refreshDraftBanner(el);
+  });
+}
+
+function selectSkill(el, category, name) {
+  // Guard against silently discarding unsaved editor edits.
+  if (editorSnapshot(el) !== editor.baseline && !confirm('Discard unsaved skill edits?')) return;
+  const token = ++selectionSeq;
+  currentSelection = { category, name };
   for (const li of el.querySelectorAll('.skill-entry')) li.classList.remove('selected');
-  const selected = el.querySelector(`.skill-entry[data-category="${category}"][data-name="${name}"]`);
-  if (selected) selected.classList.add('selected');
-  // Title + meta.
-  el.querySelector('#skill-prev-title').textContent = `Preview: ${category}/${name}`;
+  const sel = el.querySelector(`.skill-entry[data-category="${category}"][data-name="${name}"]`);
+  if (sel) sel.classList.add('selected');
+  loadPreview(el, category, name, token);
+  loadEditor(el, category, name, token);
+}
+
+// ── Middle preview ─────────────────────────────────────────────────────────
+
+function skillFilesUrl(category, name) {
+  if (category === 'custom') {
+    return `/api/drafts/${enc(window.__pg.agent.folder)}/custom-skills/${enc(name)}/files`;
+  }
+  return `/api/skills/library/${enc(category)}/${enc(name)}/files`;
+}
+
+function skillFileUrl(category, name, relPath) {
+  if (category === 'custom') {
+    return `/api/drafts/${enc(window.__pg.agent.folder)}/custom-skills/${enc(name)}/file?path=${enc(relPath)}`;
+  }
+  return `/api/skills/library/${enc(category)}/${enc(name)}/file?path=${enc(relPath)}`;
+}
+
+function loadPreview(el, category, name, token) {
+  el.querySelector('#skill-prev-title').textContent = `${category}/${name}`;
   const entry = libraryCache.find((e) => e.category === category && e.name === name);
   const metaParts = [];
   if (entry) {
@@ -136,19 +304,16 @@ function loadSkillPreview(el, category, name) {
     if (entry.latencyMs != null) metaParts.push(`+${entry.latencyMs}ms/turn`);
   }
   el.querySelector('#skill-prev-meta').textContent = metaParts.join(' · ');
-  el.querySelector('#add-to-active').disabled = false;
-  // File tree + default SKILL.md preview.
-  fetch(`/api/skills/library/${encodeURIComponent(category)}/${encodeURIComponent(name)}/files`, { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : { files: [] }))
-    .then((data) => renderFileTree(el, data.files || []));
-  loadFile(el, category, name, 'SKILL.md');
-  // Wire add-to-active.
-  el.querySelector('#add-to-active').onclick = () => addSkillToActive(el, name);
+  fetchJson(skillFilesUrl(category, name), { files: [] }).then((data) => {
+    if (token !== selectionSeq) return; // a newer selection superseded this one
+    renderFileTree(el, data.files || []);
+  });
+  loadFile(el, category, name, 'SKILL.md', token);
 }
 
 function renderFileTree(el, files) {
   const tree = el.querySelector('#file-tree');
-  tree.innerHTML = '';
+  tree.replaceChildren();
   for (const f of files) {
     if (f.isDir) continue; // only files are clickable
     const li = document.createElement('li');
@@ -157,116 +322,228 @@ function renderFileTree(el, files) {
     li.dataset.path = f.path;
     if (f.path === 'SKILL.md') li.classList.add('selected');
     li.addEventListener('click', () => {
-      if (!currentPreview) return;
+      if (!currentSelection) return;
       for (const x of tree.querySelectorAll('.file-entry')) x.classList.remove('selected');
       li.classList.add('selected');
-      loadFile(el, currentPreview.category, currentPreview.name, f.path);
+      loadFile(el, currentSelection.category, currentSelection.name, f.path);
+      // Also move the editor to this file so the right panel tracks the
+      // file selection (when the editor holds the same skill).
+      if (f.path in editor.files) switchEditorFile(el, f.path);
     });
     tree.appendChild(li);
   }
 }
 
-function loadFile(el, category, name, relPath) {
-  fetch(`/api/skills/library/${encodeURIComponent(category)}/${encodeURIComponent(name)}/file?path=${encodeURIComponent(relPath)}`, { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : { text: '(not found)' }))
-    .then((data) => { el.querySelector('#file-body').textContent = data.text || ''; });
+function loadFile(el, category, name, relPath, token) {
+  fetchJson(skillFileUrl(category, name, relPath), { text: '(not found)' }).then((data) => {
+    // token is passed from the selectSkill path; file-tree clicks omit it.
+    if (token !== undefined && token !== selectionSeq) return;
+    el.querySelector('#file-body').textContent = data.text || '';
+  });
 }
 
-function loadActiveSkills(el, folder) {
-  fetch(`/api/drafts/${folder}/skills`, { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : { skills: 'all' }))
-    .then((data) => {
-      currentSkills = data.skills;
-      originalSkills = Array.isArray(currentSkills) ? [...currentSkills] : currentSkills;
-      renderActiveList(el);
-      // Library list reflects active state too (yellow highlight). Race-safe:
-      // if the library hasn't finished loading yet, libraryCache is empty
-      // and renderLibraryList renders a no-op; loadSkillLibrary's own
-      // render will pick up the now-set currentSkills.
-      renderLibraryList(el);
-      recomputeRollup(el);
-    });
+// ── Right-hand editor (multi-file working set) ──────────────────────────────
+
+/** Save the textarea's current contents back into the working set. */
+function stashCurrent(el) {
+  if (editor.current) editor.files[editor.current] = el.querySelector('#skill-edit').value;
 }
 
-function renderActiveList(el) {
-  const ul = el.querySelector('#active-skills');
-  ul.innerHTML = '';
+/** Stable JSON of the working set — for dirty detection. */
+function editorSnapshot(el) {
+  stashCurrent(el);
+  const sorted = {};
+  for (const k of Object.keys(editor.files).sort()) sorted[k] = editor.files[k];
+  return JSON.stringify(sorted);
+}
 
-  // Legacy "all" sentinel — agent.json still carrying the old default.
-  // One-line note + "Convert to explicit list" CTA so the user can move
-  // off the abstraction. New agents default to [] so they never see this.
-  if (currentSkills === 'all') {
-    const banner = document.createElement('li');
-    banner.className = 'active-all-banner';
-    banner.innerHTML = `
-      <span>This agent is on the legacy <code>"all"</code> default — every library skill is implicitly active.</span>
-      <button class="btn btn-ghost convert-to-explicit">Convert to empty list</button>
-    `;
-    banner.querySelector('.convert-to-explicit').addEventListener('click', () => {
-      currentSkills = [];
-      saveActive(el);
-    });
-    ul.appendChild(banner);
+function renderEditorFiles(el) {
+  const strip = el.querySelector('#editor-files');
+  strip.replaceChildren();
+  for (const rel of Object.keys(editor.files).sort()) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = rel === editor.current ? 'editor-file active' : 'editor-file';
+    chip.textContent = rel;
+    chip.addEventListener('click', () => switchEditorFile(el, rel));
+    strip.appendChild(chip);
+  }
+  // Hide "+ file" until a skill is loaded — nothing to add files to yet.
+  if (Object.keys(editor.files).length > 0) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'editor-file editor-file-add';
+    add.textContent = '+ file';
+    add.title = 'Add a file to this skill';
+    add.addEventListener('click', () => addEditorFile(el));
+    strip.appendChild(add);
+  }
+}
+
+function switchEditorFile(el, rel) {
+  if (!(rel in editor.files) || rel === editor.current) return;
+  stashCurrent(el);
+  editor.current = rel;
+  el.querySelector('#skill-edit').value = editor.files[rel];
+  renderEditorFiles(el);
+}
+
+function addEditorFile(el) {
+  const rel = (prompt('New file (e.g. reference.md, examples/demo.md):') || '').trim();
+  if (!rel) return;
+  if (!rel.split('/').every((seg) => NAME_RE.test(seg))) {
+    alert('File path segments must be alphanumeric (dashes, dots, underscores allowed).');
     return;
   }
-
-  for (const skill of currentSkills) {
-    const entry = libraryCache.find((e) => e.name === skill);
-    const li = document.createElement('li');
-    li.className = entry && entry.builtin ? 'active-entry active-entry-builtin' : 'active-entry';
-    const icon = entry && entry.builtin ? '📦' : '🔧';
-    const costText = entry && entry.costTokens != null ? `+~${entry.costTokens} tok` : '';
-    li.innerHTML = `
-      <span>${icon} ${escapeHtml(skill)}</span>
-      <span class="active-cost">${costText}</span>
-      <button class="active-remove" title="Remove">×</button>
-    `;
-    li.querySelector('.active-remove').addEventListener('click', () => {
-      currentSkills = currentSkills.filter((s) => s !== skill);
-      saveActive(el);
-    });
-    ul.appendChild(li);
+  if (rel in editor.files) {
+    switchEditorFile(el, rel);
+    return;
   }
-  if (currentSkills.length === 0) {
-    const li = document.createElement('li');
-    li.className = 'active-empty';
-    li.textContent = 'This agent has no skills active. Add some from the left to grant capabilities.';
-    ul.appendChild(li);
-  }
+  stashCurrent(el);
+  editor.files[rel] = rel.endsWith('.md') ? `# ${rel.replace(/\.md$/, '').replace(/.*\//, '')}\n` : '';
+  editor.current = rel;
+  el.querySelector('#skill-edit').value = editor.files[rel];
+  renderEditorFiles(el);
+  refreshDraftBanner(el);
 }
 
-function addSkillToActive(el, name) {
-  // New agents default to []. Legacy agents on the "all" sentinel are
-  // converted to an explicit list seeded with the full library before
-  // append, so the click still reads as "add" (no skill is dropped).
-  if (currentSkills === 'all') {
-    currentSkills = libraryCache.map((e) => e.name).filter((n) => typeof n === 'string');
-  }
-  if (currentSkills.includes(name)) return;
-  currentSkills.push(name);
-  saveActive(el);
+async function loadEditor(el, category, name, token) {
+  editor.customName = category === 'custom' ? name : null;
+  el.querySelector('#skill-delete').hidden = !editor.customName;
+  el.querySelector('#skill-save').disabled = false;
+  // Build the working set from the source skill's files. A library/built-in
+  // skill is the basis for a fork; a custom skill is edited in place.
+  const list = await fetchJson(skillFilesUrl(category, name), { files: [] });
+  if (token !== selectionSeq) return; // superseded by a newer selection mid-fetch
+  const entries = await Promise.all(
+    (list.files || [])
+      .filter((f) => !f.isDir)
+      .map(async (f) => {
+        const d = await fetchJson(skillFileUrl(category, name, f.path), { text: '' });
+        return [f.path, d.text || ''];
+      }),
+  );
+  if (token !== selectionSeq) return; // a newer selection won — don't clobber its editor state
+  const files = Object.fromEntries(entries);
+  if (Object.keys(files).length === 0) files['SKILL.md'] = '';
+  editor.files = files;
+  editor.current = 'SKILL.md' in files ? 'SKILL.md' : Object.keys(files).sort()[0];
+  el.querySelector('#skill-edit').value = editor.files[editor.current];
+  editor.baseline = editorSnapshot(el);
+  const nameInput = el.querySelector('#skill-name');
+  nameInput.value = editor.customName || '';
+  nameInput.placeholder = editor.customName ? '' : 'name your custom skill';
+  renderEditorFiles(el);
+  refreshDraftBanner(el);
 }
 
-function saveActive(el) {
+function authorNewSkill(el) {
+  if (editorSnapshot(el) !== editor.baseline && !confirm('Discard unsaved skill edits?')) return;
+  currentSelection = null;
+  for (const li of el.querySelectorAll('.skill-entry')) li.classList.remove('selected');
+  editor = { files: { 'SKILL.md': SKILL_TEMPLATE }, current: 'SKILL.md', customName: null, baseline: '{}' };
+  el.querySelector('#skill-delete').hidden = true;
+  el.querySelector('#skill-save').disabled = false;
+  el.querySelector('#skill-edit').value = SKILL_TEMPLATE;
+  editor.baseline = editorSnapshot(el);
+  renderEditorFiles(el);
+  const nameInput = el.querySelector('#skill-name');
+  nameInput.value = '';
+  nameInput.placeholder = 'name your custom skill';
+  nameInput.focus();
+  el.querySelector('#skill-prev-title').textContent = 'New custom skill';
+  el.querySelector('#skill-prev-meta').textContent = '';
+  el.querySelector('#file-tree').replaceChildren();
+  el.querySelector('#file-body').textContent = 'Name it and Save to add it to your skills.';
+  refreshDraftBanner(el);
+}
+
+async function saveSkill(el) {
   const folder = window.__pg.agent.folder;
-  fetch(`/api/drafts/${folder}/skills`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    credentials: 'same-origin',
-    body: JSON.stringify({ skills: currentSkills }),
-  })
-    .then((r) => (r.ok ? r.json() : null))
-    .then(() => {
-      renderActiveList(el);
-      // Keep the library panel's active-highlight in sync.
-      renderLibraryList(el);
-      recomputeRollup(el);
-      if (JSON.stringify(currentSkills) !== JSON.stringify(originalSkills)) {
-        showDraftBanner(`${window.__pg.agent.name} has unsaved skill changes.`);
-      } else {
-        hideDraftBanner();
-      }
+  const name = el.querySelector('#skill-name').value.trim();
+  if (!name) {
+    alert('Give the skill a name first.');
+    return;
+  }
+  if (!NAME_RE.test(name)) {
+    alert('Name must start alphanumeric; only letters, digits, dashes, dots, underscores.');
+    return;
+  }
+  // A custom skill can't shadow a shared built-in / Anthropic skill.
+  const clash = libraryCache.find((e) => e.name === name && e.category !== 'custom');
+  if (clash) {
+    alert(`"${name}" is already a ${CATEGORY_LABEL[clash.category] || clash.category} skill — pick another name.`);
+    return;
+  }
+  stashCurrent(el);
+  const allFiles = Object.entries(editor.files);
+  for (let i = 0; i < allFiles.length; i++) {
+    const [rel, content] = allFiles[i];
+    const r = await fetch(`/api/drafts/${folder}/custom-skills/${enc(name)}/file?path=${enc(rel)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ content }),
     });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      // A multi-file save isn't atomic — report exactly which files made
+      // it so the author knows the skill is in a partial state.
+      const done = allFiles.slice(0, i).map(([p]) => p);
+      const left = allFiles.slice(i).map(([p]) => p);
+      alert(
+        `Save failed for ${rel}: ${e.error || r.status}\n\n` +
+          (done.length ? `Saved: ${done.join(', ')}\n` : '') +
+          `Not saved: ${left.join(', ')}\n\n` +
+          'Fix the error and Save again to finish.',
+      );
+      return;
+    }
+  }
+  editor.baseline = editorSnapshot(el); // mark clean so the reselect guard stays quiet
+  await loadSkills(el, folder);
+  selectSkill(el, 'custom', name);
+}
+
+async function deleteSkill(el) {
+  const folder = window.__pg.agent.folder;
+  const name = editor.customName;
+  if (!name) return;
+  if (!confirm(`Delete custom skill "${name}"? This cannot be undone.`)) return;
+  const r = await fetch(`/api/drafts/${folder}/custom-skills/${enc(name)}`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+  });
+  if (!r.ok) {
+    alert('Delete failed.');
+    return;
+  }
+  // Drop it from the active set if it was on.
+  if (Array.isArray(currentSkills) && currentSkills.includes(name)) {
+    currentSkills = currentSkills.filter((s) => s !== name);
+    await fetch(`/api/drafts/${folder}/skills`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ skills: currentSkills }),
+    });
+  }
+  resetEditor(el);
+  await loadSkills(el, folder);
+}
+
+function resetEditor(el) {
+  currentSelection = null;
+  editor = { files: {}, current: null, customName: null, baseline: '{}' };
+  el.querySelector('#skill-edit').value = '';
+  el.querySelector('#skill-name').value = '';
+  el.querySelector('#skill-delete').hidden = true;
+  el.querySelector('#skill-save').disabled = true;
+  el.querySelector('#editor-files').replaceChildren();
+  el.querySelector('#skill-prev-title').textContent = 'Preview';
+  el.querySelector('#skill-prev-meta').textContent = '';
+  el.querySelector('#file-tree').replaceChildren();
+  el.querySelector('#file-body').textContent = 'Select a skill to preview.';
 }
 
 function recomputeRollup(el) {
@@ -276,36 +553,39 @@ function recomputeRollup(el) {
   const skills = Array.isArray(currentSkills) ? currentSkills : [];
   for (const name of skills) {
     const entry = libraryCache.find((e) => e.name === name);
-    if (!entry) { unknown = true; continue; }
-    if (entry.costTokens != null) tokens += entry.costTokens; else unknown = true;
+    if (!entry) {
+      unknown = true;
+      continue;
+    }
+    if (entry.costTokens != null) tokens += entry.costTokens;
+    else unknown = true;
     if (entry.latencyMs != null) latency += entry.latencyMs;
   }
-  el.querySelector('#rollup-tokens').textContent =
-    currentSkills === 'all' ? 'depends on what gets used' :
-    skills.length === 0 ? 'none' :
-    `+~${tokens} tok/turn${unknown ? ' (some skills missing cost metadata)' : ''}`;
-  el.querySelector('#rollup-latency').textContent =
-    currentSkills === 'all' ? 'depends' :
-    skills.length === 0 ? '—' :
-    `+~${latency}ms/turn`;
-}
-
-function wireFilter(el) {
-  el.querySelector('#skill-filter').addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase().trim();
-    for (const li of el.querySelectorAll('.skill-entry')) {
-      const visible = !q || li.dataset.name.toLowerCase().includes(q);
-      li.style.display = visible ? '' : 'none';
+  const footer = el.querySelector('#cost-rollup');
+  const summary = el.querySelector('#rollup-summary');
+  if (currentSkills === 'all') {
+    summary.textContent = 'all skills active · cost depends on usage';
+    footer.removeAttribute('title');
+  } else if (skills.length === 0) {
+    summary.textContent = 'no skills active';
+    footer.removeAttribute('title');
+  } else {
+    summary.textContent = `${skills.length} active · +~${tokens} tok · +~${latency} ms / turn${unknown ? ' *' : ''}`;
+    if (unknown) {
+      footer.title = 'Some active skills have no cost metadata — estimate is a lower bound.';
+    } else {
+      footer.removeAttribute('title');
     }
-  });
+  }
 }
 
-function wireAuthorButton(el) {
-  el.querySelector('#author-skill').addEventListener('click', () => {
-    alert('Skill authoring sub-flow — design pending. (v3 placeholder.)');
-  });
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/** One draft banner for both dirty sources: the active set and the editor. */
+function refreshDraftBanner(el) {
+  const activeDirty = JSON.stringify(currentSkills) !== JSON.stringify(originalSkills);
+  const editorDirty = editorSnapshot(el) !== editor.baseline;
+  if (activeDirty || editorDirty) {
+    showDraftBanner(`${window.__pg.agent.name} has unsaved skill changes.`);
+  } else {
+    hideDraftBanner();
+  }
 }
