@@ -45,9 +45,21 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(process.env.CONTAINER_MAX_OUTP
 export const CREDENTIAL_PROXY_PORT = parseInt(process.env.CREDENTIAL_PROXY_PORT || '3001', 10);
 export const PLAYGROUND_PORT = parseInt(process.env.PLAYGROUND_PORT || '3002', 10);
 export const GWS_MCP_RELAY_PORT = parseInt(process.env.GWS_MCP_RELAY_PORT || '3007', 10);
-const playgroundEnv = readEnvFile(['PLAYGROUND_BIND_HOST', 'PLAYGROUND_IDLE_MINUTES', 'PLAYGROUND_ENABLED']);
+const playgroundEnv = readEnvFile([
+  'PLAYGROUND_BIND_HOST',
+  'PLAYGROUND_IDLE_MINUTES',
+  'PLAYGROUND_ENABLED',
+  'PLAYGROUND_AUTH_BYPASS',
+]);
 const playgroundEnabledRaw = (process.env.PLAYGROUND_ENABLED || playgroundEnv.PLAYGROUND_ENABLED || '').toLowerCase();
 export const PLAYGROUND_ENABLED = playgroundEnabledRaw === '1' || playgroundEnabledRaw === 'true';
+const playgroundBypassRaw = (
+  process.env.PLAYGROUND_AUTH_BYPASS ||
+  playgroundEnv.PLAYGROUND_AUTH_BYPASS ||
+  ''
+).toLowerCase();
+/** When true, all requests are treated as the first owner — no login required. Dev/iteration mode only. */
+export const PLAYGROUND_AUTH_BYPASS = playgroundBypassRaw === '1' || playgroundBypassRaw === 'true';
 export const PLAYGROUND_IDLE_MS =
   parseInt(process.env.PLAYGROUND_IDLE_MINUTES || playgroundEnv.PLAYGROUND_IDLE_MINUTES || '30', 10) * 60 * 1000;
 // Default 0.0.0.0 — exposed beyond loopback. Magic-link auth (rotating

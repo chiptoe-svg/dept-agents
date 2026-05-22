@@ -10,11 +10,13 @@
 <body>
   <header id="topbar">
     <div class="brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom" class="brand-logo"></div>
+    <span id="seat-label" class="seat-label" hidden></span>
     <div id="agent-info">
       <span class="label">current agent</span>
       <strong id="active-agent-name">…</strong>
     </div>
     <div id="who">…</div>
+    <a id="switch-seat" class="switch-seat" href="/seat-picker" hidden>switch seat</a>
   </header>
 
   <nav id="tab-bar">
@@ -23,6 +25,10 @@
     <button data-tab="persona" class="tab">Persona</button>
     <button data-tab="skills" class="tab">Skills</button>
     <button data-tab="models" class="tab">Models</button>
+    <button data-tab="agents" class="tab">Agents</button>
+    <button data-tab="sources" class="tab">Sources</button>
+    <button data-tab="retrieval" class="tab">Retrieval</button>
+    <button data-tab="benchmarks" class="tab">Benchmarks</button>
   </nav>
 
   <div id="draft-banner" hidden>
@@ -41,6 +47,10 @@
     <section id="tab-persona" class="tab-body" hidden></section>
     <section id="tab-skills" class="tab-body" hidden></section>
     <section id="tab-models" class="tab-body" hidden></section>
+    <section id="tab-agents" class="tab-body" hidden></section>
+    <section id="tab-sources" class="tab-body" hidden></section>
+    <section id="tab-retrieval" class="tab-body" hidden></section>
+    <section id="tab-benchmarks" class="tab-body" hidden></section>
   </main>
 
   <div id="modal-root"></div>

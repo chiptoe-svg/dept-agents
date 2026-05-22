@@ -19,7 +19,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 
-import { PLAYGROUND_BIND_HOST, PLAYGROUND_ENABLED, PLAYGROUND_PORT } from '../../config.js';
+import { PLAYGROUND_AUTH_BYPASS, PLAYGROUND_BIND_HOST, PLAYGROUND_ENABLED, PLAYGROUND_PORT } from '../../config.js';
 import { log } from '../../log.js';
 import { route } from './api-routes.js';
 import { getSetupConfig } from './adapter.js';
@@ -61,6 +61,22 @@ import {
 // ── classroom-provider-auth:imports END ────────────────────────────────────
 
 let server: http.Server | null = null;
+
+// ── Auth bypass (PLAYGROUND_AUTH_BYPASS=1) ─────────────────────────────────
+// Seat is carried in the URL (?seat=<folder>), not in a cookie, so multiple
+// browser tabs can each hold a different seat simultaneously.
+
+import { readSeatsConfig } from './seats-config.js';
+
+let _bypassSession: PlaygroundSession | null = null;
+function getBypassSession(): PlaygroundSession {
+  if (!_bypassSession || !getSessionByCookie(_bypassSession.cookieValue)) {
+    const ownerUserId = getOwners()[0]?.user_id ?? null;
+    _bypassSession = mintSessionForUser(ownerUserId);
+    log.warn('Playground auth bypass active. Set PLAYGROUND_AUTH_BYPASS=0 before go-live.');
+  }
+  return _bypassSession;
+}
 
 // Public assets live under src/ regardless of whether tsc has copied them
 // into dist/. cwd is always the project root for both `node dist/index.js`
@@ -339,6 +355,42 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   if (method === 'GET' && url.pathname === '/login.js') {
     return serveStatic(res, 'login.js', 'application/javascript; charset=utf-8');
   }
+  // Seat picker — only active in bypass mode; accessible before auth.
+  if (method === 'GET' && url.pathname === '/seat-picker') {
+    return serveStatic(res, 'seat-picker.html', 'text/html; charset=utf-8');
+  }
+  if (method === 'GET' && url.pathname === '/seat-picker.js') {
+    return serveStatic(res, 'seat-picker.js', 'application/javascript; charset=utf-8');
+  }
+  if (method === 'GET' && url.pathname === '/api/seats') {
+    const sc = readSeatsConfig();
+    send(res, 200, {
+      seats: sc.seats.map((s) => ({ label: s.label, slug: s.slug ?? s.folder })),
+      passwordRequired: !!sc.password,
+    });
+    return;
+  }
+  if (method === 'POST' && url.pathname === '/pick-seat') {
+    void (async () => {
+      try {
+        const body = (await readJsonBody(req)) as { slug?: string; password?: string };
+        const sc = readSeatsConfig();
+        if (sc.password && body.password !== sc.password) {
+          send(res, 401, { error: 'Wrong password' });
+          return;
+        }
+        const seat = sc.seats.find((s) => (s.slug ?? s.folder) === body.slug);
+        if (!seat) {
+          send(res, 400, { error: 'Unknown seat' });
+          return;
+        }
+        send(res, 200, { ok: true, redirectUrl: `/playground/?seat=${encodeURIComponent(seat.slug ?? seat.folder)}` });
+      } catch (err) {
+        if (!res.headersSent) send(res, 500, { error: String(err) });
+      }
+    })();
+    return;
+  }
   // Brand assets — served from the public dir, no auth required (they're
   // referenced by /login.html before the user has a session).
   if (method === 'GET' && url.pathname === '/favicon.png') {
@@ -438,7 +490,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   }
   // ── class-enrollment-passcode:routes END ──────────────────────────────────
 
-  const session = authenticate(req);
+  const session = PLAYGROUND_AUTH_BYPASS ? getBypassSession() : authenticate(req);
   if (!session) {
     if (method === 'GET' && isHtmlPagePath(url.pathname)) {
       res.writeHead(302, { location: '/login' });

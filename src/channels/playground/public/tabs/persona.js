@@ -37,9 +37,10 @@ export function mountPersona(el) {
       <section class="active-panel">
         <nav class="sub-tabs" id="active-subtabs">
           <button data-sub="my" class="sub-tab active">✏️ My persona</button>
-          <button data-sub="group" class="sub-tab">🔒 Group base</button>
-          <button data-sub="container" class="sub-tab">🔒 Container base</button>
+          <button data-sub="group" class="sub-tab" id="sub-group">🔒 Class base</button>
+          <button data-sub="container" class="sub-tab">🔒 Platform base</button>
           <button data-sub="global" class="sub-tab" id="sub-global">🔒 Global</button>
+          ${window.__pg?.user?.role === 'owner' ? '<button id="save-class-base-btn" class="btn btn-primary" style="display:none;margin-left:auto;align-self:center;margin-right:8px;padding:3px 10px;font-size:11px">Save class base</button>' : ''}
         </nav>
         <textarea id="active-text" class="active-text"></textarea>
         <footer class="active-footer">
@@ -50,13 +51,19 @@ export function mountPersona(el) {
     </div>
   `;
 
+  if (window.__pg?.user?.role === 'owner') {
+    const groupBtn = el.querySelector('#sub-group');
+    if (groupBtn) groupBtn.textContent = '✏️ Class base';
+  }
+
   loadLibrary(el);
   loadActivePersona(el, folder);
   loadProviderModelDropdowns(el, folder);
   wireSubTabs(el, folder);
   wireDraftDetection(el);
   wireFilter(el);
-  prefetchLayerExistence(el, folder); // dim Global if absent
+  prefetchLayerExistence(el, folder);
+  wireSaveClassBase(el);
   document.title = `Persona — ${agentName} · Agent Playground`;
 }
 
@@ -150,15 +157,19 @@ function wireSubTabs(el, folder) {
   }
 }
 
+let originalClassBase = '';
+
 async function switchSubTab(el, folder, btn) {
   for (const b of el.querySelectorAll('.sub-tab')) b.classList.remove('active');
   btn.classList.add('active');
   const sub = btn.dataset.sub;
   const ta = el.querySelector('#active-text');
+  const saveClassBaseBtn = el.querySelector('#save-class-base-btn');
+  if (saveClassBaseBtn) saveClassBaseBtn.style.display = 'none';
+
   if (sub === 'my') {
     ta.removeAttribute('readonly');
     ta.value = originalPersona;
-    // Re-fetch in case content changed from elsewhere; then refresh dirty state.
     try {
       const r = await fetch(`/api/drafts/${folder}/persona`, { credentials: 'same-origin' });
       if (r.ok) {
@@ -169,13 +180,30 @@ async function switchSubTab(el, folder, btn) {
     } catch { /* ignore */ }
     return;
   }
+
+  if (sub === 'group') {
+    try {
+      const r = await fetch('/api/class-base', { credentials: 'same-origin' });
+      const { content } = r.ok ? await r.json() : { content: '(failed to load class base)' };
+      ta.value = content;
+      originalClassBase = content;
+    } catch { ta.value = '(error)'; }
+    const isOwner = window.__pg?.user?.role === 'owner';
+    if (isOwner && !window.__pg?.readOnly) {
+      ta.removeAttribute('readonly');
+      // Button stays hidden until user actually edits content.
+    } else {
+      ta.setAttribute('readonly', '');
+    }
+    return;
+  }
+
   ta.setAttribute('readonly', '');
   try {
     const r = await fetch(`/api/drafts/${folder}/persona-layers`, { credentials: 'same-origin' });
     if (!r.ok) { ta.value = '(failed to load layer)'; return; }
     const layers = await r.json();
     ta.value =
-      sub === 'group' ? (layers.groupBase || '(no group base)') :
       sub === 'container' ? (layers.containerBase || '(no container base)') :
       sub === 'global' ? (layers.global || '(no global persona on this install)') :
       '';
@@ -185,7 +213,15 @@ async function switchSubTab(el, folder, btn) {
 }
 
 function wireDraftDetection(el) {
-  el.querySelector('#active-text').addEventListener('input', () => markDirty(el));
+  el.querySelector('#active-text').addEventListener('input', () => {
+    markDirty(el);
+    // Show save button only when class base is dirty.
+    const sub = el.querySelector('.sub-tab.active')?.dataset?.sub;
+    if (sub === 'group') {
+      const saveBtn = el.querySelector('#save-class-base-btn');
+      if (saveBtn) saveBtn.style.display = el.querySelector('#active-text').value !== originalClassBase ? '' : 'none';
+    }
+  });
 }
 
 function markDirty(el) {
@@ -208,13 +244,47 @@ function wireFilter(el) {
   });
 }
 
+function wireSaveClassBase(el) {
+  const btn = el.querySelector('#save-class-base-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const ta = el.querySelector('#active-text');
+    const content = ta.value;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/class-base', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ content }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert(`Save failed: ${err.error || r.status}`);
+        return;
+      }
+      originalClassBase = content;
+      btn.textContent = 'Saved ✓';
+      setTimeout(() => {
+        btn.textContent = 'Save class base';
+        btn.style.display = 'none';
+      }, 1500);
+    } catch (err) {
+      alert(`Save failed: ${err}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 function prefetchLayerExistence(el, folder) {
   fetch(`/api/drafts/${folder}/persona-layers`, { credentials: 'same-origin' })
     .then((r) => (r.ok ? r.json() : {}))
     .then((layers) => {
       if (!layers.global) {
         const btn = el.querySelector('#sub-global');
-        if (btn) btn.style.opacity = '0.4';
+        if (btn) btn.hidden = true;
       }
     })
     .catch(() => { /* ignore */ });

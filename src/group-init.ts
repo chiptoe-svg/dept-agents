@@ -3,6 +3,7 @@ import path from 'path';
 
 import { DATA_DIR, GROUPS_DIR } from './config.js';
 import { initContainerConfig } from './container-config.js';
+import { seedInitialLibraryEntry } from './channels/playground/api/agent-library.js';
 import { log } from './log.js';
 import type { AgentGroup } from './types.js';
 
@@ -93,6 +94,17 @@ export function initGroupFilesystem(group: AgentGroup, opts?: { instructions?: s
   if (!fs.existsSync(skillsDst)) {
     fs.mkdirSync(skillsDst, { recursive: true });
     initialized.push('skills/');
+  }
+
+  // Seed the agent library with one "Initial agent" entry so every new
+  // group always has a revert point. No-op when files aren't present yet
+  // (container.json + CLAUDE.md may not exist until first spawn).
+  try {
+    seedInitialLibraryEntry(group.folder);
+  } catch {
+    // Non-fatal — library seeding fails gracefully if group files aren't
+    // present yet. The Agents tab will show an empty library; the user
+    // can save manually after the first chat.
   }
 
   if (initialized.length > 0) {

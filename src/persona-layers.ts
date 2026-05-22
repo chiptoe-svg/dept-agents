@@ -22,8 +22,16 @@ function readIfExists(p: string): string {
 export function getEffectivePersonaLayers(folder: string): PersonaLayers {
   const groupDir = path.join(GROUPS_DIR, folder);
   const myPersona = readIfExists(path.join(groupDir, 'CLAUDE.local.md'));
-  const groupBaseRaw = readIfExists(path.join(groupDir, 'CLAUDE.md'));
-  const groupBase = groupBaseRaw ? resolveClaudeImports(groupBaseRaw, groupDir) : '';
+  // Use .class-shared.md as the canonical class base when present — this is
+  // the single instructor-editable file that applies to every seat. Fall back
+  // to the full CLAUDE.md resolution for non-classroom installs.
+  const classSharedPath = path.join(groupDir, '.class-shared.md');
+  const groupBase = fs.existsSync(classSharedPath)
+    ? fs.readFileSync(classSharedPath, 'utf-8')
+    : (() => {
+        const raw = readIfExists(path.join(groupDir, 'CLAUDE.md'));
+        return raw ? resolveClaudeImports(raw, groupDir) : '';
+      })();
   const containerBase = readIfExists(path.join(CONTAINER_DIR, 'CLAUDE.md'));
 
   const globalPath = path.join(GROUPS_DIR, 'global', 'CLAUDE.md');

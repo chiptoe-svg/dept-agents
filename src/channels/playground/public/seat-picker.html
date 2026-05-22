@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose your seat — Agent Playground</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <style>
+    :root {
+      --brand-blue: #4a90e2;
+      --brand-blue-hover: #357abd;
+      --brand-navy: #2a2545;
+      --bg: #f7f6f4;
+      --surface: #ffffff;
+      --border: #e4e0d8;
+      --border-strong: #c9c2b7;
+      --text: #1d1a2e;
+      --text-muted: #6b6479;
+      --danger: #c8482a;
+      --danger-soft: #fbeae5;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 4px 12px rgba(42,37,69,.06), 0 2px 6px rgba(42,37,69,.04);
+      padding: 48px 56px;
+      width: 100%;
+      max-width: 460px;
+    }
+    .brand {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+    .brand img { height: 120px; width: auto; max-width: 100%; }
+    h1 {
+      margin: 0 0 6px;
+      color: var(--brand-navy);
+      font-size: 26px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .subtitle {
+      margin: 0 0 28px;
+      color: var(--text-muted);
+      font-size: 14px;
+      text-align: center;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-top: 14px;
+      margin-bottom: 4px;
+    }
+    select, input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 15px;
+      font-family: inherit;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+    }
+    select { appearance: auto; cursor: pointer; }
+    select:focus, input:focus {
+      outline: 2px solid var(--brand-blue);
+      outline-offset: -1px;
+      border-color: var(--brand-blue);
+    }
+    .submit-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--brand-blue);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      margin-top: 22px;
+    }
+    .submit-btn:hover { background: var(--brand-blue-hover); }
+    #error {
+      color: var(--danger);
+      background: var(--danger-soft);
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom"></div>
+    <h1>Choose your seat</h1>
+    <p class="subtitle">Select your role for this session.</p>
+    <form id="seat-form" autocomplete="off">
+      <label for="seat-select">Who are you?</label>
+      <select id="seat-select" required></select>
+      <div id="pw-field" style="display:none">
+        <label for="pw">Password</label>
+        <input id="pw" type="password" placeholder="Enter class password" autocomplete="current-password">
+      </div>
+      <p id="error" style="display:none" role="alert" aria-live="assertive"></p>
+      <button type="submit" class="submit-btn">Enter →</button>
+    </form>
+  </main>
+  <script src="/seat-picker.js"></script>
+</body>
+</html>

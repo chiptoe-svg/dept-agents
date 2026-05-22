@@ -35,6 +35,7 @@ export function mountChat(el) {
           <option value="high">high</option>
         </select>
       </label>
+      <a id="export-btn" class="btn btn-ghost" title="Download your agent as a zip — works in Claude Code, OpenAI Codex, Gemini CLI, and more">Export ↓</a>
     </div>
     <div class="chat-layout">
       <div class="chat-column">
@@ -68,6 +69,7 @@ export function mountChat(el) {
   wireSse(el, folder);
   wireChatForm(el, folder);
   wireTraceClear(el);
+  el.querySelector('#export-btn').href = `/api/drafts/${folder}/export`;
 }
 
 function loadModelDropdowns(el, folder) {

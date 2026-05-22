@@ -22,9 +22,9 @@ export interface ModelEntry {
   /** Cost per 1k output tokens (USD). Typically 4-5× input for cloud models. */
   costPer1kOutUsd?: number;
   /**
-   * Cost per 1k cached-input tokens (USD). Anthropic prompt caching is
-   * billed at ~10% of input rate; OpenAI prompt caching at ~50%. Absent
-   * for providers without prompt caching.
+   * Cost per 1k cached-input tokens (USD). Both Anthropic and OpenAI
+   * prompt caching bill at ~10% of the input rate. Absent for providers
+   * without prompt caching.
    */
   costPer1kCachedInUsd?: number;
   /** Average latency in seconds — best-effort estimate. */

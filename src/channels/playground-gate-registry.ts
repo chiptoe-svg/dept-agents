@@ -1,3 +1,5 @@
+import { PLAYGROUND_AUTH_BYPASS } from '../config.js';
+
 /**
  * Playground draft-mutation gate registry.
  *
@@ -65,6 +67,7 @@ export function checkDraftMutation(
   action?: DraftMutationAction,
   userId?: string | null,
 ): DraftMutationDecision {
+  if (PLAYGROUND_AUTH_BYPASS) return { allow: true };
   const ctx: DraftMutationContext =
     typeof draftFolderOrCtx === 'string'
       ? { draftFolder: draftFolderOrCtx, action: action!, userId: userId ?? null }

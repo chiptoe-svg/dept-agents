@@ -23,6 +23,18 @@ interface SseClient {
 
 const sseClients = new Set<SseClient>();
 
+/** Push an event to every connected SSE client regardless of folder. */
+export function pushToAll(eventName: string, data: unknown): void {
+  for (const client of sseClients) {
+    try {
+      client.res.write(`event: ${eventName}\n`);
+      client.res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch {
+      /* dropped connection */
+    }
+  }
+}
+
 /** Push an event to every SSE client subscribed to the given draft. */
 export function pushToDraft(draftFolder: string, eventName: string, data: unknown): void {
   for (const client of sseClients) {

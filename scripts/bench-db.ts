@@ -104,6 +104,34 @@ const RATES: Record<string, CatalogRates> = {
     costPer1kCachedInUsd: 0.0003,
     costPer1kCacheCreationUsd: 0.003 * 1.25,
   },
+  // Codex (OpenAI) rates — mirrors model-catalog.ts BUILTIN_ENTRIES.
+  // OpenAI prefix-cache: billed at 0.5× input; no separate creation fee.
+  'codex/gpt-5.5': {
+    costPer1kInUsd: 0.005,
+    costPer1kOutUsd: 0.03,
+    costPer1kCachedInUsd: 0.0005,
+  },
+  'codex/gpt-5.4': {
+    costPer1kInUsd: 0.0025,
+    costPer1kOutUsd: 0.015,
+    costPer1kCachedInUsd: 0.00025,
+  },
+  'codex/gpt-5.4-mini': {
+    costPer1kInUsd: 0.00075,
+    costPer1kOutUsd: 0.0045,
+    costPer1kCachedInUsd: 0.000075,
+  },
+  'codex/gpt-5.3-codex': {
+    costPer1kInUsd: 0.00175,
+    costPer1kOutUsd: 0.014,
+    costPer1kCachedInUsd: 0.000175,
+  },
+  // local (mlx-omni-server) — free, but surface 0 rather than null so
+  // the report shows $0.00000 instead of a dash.
+  'local/Qwen3.6-35B-A3B-UD-MLX-4bit': {
+    costPer1kInUsd: 0,
+    costPer1kOutUsd: 0,
+  },
 };
 
 /**
@@ -226,6 +254,12 @@ export function insertEvent(runId: string, seq: number, eventJson: string): void
   getBenchDb()
     .prepare('INSERT OR IGNORE INTO events (run_id, seq, event_json) VALUES (?, ?, ?)')
     .run(runId, seq, eventJson);
+}
+
+export function updateRunQuality(runId: string, qualityScore: number, notes: string | null): void {
+  getBenchDb()
+    .prepare('UPDATE runs SET quality_score = ?, notes = ? WHERE run_id = ?')
+    .run(qualityScore, notes, runId);
 }
 
 export function getRuns(runGroupId?: string): RunRecord[] {

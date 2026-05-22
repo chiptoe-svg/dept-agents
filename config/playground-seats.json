@@ -1,0 +1,10 @@
+{
+  "password": "",
+  "seats": [
+    { "label": "Instructor", "folder": "dm-with-chiptonkin", "slug": "instructor", "role": "owner"  },
+    { "label": "TA",         "folder": "ta_01",              "role": "ta"     },
+    { "label": "Student 1",  "folder": "student_01",         "role": "member" },
+    { "label": "Student 2",  "folder": "student_02",         "role": "member" },
+    { "label": "Student 3",  "folder": "student_03",         "role": "member" }
+  ]
+}

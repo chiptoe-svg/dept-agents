@@ -93,9 +93,9 @@ export type ProviderEvent =
        * - `output`: assistant output tokens
        * - `cacheCreation`: Anthropic only. Tokens written to prompt cache,
        *   billed at 1.25× base input rate.
-       * - `cacheRead`: tokens served from prompt cache. Anthropic bills at
-       *   0.10× base input rate; OpenAI prefix-cache at 0.50×. Codex sets
-       *   this from `tokenUsage.total.cachedInputTokens`.
+       * - `cacheRead`: tokens served from prompt cache. Both Anthropic and
+       *   OpenAI bill at 0.10× base input rate. Codex sets this from
+       *   `tokenUsage.total.cachedInputTokens`.
        */
       tokens?: {
         input: number;

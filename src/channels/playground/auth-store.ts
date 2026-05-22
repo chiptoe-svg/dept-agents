@@ -45,6 +45,10 @@ export interface PlaygroundSession {
   userId: string | null;
   createdAt: number;
   lastActivityAt: number;
+  /** Set in bypass mode — the agent group folder this seat resolves to. */
+  bypassFolder?: string;
+  /** Set in bypass mode — display label shown in the header (e.g. "Instructor"). */
+  seatLabel?: string;
 }
 
 const pendingMagicTokens = new TtlMap<string, PendingMagicToken>(MAGIC_TOKEN_TTL_MS);
