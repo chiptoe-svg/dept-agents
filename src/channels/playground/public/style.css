@@ -116,6 +116,29 @@ html, body {
   white-space: nowrap;
 }
 
+/* ── Seat label (bypass mode) ────────────────────────────────────────── */
+
+.seat-label {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: #fff;
+  background: var(--brand-navy);
+  padding: 4px 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.switch-seat {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.switch-seat:hover { color: var(--text-muted); text-decoration: underline; }
+
 /* ── Tab bar ─────────────────────────────────────────────────────────── */
 
 #tab-bar {
@@ -1155,6 +1178,161 @@ select.model-changed {
 .as-link-row { display: flex; gap: 6px; margin: 4px 0; }
 .as-link { flex: 1; font-family: ui-monospace, monospace; font-size: 12px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
 
+/* ── Agents tab ───────────────────────────────────────────────────────── */
+#tab-agents:not([hidden]) { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+
+.agents-layout {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agents-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.agents-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agents-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agents-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.agents-active-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.agents-dirty-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff3cd;
+  color: #8a6200;
+  border: 1px solid #e0b020;
+}
+
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.agents-loading,
+.agents-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 24px 0;
+  grid-column: 1 / -1;
+}
+
+.agent-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--surface);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: box-shadow .15s;
+}
+.agent-card:hover { box-shadow: var(--shadow-sm); }
+.agent-card-active { border-color: #4a90e2; border-width: 2px; background: #f5faff; }
+
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.agent-dot-active { background: #2ea043; }
+.agent-dot-dirty  { background: #d4830a; }
+
+.agent-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-card-meta { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.agent-chip {
+  background: #eee;
+  color: #555;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.agent-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.agent-card-updated { font-size: 11px; color: var(--text-faint); }
+
+.agent-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.agent-card-active-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2ea043;
+  padding: 2px 6px;
+  background: #e6f5ee;
+  border-radius: 4px;
+}
+
+/* Modal additions for agent library */
+.modal-hint { font-size: 12px; color: #888; margin: 4px 0 0; line-height: 1.5; }
+.modal-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+
+/* Toast variants (base .toast already defined above) */
+.toast-error { background: var(--danger); }
+
 /* ── classroom-provider-auth:class-controls-providers START ──────────────────── */
 .cc-banner-warn { padding: 8px 12px; background: #fff7e6; color: #b8741a; border: 1px solid #f0d49a; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
 /* ── classroom-provider-auth:class-controls-providers END ──────────────────── */
@@ -1167,3 +1345,69 @@ select.model-changed {
 .pill-forbidden { background: #fbeae5; color: #c8482a; }
 .pill-link { border: none; cursor: pointer; font: inherit; }
 /* ── classroom-provider-auth:models-status-pill END ──────────────────────── */
+
+/* ── TA view (.pg-ta-view on body) ─────────────────────────────────────── */
+/* Lock only class-admin controls; TAs can edit their own agent freely */
+.pg-ta-view #cc-save,
+.pg-ta-view #as-submit,
+.pg-ta-view #rotate-passcode-btn {
+  display: none !important;
+}
+
+.pg-ta-view [data-cc-tab],
+.pg-ta-view [data-cc-auth],
+.pg-ta-view [data-cc-provider-allow],
+.pg-ta-view [data-cc-provider-default],
+.pg-ta-view [data-cc-provider-byo] {
+  pointer-events: none;
+  opacity: 0.5;
+}
+/* ── TA view END ──────────────────────────────────────────────────────── */
+
+/* ── Knowledge / Sources tab ──────────────────────────────────────────── */
+.corpus-list { margin: 1rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.corpus-card {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.corpus-card .corpus-name { flex: 1; font-weight: 500; }
+.corpus-card .corpus-meta { font-size: 0.8em; color: var(--muted, #888); }
+.status-badge {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.status-empty    { background: #f0f0f0; color: #666; }
+.status-ingesting { background: #fff3cd; color: #856404; }
+.status-ready    { background: #d1fae5; color: #065f46; }
+.status-error    { background: #fee2e2; color: #991b1b; }
+
+.chunk-inspector { margin-top: 1rem; }
+.chunk-card {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85em;
+}
+.chunk-card .chunk-source { color: var(--muted, #888); font-size: 0.75em; margin-bottom: 0.25rem; }
+
+/* ── Retrieval tab ────────────────────────────────────────────────────── */
+.result-card {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.result-card .result-score {
+  font-size: 0.75em;
+  color: var(--muted, #888);
+  float: right;
+}
+.result-card .result-source { font-size: 0.75em; color: var(--muted, #888); margin-bottom: 0.25rem; }

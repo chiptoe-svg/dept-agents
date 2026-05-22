@@ -65,7 +65,7 @@ async function renderSections(el) {
   // Class-controls gates which provider sections render for non-owners.
   // Owner always sees every section so they can curate.
   const ac = window.__pg && window.__pg.activeClass;
-  const isOwner = window.__pg && window.__pg.user && window.__pg.user.role === 'owner';
+  const isOwner = window.__pg && window.__pg.user && (window.__pg.user.role === 'owner' || window.__pg.user.role === 'ta');
   // v2 shape: providers is a map of { allow, provideDefault, allowByo }.
   // A provider is allowed if its `allow` flag is true. Null = no gating.
   const providerAllowed = isOwner || !ac

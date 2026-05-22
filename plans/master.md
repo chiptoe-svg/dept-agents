@@ -36,9 +36,13 @@ this file is the sequencing layer.
 | Phase 1 follow-up — ufw docker0 → 3007 documentation in `/add-gws-tool` step 9b | `main` (commit `42d0dfc`) |
 | Phase 1 follow-up — `/login` "Lost your link?" form + Resend integration | trunk hook + form: `main` (commit `b1a0346`); classroom-side recoverer + Resend send: `origin/classroom` (commit `25e0c41`) |
 | Playground UI redesign — A (theme unification, dark → light, lobster mascot), B (brand palette + favicon + topbar), D (mode-tabs as pills, agent-markdown rendering, multi-line chat + ⌘↵, file dirty indicator, themed scrollbars, mobile breakpoint), bug fixes (duplicate escapeHtml, #mode-chat specificity, no-cache headers, cache-bust) | `main` (commits `3d4cdd1`, `db51afe`, `702939d`, `60ab860`, `62df9aa`, `27eb5f4`) |
-| Playground trace panel — tool-call / tool-result surfacing via new ProviderEvents → messages_out kind=`trace` → playground SSE → right-side trace panel. Claude SDK provider only; Codex/OpenCode/Ollama follow-up. | `main` (commit `a83794d`) |
+| Playground trace panel — tool-call / tool-result surfacing via new ProviderEvents → messages_out kind=`trace` → playground SSE → right-side trace panel. Claude + Codex providers. | `main` (commits `a83794d`, `08ae3d1`) |
 | **Agent Playground v3 — student-first 4-tab redesign** (Chat / Persona / Skills / Models, 3-tier library, model whitelist, per-message cost annotations, provider-uniform persona-layers helper). Spec: [`docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html`](../docs/superpowers/specs/2026-05-13-agent-playground-v3-design.html). Plan: [`docs/superpowers/plans/2026-05-13-agent-playground-v3.html`](../docs/superpowers/plans/2026-05-13-agent-playground-v3.html). | `worktree-playground-v3` branch, commit range `01c0e5f`..`cbd3974` (24 tasks across 7 phases + prettier hygiene, awaiting `/ultrareview` + merge to `main`) |
 | **Phase 1.9 — playground UX + Skills authoring + student provisioning** — add-student button (Home tab), per-agent custom skills with multi-file editor (3-panel Skills tab redesign), chat dropdown hides unauthenticated providers, codex/local model switch without container respawn, OMLX probe auth fix, per-turn codex cost accounting, IDOR gate on all `/api/drafts/:folder` GETs, tunnel single-flight fix, provisionStudent DB rollback on FS failure. Plan: [`plans/skills-tab-redesign.md`](skills-tab-redesign.md), [`plans/external-classroom-access.md`](external-classroom-access.md), review fixes: [`plans/pr4-review-fixes.md`](pr4-review-fixes.md). | `main` (merge `c2f689d1`, PR #4) |
+| **Phase 1.10 — TA role, class base persona, usage aggregator cache fix** — TA per-role access model, shared class base persona via symlink + `class-base.ts` handlers, usage aggregator `tokensCached` fix (reads `cacheRead` from content JSON, provider-specific adjustment for codex vs claude billing). | `main` (commits `beb2e46`, `a50855e`) |
+| **Phase 5 — agent export** — five-format zip (claude/openai/gemini/openclaw/universal) + `WHAT-I-BUILT.md`. `GET /api/drafts/:folder/export`. | `main` (merged `9ba6631`) |
+| **Phase 5b — agent library + save/swap UX** — named agent portfolio per user (Agents tab, save/load/delete/rename, active slot, dirty detection, seed at provision). Phases E (default templates) + G (per-entry export) added 2026-05-21. | `main` (merged `9ba6631`) |
+| **Phase 7A — RAG text + BM25** — corpus CRUD, text/HTML extraction, sentence+fixed chunkers, SQLite FTS5 BM25 index, fire-and-forget pipeline, Sources tab (upload/ingest/inspect), Retrieval tab (BM25 query + ranked results). Zero new packages. | `main` (commits `955c100`..`7740b5f`) |
 
 **Phase 1 status: complete.** All 9 build-order items shipped; refactor merged; deploy guide written; two follow-ups shipped (ufw doc, lost-link form). Phase 2 unblocked.
 
@@ -181,7 +185,7 @@ reality; living with it. Revisit when one of:
   this fork; `/add-classroom-provider-auth` and the
   `classroom-x7-provider-auth` branch are now redundant.
 
-## Phase 1.8 — agent-harness benchmark suite (B1 implemented, B2+ planned)
+## Phase 1.8 — agent-harness benchmark suite (B1–B3 implemented, B4 pending run)
 
 Triggered by the 2026-05-18 cost spike: a single "yolo" message on
 codex/gpt-5.4 billed at $1.10 because codex makes 6–10 internal API
@@ -209,23 +213,69 @@ gpt-5.4 + gpt-5.4-mini, two local MLX models). Three assessment
 layers: token/cost/latency (auto), programmatic correctness per
 request (deterministic), claude-haiku-as-judge quality rubric.
 
-**Status.** B1 runner implemented and in `main`: `scripts/bench.ts`,
-`bench-db.ts`, `bench-gates.ts`, `bench-fixture-server.ts`,
+**Status.** B1+B2 implemented in `main`. Scripts: `bench.ts`,
+`bench-db.ts`, `bench-gates.ts`, `bench-judge.ts`, `bench-fixture-server.ts`,
 `bench-prompts.json`, `bench-fixtures/`. BENCH_MODE session fix landed
 (`server.ts` now mints bench sessions as owner so `canReadDraft`
-passes on the bench agent group's SSE stream). Run via:
+passes on the bench agent group's SSE stream). B2 judge calls the
+credential proxy directly (no playground round-trip) with
+`claude-haiku-4-5-20251001`; score + rationale land in `runs.quality_score`
++ `runs.notes`. Run via:
 ```
 BENCH_MODE=1 pnpm run dev   # in one terminal
 pnpm exec tsx scripts/bench.ts --source <folder> --systems claude-sonnet --reps 3
 pnpm exec tsx scripts/bench-report.ts
 ```
 
-**Phasing.** B1 ✅ baseline runner against `claude-sonnet-4-6` →
-B2 LLM-judge quality rubric (1 hr) → B3 multi-system matrix + report
-(1 hr) → B4 full matrix run, first diagnostic dataset (1 hr).
-~3 hr remaining to land B2–B4.
+**Phasing.** B1 ✅ baseline runner → B2 ✅ LLM-judge quality rubric →
+B3 ✅ multi-system matrix (claude-sonnet, claude-haiku, codex-5.4,
+codex-5.4-mini, local-qwen3) → B4 full matrix run, first diagnostic
+dataset. **B4 is when-convenient** — not blocking any Phase 2 work. Single command when ready, requires host running with BENCH_MODE=1
+and (optionally) mlx-omni-server for local-qwen3:
+```
+BENCH_MODE=1 pnpm run dev   # terminal 1
+pnpm exec tsx scripts/bench.ts --source <folder> \
+  --systems claude-sonnet,claude-haiku,codex-5.4,codex-5.4-mini \
+  --reps 3
+pnpm exec tsx scripts/bench-report.ts
+```
 
 Detailed plan: [`agent-benchmark-suite.md`](./agent-benchmark-suite.md).
+
+## Phase 1.10 — TA role, class base persona, playground UX fixes (2026-05-21)
+
+Live-class polish session. All items shipped unless marked **⏳ pending**.
+
+### TA role (per-role access model)
+
+- `config/playground-seats.json`: `ta_01` gets `"role": "ta"`; instructor seat gets `"slug": "instructor"` (URL is now `?seat=instructor` not `?seat=dm-with-chiptonkin`).
+- `seats-config.ts`: added `slug?` field; `role` type extended to include `'ta'`.
+- `api/me.ts`: seat matching uses `s.slug ?? s.folder`; `MyAgentResponse.user.role` includes `'ta'`.
+- `app.js`: TA sees all tabs (same as owner); `pg-ta-view` CSS class added to body instead of the old `pg-readonly`; `window.__pg.readOnly` removed entirely.
+- `style.css`: replaced `.pg-readonly` block (locked ALL editing) with `.pg-ta-view` (locks only class-admin controls: `#cc-save`, `#as-submit`, `#rotate-passcode-btn`, CC checkboxes). TAs can now edit their own persona/skills/models.
+- `tabs/skills.js`, `tabs/models.js`, `tabs/agents.js`, `tabs/persona.js`: removed all `window.__pg?.readOnly` JS guards — own-agent editing is now unconditional.
+
+### Shared class base persona
+
+- `data/class-shared-students.md` is the canonical class base file (already existed for students).
+- Symlinks added: `groups/dm-with-chiptonkin/.class-shared.md` and `groups/ta_01/.class-shared.md` → `data/class-shared-students.md`.
+- `src/persona-layers.ts`: reads `.class-shared.md` directly as `groupBase` when it exists (instead of resolving the full CLAUDE.md import chain). CLAUDE.md files for instructor/TA are NOT modified — the symlink approach is transparent.
+- `src/channels/playground/api/class-base.ts` (new): `handleGetClassBase()` / `handlePutClassBase()` read/write `data/class-shared-students.md`.
+- `api-routes.ts`: `GET /api/class-base` (all roles) and `PUT /api/class-base` (owner only).
+- Persona tab sub-tabs renamed: "Group base" → "Class base", "Container base" → "Platform base". Global sub-tab hidden when empty. Save button is DOM-present only for owner, shown only when dirty, inline in the sub-tabs nav bar (hidden after 1.5 s on save).
+
+### Bug fixes
+
+- **Switch seat always landed on instructor.** `seat-picker.js` was using `s.folder` (undefined after the API change to return `{ label, slug }`) — all options silently fell through to the default. Fixed to use `s.slug`.
+- **Stale "50%" cached-rate comments.** `container/agent-runner/src/providers/types.ts` and `src/model-catalog.ts` both had stale notes claiming OpenAI prefix-cache is billed at 0.50×. Both updated to 0.10× (matches the actual `costPer1kCachedInUsd` values already in the catalog).
+
+### ✅ Usage aggregator cache fix
+
+Shipped `main` (commit `a50855e`). `aggregateAgentUsage()` now reads `cacheRead` from the content JSON blob and applies provider-specific adjustment (codex subtracts cached from `tokens_in`; claude adds cached on top). `priceFor` called with actual `tokensCached`.
+
+### Model pricing verification (low priority, no code needed)
+
+Verify absolute in/out rates against the OpenAI pricing page. The catalog at `src/model-catalog.ts` lines 95–165 has the current values (gpt-5.5: $0.005/$0.030; gpt-5.4: $0.0025/$0.015; gpt-5.4-mini: $0.00075/$0.0045; gpt-5.3-codex: $0.00175/$0.014). Cached rates are already correct at 10%. If rates differ, update `src/model-catalog.ts` or override per-install via `config/model-catalog-local.json`.
 
 ## Phase 1 — shared-classroom MVP
 
@@ -378,12 +428,7 @@ dependency tracking.
 
 ### Build order
 
-1. **Phase 14 — per-person GWS OAuth (per-person mode).** Magic-link flow on
-   the student-auth-server, per-user credentials at
-   `data/student-google-auth/<id>/`, `/gauth` Telegram command.
-   Partly blocked on GCP redirect URI registration — see
-   `project_gcp_oauth_pending` memory. Details:
-   [gws-mcp.md §Phase 14](gws-mcp.md).
+1. ~~**Phase 14 — per-person GWS OAuth (per-person mode).**~~ **Deferred indefinitely** — not needed for the current shared-classroom deployment. GWS auth is handled at the instructor level; per-student OAuth skipped.
 2. ✅ **credential-proxy Phase X.7 — per-student provider OAuth +
    temp-password fallback.** Students authorize their own provider
    account via magic-link; resolver falls back to instructor pool if
@@ -395,43 +440,20 @@ dependency tracking.
    the subsystem was merged into trunk rather than kept as a skill
    install. Full task breakdown:
    [`docs/superpowers/plans/2026-05-17-per-student-provider-auth.md`](../docs/superpowers/plans/2026-05-17-per-student-provider-auth.md).
-3. **gws-mcp Phase 13.5b — Calendar list/create.** Earns its keep
-   once each user has their own calendar (per-person mode). In shared-classroom mode it
-   collapses to a single shared workspace calendar and doesn't need
-   agent tooling. Details: [gws-mcp-v2.md §13.5b](gws-mcp-v2.md).
-4. **gws-mcp Phase 13.5c — Drive listing.** Safe to expose once
-   per-person mode lands — Google's own auth scopes the result. Details:
-   [gws-mcp-v2.md §13.5c](gws-mcp-v2.md).
-5. **gws-mcp Phase 13.5d — Gmail search/send.** Same reasoning.
-   Details: [gws-mcp-v2.md §13.5d](gws-mcp-v2.md).
-6. **classroom Phase 4 (Phase-2 slice) — provider settings panel.**
-   Adds the homepage UI for students to manage their own provider
-   OAuth + GWS OAuth + temp-code redemption.
-7. **classroom Phase 5 — agent export tooling.**
-   `nanoclaw / claude-code / codex / json` formats; `GET
-   /api/draft/<folder>/export?format=…`. Spec in
-   [classroom-web-multiuser.md §Phase 5](classroom-web-multiuser.md).
-7b. **NEW: classroom Phase 5b — Agent library + save/swap UX
-   (UNPLANNED).** Distinct from §5 (which is one-direction export
-   for take-home). 5b is the in-playground File-menu-for-agents:
-   Save current agent state as a named library entry, Save As to
-   create a new entry, Open to swap the active agent, optional
-   versioning / branching. `library/default-agents/*.json` is the
-   seed storage but the wrapping UX is undesigned. Needs a spec +
-   plan pair under `docs/superpowers/` before execution. Probably
-   slots before Phase 5 (export) since export depends on the
-   "what's the current agent" notion being clearly addressable
-   — though both could land independently and reuse the same
-   underlying `groups/<folder>/` source of truth.
-8. **classroom Phase 7 — expert system builder + RAG strategies.**
+3. ~~**gws-mcp Phase 13.5b/c/d — Calendar, Drive, Gmail.**~~ **Deferred** — gated on Phase 14 (per-person GWS OAuth), which is skipped.
+4. ~~**classroom Phase 4 (Phase-2 slice) — provider settings panel.**~~ **Deferred** — gated on Phase 14.
+5. ✅ **classroom Phase 5 — agent export tooling.** Shipped `main` (merged `9ba6631`).
+5b. ✅ **classroom Phase 5b — Agent library + save/swap UX.** Shipped `main` (merged `9ba6631`).
+6. **classroom Phase 7 — expert system builder + RAG strategies.**
+   **Phase 7A shipped** `main` (commits `955c100`..`7740b5f`): text sources + BM25/FTS5 + Sources tab + Retrieval tab. Zero new packages. Remaining: 7B (PDF + dense embeddings), 7C (video/complex/data), 7D (agent MCP tool `knowledge_search`).
    Pipeline framework + named strategies + UI. Cost-economical only
    after Phase 1 #8 (local-LLM runbook) lands. Spec in
    [classroom-web-multiuser.md §Phase 7](classroom-web-multiuser.md).
-9. **classroom Phase 8 — evaluation framework.** Side-by-side
+7. **classroom Phase 8 — evaluation framework.** Side-by-side
    comparison + LLM-as-judge mode. Depends on Phase 7 (nothing to
    evaluate without strategies). Spec in
    [classroom-web-multiuser.md §Phase 8](classroom-web-multiuser.md).
-10. **classroom Phase 9 — walk-away cloud deploy.** Bundle +
+8. **classroom Phase 9 — walk-away cloud deploy.** Bundle +
    bootstrap script. Depends on Phase 5 (export) for the bundle
    format. Spec in
    [classroom-web-multiuser.md §Phase 9](classroom-web-multiuser.md).
@@ -462,22 +484,8 @@ Slot into Phase 2 or a small interleave when convenient.
   whether email is on roster or not. Three RESEND_* env vars in
   `.env` enable it (same vars as `/add-resend`); falls back to
   "contact instructor" message when unset. 3 new vitest cases.
-- **Trace surfacing for non-Claude providers** (Codex, OpenCode,
-  Ollama, …). The playground's trace panel renders tool calls / tool
-  results in real time (commit `a83794d`), but only the Claude SDK
-  provider currently emits the underlying `tool_use` / `tool_result`
-  ProviderEvents. Each non-default provider needs an equivalent scan
-  in its `translateEvents` (Codex's app-server protocol, OpenCode's
-  stream shape, etc.) — same envelope shape so the client renderer
-  doesn't need per-provider branches. **~30 min per provider**; do
-  when the operator's actual class agent provider lands somewhere
-  other than `claude`. Files to touch:
-  - `container/agent-runner/src/providers/codex.ts` (lives in trunk)
-  - `container/agent-runner/src/providers/opencode.ts` (`providers`
-    branch — needs porting via `/add-opencode` skill update too)
-  - any future provider's `translateEvents`
-  The `kind: 'trace'` route in `src/delivery.ts` and the client
-  renderer in `app.js` are provider-agnostic — provider work only.
+- ~~**Trace surfacing for non-Claude providers.**~~
+  ✅ Codex done (`08ae3d1`). OpenCode/Ollama: do when those providers are actually in use.
 - **Codex ChatGPT-subscription OAuth refresh daemon** + **`/codex-auth`
   Telegram admin command.** Bundle: the admin command flips
   `~/.codex/auth.json` into chatgpt mode, and the daemon keeps it

@@ -29,6 +29,7 @@ function renderRunGroup(groupId: string, runs: RunRecord[]): void {
     'request_id',
     'rep',
     'pass',
+    'quality',
     'in_tok',
     'cache_read',
     'cache_create',
@@ -57,10 +58,12 @@ function renderRunGroup(groupId: string, runs: RunRecord[]): void {
       totalRuns++;
       if (r.programmatic_pass) totalPass++;
     }
+    const qualStr = r.quality_score != null ? fmt(r.quality_score, 1) : '-';
     const row = [
       r.request_id,
       String(r.repetition),
       passStr,
+      qualStr,
       fmt(r.total_input_tokens),
       fmt(r.total_cached_tokens),
       fmt(r.total_cache_creation_tokens),
@@ -75,6 +78,12 @@ function renderRunGroup(groupId: string, runs: RunRecord[]): void {
 
   if (totalRuns > 0) {
     console.log(`\n**Programmatic gates:** ${totalPass}/${totalRuns} passed`);
+  }
+
+  const scored = runs.filter((r) => r.quality_score != null);
+  if (scored.length > 0) {
+    const avg = scored.reduce((s, r) => s + (r.quality_score ?? 0), 0) / scored.length;
+    console.log(`**LLM-judge quality:** avg ${avg.toFixed(2)}/5 (${scored.length} scored)`);
   }
 }
 

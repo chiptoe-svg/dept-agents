@@ -1,18 +1,25 @@
 /**
- * NanoClaw agent-harness benchmark runner — B1.
+ * NanoClaw agent-harness benchmark runner — B1+B2+B3.
  *
- * CLI: pnpm exec tsx scripts/bench.ts --source <folder> --systems claude-sonnet --reps <n>
+ * CLI: pnpm exec tsx scripts/bench.ts --source <folder> --systems <comma-list> --reps <n>
  *
- * B1 supports only the claude-sonnet system (claude provider + claude-sonnet-4-6 model).
- * Multi-system matrix execution lands in B3.
+ * Systems (pass as comma-separated list to --systems):
+ *   claude-sonnet   claude provider  + claude-sonnet-4-6          (default)
+ *   claude-haiku    claude provider  + claude-haiku-4-5
+ *   codex-5.4       codex provider   + gpt-5.4
+ *   codex-5.4-mini  codex provider   + gpt-5.4-mini
+ *   local-qwen3     local provider   + Qwen3.6-35B-A3B-UD-MLX-4bit (requires mlx-omni-server)
+ *
+ * Full matrix: --systems claude-sonnet,claude-haiku,codex-5.4,codex-5.4-mini
+ * (Omit local-qwen3 if mlx-omni-server is not running on port 8000.)
  *
  * Workflow:
  *   1. Verify the playground server is reachable on http://127.0.0.1:3002
  *   2. Start the fixture server on localhost:7777
- *   3. Provision (or refresh) the bench agent group for the system under test
+ *   3. Provision (or refresh) the bench agent group for each system under test
  *   4. Obtain a bench session cookie via /api/bench/session
- *   5. For each (request, rep): send a message, stream SSE events, capture metrics
- *   6. Persist events + aggregated metrics to data/benchmarks.db
+ *   5. For each (system × request × rep): send a message, stream SSE events, capture metrics
+ *   6. Persist events + aggregated metrics + LLM-judge score to data/benchmarks.db
  *   7. Stop the fixture server
  *   8. Print summary
  */
@@ -24,6 +31,7 @@ import { fileURLToPath } from 'url';
 
 import { startFixtureServer, stopFixtureServer, FIXTURE_PORT } from './bench-fixture-server.js';
 import { computeCost, insertEvent, insertRun } from './bench-db.js';
+import { judgeOutput } from './bench-judge.js';
 import { runGate } from './bench-gates.js';
 import { CONTAINER_HOST_GATEWAY } from '../src/container-runtime.js';
 
@@ -62,12 +70,34 @@ function rewriteFixtureUrls(text: string): string {
   return text.split(localBase).join(gatewayBase);
 }
 
-// -- System definitions (B1: claude-sonnet only) ----------------------------
+// -- System definitions (B3: full matrix) -----------------------------------
 const SYSTEMS: Record<string, { provider: string; model: string; label: string }> = {
   'claude-sonnet': {
     provider: 'claude',
     model: 'claude-sonnet-4-6',
     label: 'claude-sonnet',
+  },
+  'claude-haiku': {
+    provider: 'claude',
+    model: 'claude-haiku-4-5',
+    label: 'claude-haiku',
+  },
+  'codex-5.4': {
+    provider: 'codex',
+    model: 'gpt-5.4',
+    label: 'codex-5.4',
+  },
+  'codex-5.4-mini': {
+    provider: 'codex',
+    model: 'gpt-5.4-mini',
+    label: 'codex-5.4-mini',
+  },
+  // Requires mlx-omni-server running on host port 8000.
+  // The credential proxy forwards /omlx/* to http://localhost:8000.
+  'local-qwen3': {
+    provider: 'local',
+    model: 'Qwen3.6-35B-A3B-UD-MLX-4bit',
+    label: 'local-qwen3',
   },
 };
 
@@ -640,6 +670,22 @@ async function runBench(
         totalCacheCreation || null,
       );
 
+      // B2: LLM-judge quality score (best-effort — non-fatal on failure).
+      let qualityScore: number | null = null;
+      let judgeRationale: string | null = null;
+      if (runSuccess && outputText) {
+        const requestText = rawPrompts.join('\n\n---\n\n');
+        process.stdout.write('    Judging…');
+        const judgeResult = await judgeOutput(requestText, outputText);
+        if (judgeResult) {
+          qualityScore = judgeResult.score;
+          judgeRationale = judgeResult.rationale;
+          process.stdout.write(` ${qualityScore}/5\n`);
+        } else {
+          process.stdout.write(' (skipped)\n');
+        }
+      }
+
       // Write run record
       insertRun({
         run_id: runId,
@@ -661,9 +707,9 @@ async function runBench(
         num_tool_calls: totalToolCalls || null,
         latency_ms: totalLatency || null,
         cost_usd: costUsd,
-        quality_score: null,
+        quality_score: qualityScore,
         programmatic_pass: gatePass ? 1 : 0,
-        notes,
+        notes: judgeRationale ?? notes,
       });
 
       // Write raw events for forensics
@@ -675,7 +721,8 @@ async function runBench(
       const gateStr = gatePass ? 'PASS' : 'FAIL';
       const costStr = costUsd != null ? ` · $${costUsd.toFixed(5)}` : '';
       const tokStr = totalIn > 0 ? ` · ${totalIn}in/${totalOut}out` : '';
-      console.log(`    ${gateStr}${tokStr}${costStr}`);
+      const qualStr = qualityScore != null ? ` · quality ${qualityScore}/5` : '';
+      console.log(`    ${gateStr}${tokStr}${costStr}${qualStr}`);
     }
   }
 
@@ -690,7 +737,7 @@ async function main(): Promise<void> {
   // Validate systems
   for (const s of systems) {
     if (!SYSTEMS[s]) {
-      console.error(`Unknown system: ${s}. Supported in B1: ${Object.keys(SYSTEMS).join(', ')}`);
+      console.error(`Unknown system: ${s}. Supported: ${Object.keys(SYSTEMS).join(', ')}`);
       process.exit(1);
     }
   }
@@ -758,9 +805,12 @@ async function main(): Promise<void> {
     console.log('\nFixture server stopped.');
   }
 
+  const systemCount = systems.length;
+  const runsPerSystem = BENCH_PROMPTS.length * reps;
   console.log(
-    `\n1 run complete · ${BENCH_PROMPTS.length}/${BENCH_PROMPTS.length} requests · ` +
-    `${grandPassed} programmatic gates passed`,
+    `\n${systemCount} system${systemCount === 1 ? '' : 's'} · ` +
+    `${runsPerSystem} runs/system · ` +
+    `${grandPassed}/${grandTotal} programmatic gates passed`,
   );
   console.log('Run `pnpm exec tsx scripts/bench-report.ts` to see the full report.');
 }

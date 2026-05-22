@@ -19,7 +19,7 @@ import type { ApiResult } from './me.js';
 
 const CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'class-controls.json');
 
-export type TabId = 'home' | 'chat' | 'persona' | 'skills' | 'models';
+export type TabId = 'home' | 'chat' | 'persona' | 'skills' | 'models' | 'agents';
 export type ProviderId = string; // registry-defined; loose-typed here
 export type AuthModeId = 'api-key' | 'oauth' | 'claude-code-oauth';
 
@@ -42,7 +42,7 @@ export interface ClassControls {
 }
 
 const DEFAULT_CLASS_CONTROL: ClassControl = {
-  tabsVisibleToStudents: ['home', 'chat', 'persona', 'skills', 'models'],
+  tabsVisibleToStudents: ['home', 'chat', 'persona', 'skills', 'models', 'agents'],
   authModesAvailable: ['api-key', 'oauth', 'claude-code-oauth'],
   providers: {},
 };

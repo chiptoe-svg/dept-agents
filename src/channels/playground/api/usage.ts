@@ -3,15 +3,13 @@
  * agent, sums tokens by model, multiplies by the catalog's per-model
  * pricing, and returns { thisMonth, total } buckets.
  *
- * Cost calculation: prefers split rates (costPer1kInUsd / Out / CachedIn)
- * when the catalog entry provides them; falls back to the legacy single
- * costPer1kTokensUsd × (in + out) for entries without splits.
- *
- * Cached input tokens aren't currently persisted by the agent-runner —
- * messages_out has no column for them. The aggregator reads them as 0
- * for now; once the providers start surfacing prompt-cache stats on the
- * `result` event the DB schema and this calc can grow together without
- * touching the wire API.
+ * Cost calculation: prefers split rates (costPer1kInUsd / Out / CachedIn).
+ * Cache-read token counts are stored in the content JSON blob (key "cacheRead")
+ * because messages_out has no dedicated column for them. Provider semantics differ:
+ * - Anthropic: tokens_in = non-cached only; cacheRead is additive.
+ * - OpenAI/Codex: tokens_in = total including cached; cacheRead must be subtracted
+ *   from tokens_in before applying the full input rate, then charged separately at
+ *   the cached rate (0.10× for OpenAI prefix-cache, matching costPer1kCachedInUsd in the catalog).
  */
 import fs from 'fs';
 import path from 'path';
@@ -77,8 +75,8 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
   const catalogByKey = new Map(catalog.map((e) => [`${e.provider}:${e.id}`, e]));
 
   // Aggregation buckets keyed by `provider:model` so we can look up pricing.
-  const thisMonth = new Map<string, { tokensIn: number; tokensOut: number }>();
-  const total = new Map<string, { tokensIn: number; tokensOut: number }>();
+  const thisMonth = new Map<string, { tokensIn: number; tokensOut: number; tokensCached: number }>();
+  const total = new Map<string, { tokensIn: number; tokensOut: number; tokensCached: number }>();
 
   for (const sessionId of sessionIdsForAgent(agentGroupId)) {
     const outboundPath = path.join(sessionsBaseDir(), agentGroupId, sessionId, 'outbound.db');
@@ -88,7 +86,7 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
       db = new Database(outboundPath, { readonly: true, fileMustExist: true });
       const rows = db
         .prepare(
-          `SELECT timestamp, tokens_in, tokens_out, provider, model
+          `SELECT timestamp, tokens_in, tokens_out, provider, model, content
            FROM messages_out
            WHERE tokens_in IS NOT NULL OR tokens_out IS NOT NULL`,
         )
@@ -98,20 +96,37 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
         tokens_out: number | null;
         provider: string | null;
         model: string | null;
+        content: string | null;
       }[];
       for (const row of rows) {
         const key = `${row.provider ?? '?'}:${row.model ?? '?'}`;
         const ti = row.tokens_in ?? 0;
         const to = row.tokens_out ?? 0;
-        if (!total.has(key)) total.set(key, { tokensIn: 0, tokensOut: 0 });
+        // Parse cacheRead from the content JSON blob (no dedicated DB column).
+        let rawCacheRead = 0;
+        if (row.content) {
+          try {
+            rawCacheRead = (JSON.parse(row.content) as { cacheRead?: number }).cacheRead ?? 0;
+          } catch {
+            /* malformed content — treat as 0 */
+          }
+        }
+        // codex/openai: tokens_in = total including cached → deduct to get non-cached.
+        // claude: tokens_in = non-cached only → cacheRead is additive.
+        const isOpenAi = row.provider === 'codex' || row.provider === 'openai' || row.provider === 'openai-custom';
+        const tiNonCached = isOpenAi ? ti - rawCacheRead : ti;
+        const tc = rawCacheRead;
+        if (!total.has(key)) total.set(key, { tokensIn: 0, tokensOut: 0, tokensCached: 0 });
         const t = total.get(key)!;
-        t.tokensIn += ti;
+        t.tokensIn += tiNonCached;
         t.tokensOut += to;
+        t.tokensCached += tc;
         if (row.timestamp >= monthStart) {
-          if (!thisMonth.has(key)) thisMonth.set(key, { tokensIn: 0, tokensOut: 0 });
+          if (!thisMonth.has(key)) thisMonth.set(key, { tokensIn: 0, tokensOut: 0, tokensCached: 0 });
           const m = thisMonth.get(key)!;
-          m.tokensIn += ti;
+          m.tokensIn += tiNonCached;
           m.tokensOut += to;
+          m.tokensCached += tc;
         }
       }
     } catch {
@@ -121,18 +136,19 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
     }
   }
 
-  function build(buckets: Map<string, { tokensIn: number; tokensOut: number }>): UsageBucket {
+  function build(buckets: Map<string, { tokensIn: number; tokensOut: number; tokensCached: number }>): UsageBucket {
     let tokensIn = 0;
     let tokensOut = 0;
-    const tokensCached = 0;
+    let tokensCached = 0;
     let costUsd = 0;
     const byModel: UsageBucket['byModel'] = [];
     for (const [key, v] of buckets) {
       const [provider, model] = key.split(':');
       const entry = catalogByKey.get(`${provider}:${model}`);
-      const c = priceFor(entry, v.tokensIn, v.tokensOut, 0);
+      const c = priceFor(entry, v.tokensIn, v.tokensOut, v.tokensCached);
       tokensIn += v.tokensIn;
       tokensOut += v.tokensOut;
+      tokensCached += v.tokensCached;
       costUsd += c;
       byModel.push({ model, provider, tokensIn: v.tokensIn, tokensOut: v.tokensOut, costUsd: c });
     }

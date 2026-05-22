@@ -65,6 +65,30 @@ export function parseCookie(header: string | undefined, name: string): string | 
   return null;
 }
 
+/**
+ * Read the raw request body as a Buffer. Used for binary file uploads.
+ * Optional `maxBytes` caps the accumulated size (default 25 MB); the
+ * connection is destroyed and the promise rejects when the cap is exceeded.
+ */
+export function readRawBody(req: import('http').IncomingMessage, options: { maxBytes?: number } = {}): Promise<Buffer> {
+  const maxBytes = options.maxBytes ?? 25 * 1024 * 1024;
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    req.on('data', (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        req.destroy();
+        reject(new Error(`request body exceeds ${maxBytes} bytes`));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 /** Escape a string for safe insertion into HTML body text or attributes. */
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {

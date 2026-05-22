@@ -41,7 +41,25 @@ import { checkDraftMutation } from '../playground-gate-registry.js';
 import { canReadDraft } from './draft-read-gate.js';
 import { getPlatformPrefix, getSetupConfig } from './adapter.js';
 import type { PlaygroundSession } from './auth-store.js';
-import { readJsonBody, send } from './http-helpers.js';
+import { readJsonBody, readRawBody, send } from './http-helpers.js';
+import {
+  handleListCorpora,
+  handleCreateCorpus,
+  handleDeleteCorpus,
+  handleGetCorpus,
+  handleUploadSource,
+  handleIngest,
+  handleInspect,
+  handleQuery,
+} from '../../knowledge/api-handlers.js';
+import {
+  handleListBenchmarks,
+  handleCreateBenchmark,
+  handleGetBenchmark,
+  handleUpdateBenchmark,
+  handleDeleteBenchmark,
+  handleRunBenchmark,
+} from '../../knowledge/benchmarks/api-handlers.js';
 import {
   deleteCustomSkill,
   listCustomSkillFiles,
@@ -51,6 +69,17 @@ import {
 } from './custom-skills.js';
 import { getLibraryCacheStat, listLibrary, listSkillFiles, readSkillFile } from './library.js';
 import { handlePersonaLayers } from './api/persona-layers.js';
+import { handleExport, handleLibraryEntryExport } from './api/export.js';
+import {
+  handleDeleteEntry,
+  handleFromTemplate,
+  handleListAgentLibrary,
+  handleLoadEntry,
+  handleRenameEntry,
+  handleSaveExisting,
+  handleSaveNew,
+} from './api/agent-library-handlers.js';
+import { listDefaultAgents } from './api/agent-library.js';
 import {
   handleAutoFillCatalog,
   handleGetModels,
@@ -60,6 +89,7 @@ import {
   handleToggleDefaultModel,
 } from './api/models.js';
 import { handleGetClassControls, handlePutClassControls } from './api/class-controls.js';
+import { handleGetClassBase, handlePutClassBase } from './api/class-base.js';
 import { handleAddStudent, handleGetTunnel, handleStopTunnel } from './api/students-admin.js';
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
@@ -72,7 +102,7 @@ import {
   handleLogout,
   handleLogoutAll,
 } from './api/me.js';
-import { registerSseClient } from './sse.js';
+import { pushToAll, registerSseClient } from './sse.js';
 
 export async function route(
   req: http.IncomingMessage,
@@ -348,7 +378,7 @@ export async function route(
 
   // GET /api/me/agent — agent group assigned to this user (with fallback)
   if (method === 'GET' && url.pathname === '/api/me/agent') {
-    const r = handleGetMyAgent(session);
+    const r = handleGetMyAgent(session, url.searchParams.get('seat'));
     return send(res, r.status, r.body);
   }
 
@@ -387,6 +417,11 @@ export async function route(
     const { handleIssuePairCode } = await import('./api/telegram-pair.js');
     const r = handleIssuePairCode(session);
     return send(res, r.status, r.body);
+  }
+
+  // GET /api/library/defaults — session required (playground auth gate in server.ts)
+  if (method === 'GET' && url.pathname === '/api/library/defaults') {
+    return send(res, 200, { templates: listDefaultAgents() });
   }
 
   // GET /api/library — returns all three tiers
@@ -616,6 +651,21 @@ export async function route(
     const r = handleGetClassControls();
     return send(res, r.status, r.body);
   }
+  // GET /api/class-base — read the shared class base persona (all can read).
+  if (method === 'GET' && url.pathname === '/api/class-base') {
+    const r = handleGetClassBase();
+    return send(res, r.status, r.body);
+  }
+  // PUT /api/class-base — owner-only, writes data/class-shared-students.md.
+  if (method === 'PUT' && url.pathname === '/api/class-base') {
+    if (!session.userId || !isOwner(session.userId)) {
+      return send(res, 403, { error: 'owner role required' });
+    }
+    const body = await readJsonBody(req);
+    const r = handlePutClassBase(body);
+    return send(res, r.status, r.body);
+  }
+
   // PUT /api/class-controls — owner-only, mutates config/class-controls.json.
   if (method === 'PUT' && url.pathname === '/api/class-controls') {
     if (!session.userId || !isOwner(session.userId)) {
@@ -623,6 +673,7 @@ export async function route(
     }
     const body = await readJsonBody(req);
     const r = handlePutClassControls(body);
+    if (r.status === 200) pushToAll('class-controls-changed', r.body);
     return send(res, r.status, r.body);
   }
 
@@ -683,6 +734,105 @@ export async function route(
     return send(res, r.status, r.body);
   }
 
+  // Agent library routes — /api/drafts/:folder/library[/:slug[/save|load]]
+  // These must be checked before the generic export route to avoid slug
+  // collisions with path suffixes.
+
+  // POST /api/drafts/:folder/library/from-template — create a new library
+  // entry from a default template. Checked before slug routes so "from-template"
+  // is not mistaken for a user slug.
+  const fromTemplateMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/from-template$/);
+  if (method === 'POST' && fromTemplateMatch) {
+    const body = await readJsonBody(req);
+    const r = handleFromTemplate(fromTemplateMatch[1]!, session.userId, body as never);
+    return send(res, r.status, r.body);
+  }
+
+  const libBase = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/library$/);
+  if (libBase) {
+    const draftFolder = libBase[1]!;
+    if (method === 'GET') {
+      const r = handleListAgentLibrary(draftFolder, session.userId);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'POST') {
+      const body = await readJsonBody(req);
+      const r = handleSaveNew(draftFolder, session.userId, body as never);
+      return send(res, r.status, r.body);
+    }
+  }
+
+  const libSlugSave = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)\/save$/,
+  );
+  if (method === 'POST' && libSlugSave) {
+    const body = await readJsonBody(req);
+    const r = handleSaveExisting(libSlugSave[1]!, session.userId, libSlugSave[2]!, body as never);
+    return send(res, r.status, r.body);
+  }
+
+  const libSlugLoad = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)\/load$/,
+  );
+  if (method === 'POST' && libSlugLoad) {
+    const r = handleLoadEntry(libSlugLoad[1]!, session.userId, libSlugLoad[2]!);
+    return send(res, r.status, r.body);
+  }
+
+  const libSlug = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)$/);
+  if (libSlug) {
+    if (method === 'PUT') {
+      const body = await readJsonBody(req);
+      const r = handleRenameEntry(libSlug[1]!, session.userId, libSlug[2]!, body as never);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'DELETE') {
+      const r = handleDeleteEntry(libSlug[1]!, session.userId, libSlug[2]!);
+      return send(res, r.status, r.body);
+    }
+  }
+
+  // GET /api/drafts/:folder/library/:slug/export — download a specific library entry as zip
+  const libExportMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)\/export$/,
+  );
+  if (method === 'GET' && libExportMatch) {
+    const draftFolder = libExportMatch[1]!;
+    const slug = libExportMatch[2]!;
+    const format = url.searchParams.get('format') ?? 'all';
+    const result = await handleLibraryEntryExport(draftFolder, slug, session.userId, format);
+    if ('buffer' in result) {
+      res.writeHead(200, {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${result.filename}"`,
+        'content-length': result.buffer.length,
+        'cache-control': 'no-store',
+      });
+      res.end(result.buffer);
+      return;
+    }
+    return send(res, result.status, { error: result.error });
+  }
+
+  // GET /api/drafts/:folder/export — download agent as zip bundle
+  const exportMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/export$/);
+  if (method === 'GET' && exportMatch) {
+    const draftFolder = exportMatch[1]!;
+    const format = url.searchParams.get('format') ?? 'all';
+    const result = await handleExport(draftFolder, session.userId, format);
+    if ('buffer' in result) {
+      res.writeHead(200, {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${result.filename}"`,
+        'content-length': result.buffer.length,
+        'cache-control': 'no-store',
+      });
+      res.end(result.buffer);
+      return;
+    }
+    return send(res, result.status, { error: result.error });
+  }
+
   // GET /api/drafts/:folder/stream — Server-Sent Events for outbound messages.
   // Same folder-name loosening as the messages POST above so classroom
   // students get a live stream from their student_NN agent.
@@ -699,6 +849,177 @@ export async function route(
     const cleanup = registerSseClient({ draftFolder, cookieValue: session.cookieValue, res });
     req.on('close', cleanup);
     return;
+  }
+
+  // GET  /api/drafts/:folder/knowledge/corpora
+  // POST /api/drafts/:folder/knowledge/corpora
+  const knowledgeCorporaMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/corpora$/);
+  if (knowledgeCorporaMatch) {
+    const folder = knowledgeCorporaMatch[1]!;
+    if (method === 'GET') {
+      if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+      const r = await handleListCorpora(folder);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'POST') {
+      const decision = checkDraftMutation(folder, 'file_put', session.userId);
+      if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+      const body = await readJsonBody(req);
+      const r = await handleCreateCorpus(folder, body);
+      return send(res, r.status, r.body);
+    }
+  }
+
+  // GET    /api/drafts/:folder/knowledge/corpora/:id
+  // DELETE /api/drafts/:folder/knowledge/corpora/:id
+  const knowledgeCorpusMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/corpora\/([A-Za-z0-9_-]+)$/,
+  );
+  if (knowledgeCorpusMatch) {
+    const folder = knowledgeCorpusMatch[1]!;
+    const id = knowledgeCorpusMatch[2]!;
+    if (method === 'GET') {
+      if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+      const r = await handleGetCorpus(folder, id);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'DELETE') {
+      const decision = checkDraftMutation(folder, 'file_put', session.userId);
+      if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+      const r = await handleDeleteCorpus(folder, id);
+      if (r.status === 204) {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      return send(res, r.status, r.body);
+    }
+  }
+
+  // PUT  /api/drafts/:folder/knowledge/corpora/:id/upload?filename=
+  const knowledgeUploadMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/corpora\/([A-Za-z0-9_-]+)\/upload$/,
+  );
+  if (method === 'PUT' && knowledgeUploadMatch) {
+    const folder = knowledgeUploadMatch[1]!;
+    const id = knowledgeUploadMatch[2]!;
+    const decision = checkDraftMutation(folder, 'file_put', session.userId);
+    if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    const filename = url.searchParams.get('filename') ?? 'upload';
+    let data: Buffer;
+    try {
+      data = await readRawBody(req);
+    } catch (err) {
+      return send(res, 413, { error: (err as Error).message });
+    }
+    const r = await handleUploadSource(folder, id, filename, data);
+    if (r.status === 204) {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    return send(res, r.status, r.body);
+  }
+
+  // POST /api/drafts/:folder/knowledge/corpora/:id/ingest
+  const knowledgeIngestMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/corpora\/([A-Za-z0-9_-]+)\/ingest$/,
+  );
+  if (method === 'POST' && knowledgeIngestMatch) {
+    const folder = knowledgeIngestMatch[1]!;
+    const id = knowledgeIngestMatch[2]!;
+    const decision = checkDraftMutation(folder, 'file_put', session.userId);
+    if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    const r = await handleIngest(folder, id);
+    return send(res, r.status, r.body);
+  }
+
+  // GET  /api/drafts/:folder/knowledge/corpora/:id/inspect
+  const knowledgeInspectMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/corpora\/([A-Za-z0-9_-]+)\/inspect$/,
+  );
+  if (method === 'GET' && knowledgeInspectMatch) {
+    const folder = knowledgeInspectMatch[1]!;
+    const id = knowledgeInspectMatch[2]!;
+    if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    const r = await handleInspect(folder, id);
+    return send(res, r.status, r.body);
+  }
+
+  // POST /api/drafts/:folder/knowledge/corpora/:id/query
+  const knowledgeQueryMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/corpora\/([A-Za-z0-9_-]+)\/query$/,
+  );
+  if (method === 'POST' && knowledgeQueryMatch) {
+    const folder = knowledgeQueryMatch[1]!;
+    const id = knowledgeQueryMatch[2]!;
+    if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    const body = await readJsonBody(req);
+    const { query = '', k = 5 } = body as { query?: string; k?: number };
+    const r = await handleQuery(folder, id, query, k);
+    return send(res, r.status, r.body);
+  }
+
+  // GET  /api/drafts/:folder/knowledge/benchmarks
+  // POST /api/drafts/:folder/knowledge/benchmarks
+  const benchmarksMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/benchmarks$/);
+  if (benchmarksMatch) {
+    const folder = benchmarksMatch[1]!;
+    if (method === 'GET') {
+      if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+      const r = await handleListBenchmarks(folder);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'POST') {
+      if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+      const body = await readJsonBody(req);
+      const r = await handleCreateBenchmark(folder, body);
+      return send(res, r.status, r.body);
+    }
+  }
+
+  // GET    /api/drafts/:folder/knowledge/benchmarks/:id
+  // PUT    /api/drafts/:folder/knowledge/benchmarks/:id
+  // DELETE /api/drafts/:folder/knowledge/benchmarks/:id
+  const benchmarkMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/benchmarks\/([A-Za-z0-9_-]+)$/,
+  );
+  if (benchmarkMatch) {
+    const folder = benchmarkMatch[1]!;
+    const id = benchmarkMatch[2]!;
+    if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    if (method === 'GET') {
+      const r = await handleGetBenchmark(folder, id);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'PUT') {
+      const body = await readJsonBody(req);
+      const r = await handleUpdateBenchmark(folder, id, body);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'DELETE') {
+      const r = await handleDeleteBenchmark(folder, id);
+      if (r.status === 204) {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      return send(res, r.status, r.body);
+    }
+  }
+
+  // POST /api/drafts/:folder/knowledge/benchmarks/:id/run
+  const benchmarkRunMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/knowledge\/benchmarks\/([A-Za-z0-9_-]+)\/run$/,
+  );
+  if (method === 'POST' && benchmarkRunMatch) {
+    const folder = benchmarkRunMatch[1]!;
+    const id = benchmarkRunMatch[2]!;
+    if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    const body = await readJsonBody(req);
+    const k = typeof body.k === 'number' ? body.k : 5;
+    const r = await handleRunBenchmark(folder, id, k);
+    return send(res, r.status, r.body);
   }
 
   send(res, 404, { error: `No route: ${method} ${url.pathname}` });

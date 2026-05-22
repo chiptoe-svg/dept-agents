@@ -1,6 +1,6 @@
 export function mountHome(el) {
   const { agent, user } = window.__pg || { agent: { name: '?', folder: '?' }, user: { id: '?' } };
-  const isOwner = user && user.role === 'owner';
+  const isOwner = user && (user.role === 'owner' || user.role === 'ta');
 
   const params = new URLSearchParams(location.search);
   const googleConnected = params.get('google_connected') === '1';
@@ -435,7 +435,7 @@ async function renderUsageCard(body, folder) {
   }
 }
 
-const ALL_TABS = ['home', 'chat', 'persona', 'skills', 'models'];
+const ALL_TABS = ['home', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks'];
 const ALL_AUTH = ['api-key', 'oauth', 'claude-code-oauth'];
 const AUTH_LABEL = { 'api-key': 'API key', oauth: 'OAuth (Anthropic Console / OpenAI)', 'claude-code-oauth': 'Claude Code OAuth' };
 
@@ -553,6 +553,16 @@ function renderClassControlsForm(body, cfg) {
 }
 
 async function renderTelegramCard(body) {
+  // In bypass+seats mode, non-owner seats have user.id = null and share the
+  // owner's session. The API would return the owner's Telegram pairing which
+  // is wrong to show to TAs/students. Skip the lookup entirely.
+  if (!window.__pg?.user?.id) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'Telegram pairing is linked to your personal account.';
+    body.replaceChildren(p);
+    return;
+  }
   try {
     const res = await fetch('/api/me/telegram', { credentials: 'same-origin' });
     if (!res.ok) {
