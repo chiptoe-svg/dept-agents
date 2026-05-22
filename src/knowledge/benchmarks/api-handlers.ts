@@ -39,7 +39,7 @@ export async function handleUpdateBenchmark(
     if (body.name !== undefined) meta.name = body.name;
     if (body.queries !== undefined) meta.queries = body.queries;
     writeBenchmark(folder, meta);
-    return { status: 200, body: meta };
+    return { status: 200, body: readBenchmark(folder, id) };
   } catch {
     return { status: 404, body: { error: 'Benchmark not found' } };
   }
