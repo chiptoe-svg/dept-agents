@@ -22,14 +22,13 @@ function findHitRank(chunks: Array<{ text: string }>, relevant: string[]): numbe
 }
 
 function computeMetrics(hitRanks: Array<number | null>, k: number): StrategyMetrics {
-  const scored = hitRanks.filter((r) => r !== null) as number[];
-  if (scored.length === 0) return { mrr: 0, hitAt1: 0, hitAt3: 0, hitAtK: 0 };
-  const n = scored.length;
+  const total = hitRanks.length;
+  if (total === 0) return { mrr: 0, hitAt1: 0, hitAt3: 0, hitAtK: 0 };
   return {
-    mrr: scored.reduce((s, r) => s + 1 / r, 0) / n,
-    hitAt1: scored.filter((r) => r <= 1).length / n,
-    hitAt3: scored.filter((r) => r <= 3).length / n,
-    hitAtK: scored.filter((r) => r <= k).length / n,
+    mrr: hitRanks.reduce<number>((s, r) => s + (r !== null ? 1 / r : 0), 0) / total,
+    hitAt1: hitRanks.filter((r) => r !== null && r <= 1).length / total,
+    hitAt3: hitRanks.filter((r) => r !== null && r <= 3).length / total,
+    hitAtK: hitRanks.filter((r) => r !== null && r <= k).length / total,
   };
 }
 
