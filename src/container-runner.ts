@@ -218,9 +218,16 @@ export function assertDirectoryMounts(mounts: VolumeMount[]): void {
 }
 
 /** Kill a container for a session. */
-export function killContainer(sessionId: string, reason: string): void {
+export function killContainer(sessionId: string, reason: string, onExit?: () => void): void {
   const entry = activeContainers.get(sessionId);
   if (!entry) return;
+
+  // Optional onExit callback fires when the underlying process actually closes —
+  // used by container-restart.ts to trigger an immediate respawn without waiting
+  // for the next host-sweep tick.
+  if (onExit) {
+    entry.process.once('close', onExit);
+  }
 
   log.info('Killing container', { sessionId, reason, containerName: entry.containerName });
   try {
