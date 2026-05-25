@@ -67,7 +67,7 @@ describe('groups CLI delete cascades dependent rows (#2525)', () => {
     const MGID = 'mg-1';
     const UID = 'tg:42';
 
-    createAgentGroup({ id: GID, name: 'victim', folder: 'victim', agent_provider: null, created_at: now() });
+    createAgentGroup({ id: GID, name: 'victim', folder: 'victim', agent_provider: null, model: null, created_at: now() });
     createSession({
       id: SID,
       agent_group_id: GID,
@@ -172,8 +172,8 @@ describe('groups CLI delete cascades dependent rows (#2525)', () => {
   it('removes polymorphic agent_destinations that point at the deleted group', async () => {
     const A = 'ag-a';
     const B = 'ag-b';
-    createAgentGroup({ id: A, name: 'a', folder: 'a', agent_provider: null, created_at: now() });
-    createAgentGroup({ id: B, name: 'b', folder: 'b', agent_provider: null, created_at: now() });
+    createAgentGroup({ id: A, name: 'a', folder: 'a', agent_provider: null, model: null, created_at: now() });
+    createAgentGroup({ id: B, name: 'b', folder: 'b', agent_provider: null, model: null, created_at: now() });
 
     const db = getDb();
 
