@@ -1,4 +1,8 @@
+import { restartAgentGroupContainers } from '../../container-restart.js';
+import { buildAgentGroupImage, killContainer, wakeContainer } from '../../container-runner.js';
 import { getDb, hasTable } from '../../db/connection.js';
+import { getSession } from '../../db/sessions.js';
+import { writeSessionMessage } from '../../session-manager.js';
 import { registerResource } from '../crud.js';
 
 registerResource({
@@ -117,6 +121,55 @@ registerResource({
         const removed = cascade(id);
 
         return { deleted: id, removed };
+      },
+    },
+    restart: {
+      access: 'approval',
+      description:
+        'Restart containers for a group. Use --id <group-id> [--rebuild] [--message <text>]. ' +
+        'From inside a container, --id is auto-filled and only the calling session is restarted. ' +
+        '--rebuild rebuilds the container image first (required for package changes). ' +
+        '--message sets an on-wake instruction for the fresh container to act on when it starts — ' +
+        'use this when you need to continue after the restart (e.g. verify a new tool works, notify the user). ' +
+        'Without --message, the container stops and only starts again on the next user message.',
+      handler: async (args, ctx) => {
+        const id = (args.id as string) || (ctx.caller === 'agent' ? ctx.agentGroupId : undefined);
+        if (!id) throw new Error('--id is required');
+        if (args.rebuild) {
+          await buildAgentGroupImage(id);
+        }
+        const message = args.message as string | undefined;
+
+        // From an agent: scope to the calling session only.
+        if (ctx.caller === 'agent') {
+          if (message) {
+            writeSessionMessage(id, ctx.sessionId, {
+              id: `restart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              kind: 'chat',
+              timestamp: new Date().toISOString(),
+              platformId: id,
+              channelType: 'agent',
+              threadId: null,
+              content: JSON.stringify({ text: message, sender: 'system', senderId: 'system' }),
+              onWake: 1,
+            });
+          }
+          killContainer(
+            ctx.sessionId,
+            'restarted via ncl',
+            message
+              ? () => {
+                  const s = getSession(ctx.sessionId);
+                  if (s) wakeContainer(s);
+                }
+              : undefined,
+          );
+          return { restarted: 1, rebuilt: !!args.rebuild };
+        }
+
+        // From the host: restart all running containers in the group.
+        const count = restartAgentGroupContainers(id, 'restarted via ncl', message);
+        return { restarted: count, rebuilt: !!args.rebuild };
       },
     },
   },
