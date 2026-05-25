@@ -42,6 +42,13 @@ export interface ProviderOptions {
   additionalDirectories?: string[];
   /** Explicit model override — takes priority over user Claude Code settings. */
   model?: string;
+  /**
+   * Reasoning effort (`'low' | 'medium' | 'high' | 'xhigh' | 'max'`). Passed
+   * through to the underlying SDK. If omitted, the SDK default is used.
+   * Provider-neutral field; only providers that surface a reasoning knob to
+   * the upstream model consume it.
+   */
+  effort?: string;
 }
 
 export interface QueryInput {
