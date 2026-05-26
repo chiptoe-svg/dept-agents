@@ -23,7 +23,6 @@ const FAKE_AG: AgentGroup = {
   name: 'student_01',
   folder: 'student_01',
   agent_provider: null,
-  model: null,
   created_at: '2026-05-05T00:00:00Z',
 };
 

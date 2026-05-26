@@ -25,6 +25,7 @@ import path from 'path';
 import { GROUPS_DIR } from './config.js';
 import { getDb } from './db/connection.js';
 import { getAgentGroupByFolder } from './db/agent-groups.js';
+import { updateContainerConfigScalars } from './db/container-configs.js';
 import { getActiveSessions } from './db/sessions.js';
 import { getModelCatalog } from './model-catalog.js';
 import { isContainerRunning, killContainer } from './container-runner.js';
@@ -116,19 +117,14 @@ export function setProvider(folder: string, provider: string): SetProviderResult
     .run(provider, group.id);
   const sessionsUpdated = updated.changes;
 
-  // 3. agent_groups.agent_provider + model — for /model and any other code
-  //    that looks up the group's provider/model rather than a specific
-  //    session's. Forgetting agent_provider caused the /model picker to list
-  //    Claude models for a codex group (caught 2026-05-11). Forgetting model
-  //    caused a codex group to keep pointing at an mlx model after a switch
-  //    (caught 2026-05-15) — agent then hangs because codex asks OpenAI for
-  //    a local-only model name.
+  // 3. agent_groups.agent_provider — for /model and any other code
+  //    that looks up the group's provider rather than a specific session's.
+  //    Forgetting agent_provider caused the /model picker to list Claude models
+  //    for a codex group (caught 2026-05-11).
+  //    Model is now owned by container_configs, not agent_groups.
+  getDb().prepare('UPDATE agent_groups SET agent_provider = ? WHERE id = ?').run(provider, group.id);
   if (newModel) {
-    getDb()
-      .prepare('UPDATE agent_groups SET agent_provider = ?, model = ? WHERE id = ?')
-      .run(provider, newModel, group.id);
-  } else {
-    getDb().prepare('UPDATE agent_groups SET agent_provider = ? WHERE id = ?').run(provider, group.id);
+    updateContainerConfigScalars(group.id, { model: newModel });
   }
 
   // 4. Stop running containers — best-effort. Errors here are not fatal:

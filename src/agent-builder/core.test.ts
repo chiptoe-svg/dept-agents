@@ -32,7 +32,7 @@ import { deleteAgentGroup, getAgentGroupByFolder } from '../db/agent-groups.js';
 const TARGET_FOLDER = 'agent-x';
 const DRAFT_FOLDER = 'draft_agent-x';
 
-function setupTargetGroup(provider: string | null = null, model: string | null = null): void {
+function setupTargetGroup(provider: string | null = null, _model: string | null = null): void {
   const dir = path.join(TEST_DIR, 'groups', TARGET_FOLDER);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'CLAUDE.local.md'), '# Original persona\n');
@@ -45,7 +45,6 @@ function setupTargetGroup(provider: string | null = null, model: string | null =
     name: TARGET_FOLDER,
     folder: TARGET_FOLDER,
     agent_provider: provider,
-    model,
     created_at: new Date().toISOString(),
   });
 }
@@ -70,7 +69,6 @@ describe('listAgentGroups', () => {
       name: DRAFT_FOLDER,
       folder: DRAFT_FOLDER,
       agent_provider: null,
-      model: null,
       created_at: new Date().toISOString(),
     });
     const list = listAgentGroups();
@@ -86,7 +84,6 @@ describe('createDraft', () => {
 
     expect(draft.folder).toBe(DRAFT_FOLDER);
     expect(draft.agent_provider).toBe('codex');
-    expect(draft.model).toBe('gpt-5.5');
 
     const draftPersona = fs.readFileSync(path.join(TEST_DIR, 'groups', DRAFT_FOLDER, 'CLAUDE.local.md'), 'utf8');
     expect(draftPersona).toBe('# Original persona\n');

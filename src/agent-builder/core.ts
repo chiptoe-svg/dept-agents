@@ -135,7 +135,6 @@ export function createDraft(targetFolder: string): AgentGroup {
     name: draftFolder,
     folder: draftFolder,
     agent_provider: target.agent_provider,
-    model: target.model,
     created_at: nowIso(),
   };
   createAgentGroup(draft);

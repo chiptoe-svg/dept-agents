@@ -65,7 +65,6 @@ function seedAgentGroup(id: string, folder: string): void {
     name: folder,
     folder,
     agent_provider: 'codex',
-    model: null,
     created_at: nowIso(),
   });
 }

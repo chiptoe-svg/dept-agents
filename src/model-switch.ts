@@ -1,17 +1,19 @@
 /**
  * Per-agent-group model selection.
  *
- * `agent_groups.model` is the source of truth. At spawn time, the host
- * passes the resolved model into container.json so the in-container
- * provider reads it from the RO mount.
+ * `container_configs.model` is the source of truth. At spawn time, the host
+ * materializes container.json from the DB so the in-container provider reads
+ * the resolved model from the RO mount.
  *
  * Suggested-model hints (`/model` listing) and alias expansion live in
  * `./model-discovery.js`, which fetches the live list from the provider
  * with a 1-hour cache and a hardcoded fallback.
  */
-import { getAgentGroupByFolder, updateAgentGroup } from './db/agent-groups.js';
+import { getAgentGroupByFolder } from './db/agent-groups.js';
+import { getContainerConfig, updateContainerConfigScalars } from './db/container-configs.js';
 import { getActiveSessions } from './db/sessions.js';
 import { isContainerRunning, killContainer } from './container-runner.js';
+import { materializeContainerJson } from './container-config.js';
 import { getModelCatalog } from './model-catalog.js';
 
 export { expandAlias, hintsForProvider } from './model-discovery.js';
@@ -20,13 +22,14 @@ export type { ModelHint } from './model-discovery.js';
 export function getCurrentModel(folder: string): { provider: string | null; model: string | null } | null {
   const group = getAgentGroupByFolder(folder);
   if (!group) return null;
-  return { provider: group.agent_provider, model: group.model };
+  const cfg = getContainerConfig(group.id);
+  return { provider: group.agent_provider, model: cfg?.model ?? null };
 }
 
 /**
  * Resolve the effective model the next container spawn will use, mirroring
  * the precedence in the in-container provider:
- *   group.model → env (CODEX_MODEL/ANTHROPIC_MODEL) → catalog default for
+ *   container_configs.model → env (CODEX_MODEL/ANTHROPIC_MODEL) → catalog default for
  *   provider → provider name as last-resort placeholder
  *
  * Pre-fix this returned '(unknown)' for any provider other than codex/claude,
@@ -57,7 +60,8 @@ export function resolveEffectiveModel(group: { agent_provider: string | null; mo
 export function setModel(folder: string, model: string | null): boolean {
   const group = getAgentGroupByFolder(folder);
   if (!group) return false;
-  updateAgentGroup(group.id, { model });
+  updateContainerConfigScalars(group.id, { model });
+  materializeContainerJson(group.id);
 
   // Stop any running session containers so the model change is visible on the
   // next inbound message. The in-container provider reads model from the

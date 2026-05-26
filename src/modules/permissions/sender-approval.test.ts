@@ -81,7 +81,6 @@ beforeEach(async () => {
     name: 'Agent',
     folder: 'agent',
     agent_provider: null,
-    model: null,
     created_at: now(),
   });
 

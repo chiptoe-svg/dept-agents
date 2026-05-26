@@ -54,7 +54,7 @@ afterEach(() => {
 
 function stubAgentGroup(id: string, folder: string) {
   (getAgentGroup as ReturnType<typeof vi.fn>).mockImplementation((askedId: string) =>
-    askedId === id ? { id, name: id, folder, agent_provider: 'codex', model: null, created_at: '' } : undefined,
+    askedId === id ? { id, name: id, folder, agent_provider: 'codex', created_at: '' } : undefined,
   );
 }
 

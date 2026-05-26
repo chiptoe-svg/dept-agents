@@ -4,8 +4,8 @@ import { getDb } from './connection.js';
 export function createAgentGroup(group: AgentGroup): void {
   getDb()
     .prepare(
-      `INSERT INTO agent_groups (id, name, folder, agent_provider, model, created_at, metadata)
-       VALUES (@id, @name, @folder, @agent_provider, @model, @created_at, @metadata)`,
+      `INSERT INTO agent_groups (id, name, folder, agent_provider, created_at, metadata)
+       VALUES (@id, @name, @folder, @agent_provider, @created_at, @metadata)`,
     )
     .run({ ...group, metadata: group.metadata ?? null });
 }
@@ -52,7 +52,7 @@ export function getAllAgentGroups(): AgentGroup[] {
 
 export function updateAgentGroup(
   id: string,
-  updates: Partial<Pick<AgentGroup, 'name' | 'agent_provider' | 'model'>>,
+  updates: Partial<Pick<AgentGroup, 'name' | 'agent_provider'>>,
 ): void {
   const fields: string[] = [];
   const values: Record<string, unknown> = { id };
