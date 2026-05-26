@@ -17,9 +17,27 @@ import Database from 'better-sqlite3';
 
 import { CREDENTIAL_PROXY_PORT } from '../../../config.js';
 import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
+import { readEnvFile } from '../../../env.js';
 import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
 import { sessionsBaseDir } from '../../../session-manager.js';
 import type { ApiResult } from './me.js';
+
+/**
+ * Anthropic OAuth scope (claude.com OAuth, the default when the host runs
+ * without ANTHROPIC_API_KEY) requires every /v1/messages request to begin
+ * its `system` with this exact preamble — the API returns "Invalid bearer
+ * token" otherwise. Pi-ai's adapter has the same constraint; see the
+ * matching constant in container/agent-runner/src/providers/pi.ts.
+ */
+const CLAUDE_CODE_OAUTH_PREAMBLE = "You are Claude Code, Anthropic's official CLI for Claude.";
+
+/**
+ * Detect whether the host's credential proxy is in api-key or OAuth mode.
+ * Mirrors the proxy's own detection (credential-proxy.ts).
+ */
+function anthropicAuthMode(): 'api-key' | 'oauth' {
+  return readEnvFile(['ANTHROPIC_API_KEY']).ANTHROPIC_API_KEY ? 'api-key' : 'oauth';
+}
 
 export interface DirectChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -180,24 +198,43 @@ async function dispatchAnthropic(
     if (m.role === 'system') systemParts.push(m.content);
     else userAndAssistant.push({ role: m.role, content: m.content });
   }
+  const authMode = anthropicAuthMode();
+
   const requestBody: Record<string, unknown> = {
     model,
     max_tokens: 4096,
     messages: userAndAssistant,
   };
-  if (systemParts.length > 0) requestBody.system = systemParts.join('\n\n');
+  // System composition differs by auth mode. In OAuth mode the Claude Code
+  // preamble MUST be the start of system, or Anthropic rejects with "Invalid
+  // bearer token" regardless of token validity. In api-key mode the preamble
+  // is harmless but unnecessary; skip it to keep direct-chat's
+  // straight-up-LLM-call semantics intact.
+  const systemPieces =
+    authMode === 'oauth'
+      ? [CLAUDE_CODE_OAUTH_PREAMBLE, ...systemParts.filter((s) => !s.startsWith(CLAUDE_CODE_OAUTH_PREAMBLE))]
+      : systemParts;
+  if (systemPieces.length > 0) requestBody.system = systemPieces.join('\n\n');
+
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    // Anthropic API version pin — Claude API rejects requests without it.
+    'anthropic-version': '2023-06-01',
+  };
+  if (authMode === 'api-key') {
+    // Proxy substitutes x-api-key with the real one on the wire.
+    headers['x-api-key'] = 'placeholder';
+  } else {
+    // OAuth mode: proxy substitutes Authorization: Bearer + injects the
+    // anthropic-beta oauth-2025-04-20 header. Placeholder value itself is
+    // irrelevant — proxy replaces it.
+    headers['authorization'] = 'Bearer sk-ant-oat-placeholder';
+  }
 
   const url = `http://127.0.0.1:${CREDENTIAL_PROXY_PORT}/v1/messages`;
   const upstream = await fetchOrThrow(url, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      // The proxy strips/replaces x-api-key with the real one — but
-      // requires the header to exist so it knows to substitute.
-      'x-api-key': 'placeholder',
-      // Anthropic API version pin — Claude API rejects requests without it.
-      'anthropic-version': '2023-06-01',
-    },
+    headers,
     body: JSON.stringify(requestBody),
   });
   const data = (await upstream.json()) as {
