@@ -21,9 +21,7 @@ function createMinimalSchema(db: Database.Database): void {
   db.prepare(
     'CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied TEXT NOT NULL)',
   ).run();
-  db.prepare(
-    'CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_version_name ON schema_version(name)',
-  ).run();
+  db.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_version_name ON schema_version(name)').run();
   db.prepare(
     `CREATE TABLE IF NOT EXISTS container_configs (
        agent_group_id TEXT PRIMARY KEY,
@@ -62,18 +60,14 @@ describe('migration021 — container_configs.model_provider', () => {
   });
 
   it('adds the model_provider column to container_configs', () => {
-    const cols = getDb()
-      .prepare('PRAGMA table_info(container_configs)')
-      .all() as { name: string }[];
+    const cols = getDb().prepare('PRAGMA table_info(container_configs)').all() as { name: string }[];
     expect(cols.some((c) => c.name === 'model_provider')).toBe(true);
   });
 
   it('is idempotent — re-running up() when column already exists does not throw', () => {
     const db = getDb();
     expect(() => migration021.up(db)).not.toThrow();
-    const cols = db
-      .prepare('PRAGMA table_info(container_configs)')
-      .all() as { name: string }[];
+    const cols = db.prepare('PRAGMA table_info(container_configs)').all() as { name: string }[];
     expect(cols.some((c) => c.name === 'model_provider')).toBe(true);
   });
 
@@ -130,12 +124,14 @@ describe('migration021 — container_configs.model_provider', () => {
     createMinimalSchema(freshDb);
 
     // Insert three rows: one with malformed env, one with valid env + key, one without key
-    freshDb.prepare(
-      `INSERT INTO container_configs
+    freshDb
+      .prepare(
+        `INSERT INTO container_configs
          (agent_group_id, skills, mcp_servers, packages_apt, packages_npm,
           additional_mounts, cli_scope, env, allowed_models, updated_at)
        VALUES (?, '"all"', '{}', '[]', '[]', '[]', 'group', ?, '[]', ?)`,
-    ).run('ag-malformed', 'not-json', now());
+      )
+      .run('ag-malformed', 'not-json', now());
 
     const envWithKey = JSON.stringify({ NANOCLAW_PI_MODEL_PROVIDER: 'openai' });
     insertConfigRow(freshDb, 'ag-valid-with-key', envWithKey);

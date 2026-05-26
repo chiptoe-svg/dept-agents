@@ -29,7 +29,9 @@ describe('setModelProviderAndModel', () => {
     }));
     vi.doMock('./container-runner.js', () => ({
       isContainerRunning: (sessionId: string) => sessionId === 'sess-1',
-      killContainer: (sessionId: string) => { killedSessions.push(sessionId); },
+      killContainer: (sessionId: string) => {
+        killedSessions.push(sessionId);
+      },
     }));
 
     const { setModelProviderAndModel } = await import('./model-provider-switch.js');
@@ -53,13 +55,13 @@ describe('setModelProviderAndModel', () => {
       materializeContainerJson: () => ({}),
     }));
     vi.doMock('./db/sessions.js', () => ({
-      getActiveSessions: () => [
-        { id: 'sess-x', agent_group_id: 'ag-other' },
-      ],
+      getActiveSessions: () => [{ id: 'sess-x', agent_group_id: 'ag-other' }],
     }));
     vi.doMock('./container-runner.js', () => ({
       isContainerRunning: () => true,
-      killContainer: (sessionId: string) => { killedSessions.push(sessionId); },
+      killContainer: (sessionId: string) => {
+        killedSessions.push(sessionId);
+      },
     }));
 
     const { setModelProviderAndModel } = await import('./model-provider-switch.js');
@@ -80,11 +82,15 @@ describe('setModelProviderAndModel', () => {
     }));
     vi.doMock('./container-runner.js', () => ({
       isContainerRunning: () => true,
-      killContainer: () => { throw new Error('docker gone'); },
+      killContainer: () => {
+        throw new Error('docker gone');
+      },
     }));
 
     const { setModelProviderAndModel } = await import('./model-provider-switch.js');
     // Should not throw even though killContainer throws.
-    await expect(setModelProviderAndModel('ag-123', { modelProvider: 'anthropic', model: 'any' })).resolves.toBeUndefined();
+    await expect(
+      setModelProviderAndModel('ag-123', { modelProvider: 'anthropic', model: 'any' }),
+    ).resolves.toBeUndefined();
   });
 });

@@ -39,7 +39,14 @@ import { registerProviderContainerConfig } from './provider-container-registry.j
 // Direct-API providers pi can route to that classroom does NOT intercept via
 // the credential-proxy. The env var name matches what pi-auth.ts reads in
 // PLACEHOLDER_ENV_BY_PROVIDER.
-const DIRECT_API_ENV_VARS = ['DEEPSEEK_API_KEY', 'GROQ_API_KEY', 'CEREBRAS_API_KEY', 'XAI_API_KEY', 'OPENROUTER_API_KEY', 'MISTRAL_API_KEY'];
+const DIRECT_API_ENV_VARS = [
+  'DEEPSEEK_API_KEY',
+  'GROQ_API_KEY',
+  'CEREBRAS_API_KEY',
+  'XAI_API_KEY',
+  'OPENROUTER_API_KEY',
+  'MISTRAL_API_KEY',
+];
 
 registerProviderContainerConfig('pi', (ctx) => {
   // Copy host's ~/.codex/auth.json into per-session pi-auth dir (if present).

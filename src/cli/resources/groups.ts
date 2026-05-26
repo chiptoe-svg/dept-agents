@@ -352,7 +352,8 @@ registerResource({
         restartAgentGroupContainers(
           id,
           'config updated',
-          message ?? `Package ${pkgName} added — image rebuild required to install it. Run ncl groups restart --rebuild to apply.`,
+          message ??
+            `Package ${pkgName} added — image rebuild required to install it. Run ncl groups restart --rebuild to apply.`,
         );
 
         return {

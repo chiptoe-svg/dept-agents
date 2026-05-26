@@ -23,16 +23,13 @@ function makeDb(): Database.Database {
 }
 
 function insertRow(db: Database.Database, id: string, allowedModels: string | null): void {
-  db.prepare('INSERT INTO container_configs (agent_group_id, allowed_models) VALUES (?, ?)').run(
-    id,
-    allowedModels,
-  );
+  db.prepare('INSERT INTO container_configs (agent_group_id, allowed_models) VALUES (?, ?)').run(id, allowedModels);
 }
 
 function getRow(db: Database.Database, id: string): { allowed_models: string | null } {
-  return db
-    .prepare('SELECT allowed_models FROM container_configs WHERE agent_group_id = ?')
-    .get(id) as { allowed_models: string | null };
+  return db.prepare('SELECT allowed_models FROM container_configs WHERE agent_group_id = ?').get(id) as {
+    allowed_models: string | null;
+  };
 }
 
 describe('migration022 — allowed_models provider rename', () => {

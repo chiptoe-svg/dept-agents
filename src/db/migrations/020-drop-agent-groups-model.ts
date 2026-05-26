@@ -42,9 +42,11 @@ export const migration020: Migration = {
   name: 'drop-agent-groups-model',
   up(db: Database.Database) {
     db.transaction(() => {
-      const groups = db
-        .prepare('SELECT id, folder, model FROM agent_groups WHERE model IS NOT NULL')
-        .all() as { id: string; folder: string; model: string }[];
+      const groups = db.prepare('SELECT id, folder, model FROM agent_groups WHERE model IS NOT NULL').all() as {
+        id: string;
+        folder: string;
+        model: string;
+      }[];
 
       const now = new Date().toISOString();
 

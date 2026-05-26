@@ -7,7 +7,13 @@ describe('models API', () => {
 
   it('GET returns catalog + current whitelist + discovered models (modelProvider shape)', async () => {
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../model-catalog.js', () => ({
       getModelCatalog: () => [{ id: 'claude-haiku-4-5', modelProvider: 'anthropic' }],
@@ -49,7 +55,13 @@ describe('models API', () => {
 
   it('GET activeModel uses modelProvider from container config', async () => {
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../model-catalog.js', () => ({
       getModelCatalog: () => [{ id: 'claude-sonnet-4-6', modelProvider: 'anthropic' }],
@@ -83,7 +95,13 @@ describe('models API', () => {
       vi.fn(async () => ({ ok: true })),
     );
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../model-catalog.js', () => ({
       getModelCatalog: () => [
@@ -118,7 +136,13 @@ describe('models API', () => {
   it('PUT replaces the whitelist', async () => {
     let written: unknown;
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../db/container-configs.js', () => ({
       updateContainerConfigJson: (_id: string, column: string, value: unknown) => {
@@ -141,7 +165,13 @@ describe('models API', () => {
 
   it('PUT rejects non-array body', async () => {
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../db/container-configs.js', () => ({
       updateContainerConfigJson: () => {},
@@ -158,7 +188,13 @@ describe('models API', () => {
 
   it('PUT rejects entries missing provider or model', async () => {
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../db/container-configs.js', () => ({
       updateContainerConfigJson: () => {},
@@ -170,15 +206,21 @@ describe('models API', () => {
       setModelProviderAndModel: vi.fn(async () => {}),
     }));
     const { handlePutModels } = await import('./models.js');
-    expect(handlePutModels('draft_demo', { allowedModels: [{ provider: 'anthropic' } as unknown as never] }).status).toBe(
-      400,
-    );
+    expect(
+      handlePutModels('draft_demo', { allowedModels: [{ provider: 'anthropic' } as unknown as never] }).status,
+    ).toBe(400);
   });
 
   it('PUT /active-model accepts modelProvider+model and calls setModelProviderAndModel', async () => {
     const calls: { agentGroupId: string; opts: unknown }[] = [];
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../model-provider-switch.js', () => ({
       setModelProviderAndModel: async (agentGroupId: string, opts: unknown) => {
@@ -188,14 +230,22 @@ describe('models API', () => {
     const { handlePutActiveModel } = await import('./models.js');
     const result = await handlePutActiveModel('draft_demo', { modelProvider: 'anthropic', model: 'claude-sonnet-4-6' });
     expect(result.status).toBe(200);
-    expect(calls).toEqual([{ agentGroupId: 'ag-demo', opts: { modelProvider: 'anthropic', model: 'claude-sonnet-4-6' } }]);
+    expect(calls).toEqual([
+      { agentGroupId: 'ag-demo', opts: { modelProvider: 'anthropic', model: 'claude-sonnet-4-6' } },
+    ]);
     const body = result.body as { ok: true; activeModel: { modelProvider: string; model: string } };
     expect(body.activeModel).toEqual({ modelProvider: 'anthropic', model: 'claude-sonnet-4-6' });
   });
 
   it('PUT /active-model rejects missing modelProvider', async () => {
     vi.doMock('../../../db/agent-groups.js', () => ({
-      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
     }));
     vi.doMock('../../../model-provider-switch.js', () => ({
       setModelProviderAndModel: vi.fn(async () => {}),

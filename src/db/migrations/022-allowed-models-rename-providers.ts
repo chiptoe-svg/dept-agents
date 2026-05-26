@@ -33,9 +33,7 @@ export const migration022: Migration = {
         )
         .all() as { agent_group_id: string; allowed_models: string }[];
 
-      const update = db.prepare(
-        'UPDATE container_configs SET allowed_models = ? WHERE agent_group_id = ?',
-      );
+      const update = db.prepare('UPDATE container_configs SET allowed_models = ? WHERE agent_group_id = ?');
 
       for (const row of rows) {
         let arr: { provider: string; model: string }[];

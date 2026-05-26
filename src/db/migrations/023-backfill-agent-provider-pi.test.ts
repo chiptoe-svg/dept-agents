@@ -28,9 +28,9 @@ function insertRow(db: Database.Database, id: string, provider: string | null): 
 }
 
 function getProvider(db: Database.Database, id: string): string | null {
-  const row = db
-    .prepare('SELECT agent_provider FROM agent_groups WHERE id = ?')
-    .get(id) as { agent_provider: string | null };
+  const row = db.prepare('SELECT agent_provider FROM agent_groups WHERE id = ?').get(id) as {
+    agent_provider: string | null;
+  };
   return row.agent_provider;
 }
 

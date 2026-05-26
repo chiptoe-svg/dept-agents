@@ -516,7 +516,12 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
               const existingBeta = headers['anthropic-beta'];
               const oauthBeta = 'oauth-2025-04-20';
               if (typeof existingBeta === 'string' && existingBeta.length > 0) {
-                if (!existingBeta.split(',').map((s) => s.trim()).includes(oauthBeta)) {
+                if (
+                  !existingBeta
+                    .split(',')
+                    .map((s) => s.trim())
+                    .includes(oauthBeta)
+                ) {
                   headers['anthropic-beta'] = `${existingBeta},${oauthBeta}`;
                 }
               } else if (Array.isArray(existingBeta)) {

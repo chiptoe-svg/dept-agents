@@ -17,9 +17,7 @@ export const migration023: Migration = {
   name: 'backfill-agent-provider-pi',
   up(db: Database.Database) {
     db.transaction(() => {
-      db.prepare(
-        "UPDATE agent_groups SET agent_provider = 'pi' WHERE agent_provider IN ('claude', 'codex')",
-      ).run();
+      db.prepare("UPDATE agent_groups SET agent_provider = 'pi' WHERE agent_provider IN ('claude', 'codex')").run();
     })();
   },
 };
