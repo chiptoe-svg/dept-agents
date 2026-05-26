@@ -81,6 +81,7 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-05-26** — Clemson RCD-hosted LLM provider added + pi-ai integration gap closed for OMLX and Clemson. Why: institution-paid endpoint (FERPA-friendly, no per-student billing) becomes the preferred class-pool default; the "pi-ai doesn't know about local/clemson" gap from mptab-15 closed by synthesizing a `Model<'openai-completions'>` directly in `pi-model.ts` (pi-ai's `Provider`/`Api` types are open-ended strings, so a hand-rolled Model works without upstream PR). Load-bearing detail: baseUrl must include `/v1` because the OpenAI Node SDK appends `/chat/completions` directly. Live-verified: pi-test agent invokes both `clemson/gptoss-20b` and `local/Qwen3.6-35B-A3B` end-to-end with real token accounting. Commits: `9346fc0` (Clemson provider surface), `cdbc213` (pi-ai integration).
 - **2026-05-26** — Multi-Provider Models Tab shipped. Why: extend per-student auth + Models tab UI to cover Anthropic + OpenAI-codex + OpenAI Platform (new) + OMLX (local), with each upstream provider as one TypeScript module (Approach A) so future Google/OpenRouter additions are one-file changes. New `GET /api/me/models-tab-state` endpoint runs the greying rule server-side. Cred-dialog extracted from home.js into a shared component reused by Home + (future) Models tab inline manage links. Extensibility verified live via Google POC in AC8: one new file + one barrel-import + one policy entry → new section appears in Models tab. Plan: `docs/superpowers/plans/2026-05-26-multi-provider-models-tab.md`. Tag: `multi-provider-models-tab-complete-2026-05-26`.
 - **2026-05-26** — Phase D shipped: pi sole agent harness. Why: collapse three harness adapters (claude.ts, codex.ts, pi.ts) to one; pi-ai handles all upstream routing internally. Plan: `docs/superpowers/plans/2026-05-25-phase-d-pi-sole-harness.md`. Tag: `phase-d-complete-2026-05-26`.
 - **2026-05-26** — `messages_out` usage backfill matches on seq, not in_reply_to. Why: MCP tool handlers run in a separate process and can't see poll-loop's `current-batch.ts` module state, so `send_message`-written rows have NULL in_reply_to. Commit: `b204567`.
@@ -100,21 +101,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (1 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (2 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
+## main...origin/main [ahead 2]
  M config/playground-seats.json
-M  container/agent-runner/src/providers/pi-auth.ts
-M  container/agent-runner/src/providers/pi-model.ts
+M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+cdbc213 feat(pi): end-to-end Clemson + OMLX invocation via synthesized openai-completions model
 9346fc0 feat(provider): Clemson RCD-hosted LLM (clemson-spec)
 0f43393 docs(state): log multi-provider Models tab milestone + .gitignore .superpowers/ (mptab-16)
 ed3ce27 fix(omlx): probe sends bearer token + document OMLX smoke gap (mptab-15)
@@ -129,9 +130,8 @@ a64c33d feat(playground): OMLX 'none' variant of cred dialog + reachability endp
 e55cede feat(provider): omlx-spec (local server with reachability probe) (mptab-6)
 7964d7c feat(provider): openai-platform-spec (API-key direct OpenAI API) (mptab-5)
 ed2ab99 refactor(catalog): assemble BUILTIN_ENTRIES from spec modules (mptab-4)
-a6270a2 refactor(provider): codex-spec owns OpenAI-codex catalog entries (mptab-3)
 ```
 
 ### Last refresh
 
-2026-05-26T22:07:00Z
+2026-05-26T22:07:53Z
