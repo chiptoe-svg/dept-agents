@@ -99,27 +99,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-d-complete-2026-05-26` (6 commits ahead)
+- **Last tag:** `phase-d-complete-2026-05-26` (7 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-M  .claude/settings.json
-M  .husky/pre-commit
-M  CLAUDE.md
-M  README.md
+## main...origin/main
+ M .gitignore
  M config/playground-seats.json
-M  package.json
-A  scripts/refresh-state.sh
-A  scripts/session-start-compass.sh
-A  state.md
+A  docs/superpowers/specs/2026-05-26-multi-provider-models-tab-design.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+d611bc3 feat(compass): state.md project compass + SessionStart hook + auto-refresh
 456c389 chore(format): prettier-format Phase D and persistence-fix files
 ef309cc fix(host): writeOutboundDirect uses RW opener + recover stale outbound -journal at startup
 b204567 fix(persistence): backfill messages_out usage via seq bound (cross-process)
@@ -134,9 +129,8 @@ f233af3 feat(playground): model-provider dropdown replaces provider selector (d-
 b175e7e fix(d-1): match adjacent flag-parsing style + cover malformed-env migration path
 49da6fb feat(db): container_configs.model_provider column (d-1)
 7f23a64 feat(phase-d-prep): migration script + execution plan for pi as sole harness
-c0b605b feat(playground): filter pi-agent-core internal lifecycle events from trace
 ```
 
 ### Last refresh
 
-2026-05-26T14:17:02Z
+2026-05-26T16:55:08Z
