@@ -49,7 +49,7 @@ export function loadConfig(): RunnerConfig {
   }
 
   _config = {
-    // No default — omitting provider in container.json throws at createProvider() with a clear message.
+    // No default — index.ts asserts this is set and throws a clear error if not.
     provider: (raw.provider as string),
     model: (raw.model as string) || undefined,
     effort: (raw.effort as string) || undefined,

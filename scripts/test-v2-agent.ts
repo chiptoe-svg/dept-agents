@@ -42,7 +42,6 @@ db.close();
 
 // Set env and run the poll loop
 process.env.SESSION_DB_PATH = DB_PATH;
-process.env.AGENT_PROVIDER = 'claude';
 
 const { getSessionDb, closeSessionDb } = await import('../container/agent-runner/src/db/connection.js');
 const { getUndeliveredMessages } = await import('../container/agent-runner/src/db/messages-out.js');
