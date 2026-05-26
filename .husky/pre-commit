@@ -20,3 +20,12 @@ npm run format:check || {
   echo "❌ prettier found unformatted files — run 'pnpm format', re-stage, and commit again."
   exit 1
 }
+
+# Refresh state.md's auto-generated volatile section so every commit
+# carries an up-to-date branch/commits snapshot. The script only rewrites
+# below the AUTO-GENERATED marker; human-curated stable sections are
+# untouched. Auto-stages state.md if it changed.
+if [ -x scripts/refresh-state.sh ]; then
+  scripts/refresh-state.sh
+  git add state.md 2>/dev/null || true
+fi

@@ -1,5 +1,18 @@
 {
   "sandbox": {
     "enabled": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/session-start-compass.sh"
+          }
+        ]
+      }
+    ]
   }
 }
