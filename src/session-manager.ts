@@ -377,6 +377,52 @@ export function openOutboundDbRw(agentGroupId: string, sessionId: string): Datab
 }
 
 /**
+ * Recover stale `-journal` files left by a crashed R/W writer (host-sweep,
+ * container, etc.) so the readonly delivery polls don't trip
+ * SQLITE_READONLY_ROLLBACK on the first read.
+ *
+ * Mechanism: opening the DB R/W triggers SQLite's automatic crash-recovery
+ * pass — it rolls back any uncommitted journal and deletes it. We then close
+ * immediately; the readonly delivery polls take over with a clean file.
+ *
+ * Skips: paths that don't exist, paths that fail to open (logged + counted,
+ * not thrown — startup must keep going even if one session's DB is sick).
+ */
+export interface RecoveryStats {
+  checked: number;
+  recovered: number;
+  failed: number;
+}
+
+/** Recover one outbound DB by path — exported so tests can drive it without DATA_DIR plumbing. */
+export function recoverSingleOutboundDb(dbPath: string): { existed: boolean; recovered: boolean; failed: boolean } {
+  if (!fs.existsSync(dbPath)) return { existed: false, recovered: false, failed: false };
+  const hadJournal = fs.existsSync(`${dbPath}-journal`);
+  try {
+    const db = openOutboundDbRwRaw(dbPath);
+    db.close();
+    return { existed: true, recovered: hadJournal, failed: false };
+  } catch (err) {
+    console.error(`[session-manager] failed to recover outbound DB ${dbPath}: ${(err as Error).message}`);
+    return { existed: true, recovered: false, failed: true };
+  }
+}
+
+export function recoverStaleOutboundJournals(sessions: Array<{ agent_group_id: string; id: string }>): RecoveryStats {
+  let checked = 0;
+  let recovered = 0;
+  let failed = 0;
+  for (const s of sessions) {
+    const r = recoverSingleOutboundDb(outboundDbPath(s.agent_group_id, s.id));
+    if (!r.existed) continue;
+    checked++;
+    if (r.recovered) recovered++;
+    if (r.failed) failed++;
+  }
+  return { checked, recovered, failed };
+}
+
+/**
  * Write a message directly to a session's outbound DB so the host delivery
  * loop picks it up. Used by the command gate to send denial responses
  * without waking a container.
@@ -393,7 +439,10 @@ export function writeOutboundDirect(
     content: string;
   },
 ): void {
-  const db = openOutboundDb(agentGroupId, sessionId);
+  // RW opener required: this function INSERTs. Using the readonly opener
+  // (the prior bug) throws SQLITE_READONLY the moment the first command-gate
+  // denial is written.
+  const db = openOutboundDbRw(agentGroupId, sessionId);
   try {
     db.prepare(
       `INSERT OR IGNORE INTO messages_out (id, seq, timestamp, kind, platform_id, channel_type, thread_id, content)

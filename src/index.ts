@@ -12,6 +12,8 @@ import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
 import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
 import { backfillContainerConfigs } from './backfill-container-configs.js';
+import { getActiveSessions } from './db/sessions.js';
+import { recoverStaleOutboundJournals } from './session-manager.js';
 import { ensureContainerRuntimeRunning, cleanupOrphans, PROXY_BIND_HOST } from './container-runtime.js';
 import { startCredentialProxy, setStudentCredsHook } from './credential-proxy.js';
 // ── classroom-provider-auth:hook-registration START ───────────────────────
@@ -205,6 +207,17 @@ async function main(): Promise<void> {
     },
   };
   setDeliveryAdapter(deliveryAdapter);
+
+  // 4d. Recover any stale `-journal` files on session outbound DBs left by
+  // a prior crashed R/W writer. Must run BEFORE delivery polls, which open
+  // outbound.db readonly — readonly opens cannot rollback a stale journal
+  // and surface as SQLITE_READONLY_ROLLBACK ("attempt to write a readonly
+  // database"). A brief R/W open lets SQLite auto-recover and delete the
+  // journal cleanly.
+  const journalRecovery = recoverStaleOutboundJournals(getActiveSessions());
+  if (journalRecovery.recovered > 0 || journalRecovery.failed > 0) {
+    log.info('Outbound journal recovery', { ...journalRecovery });
+  }
 
   // 5. Start delivery polls
   startActiveDeliveryPoll();
