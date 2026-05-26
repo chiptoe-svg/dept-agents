@@ -54,7 +54,8 @@ import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.
 import { upsertRosterEntry } from '../src/db/classroom-roster.js';
 import { initDb, getDb } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrations/index.js';
-import { writeContainerConfig } from '../src/container-config.js';
+import { materializeContainerJson } from '../src/container-config.js';
+import { createContainerConfig, getContainerConfig, updateContainerConfigJson } from '../src/db/container-configs.js';
 import { collectSkeletonMounts } from '../src/skeleton-mount-registry.js';
 import type { AgentGroup } from '../src/types.js';
 import {
@@ -238,7 +239,6 @@ function provisionGroup(args: CliArgs, classConfig: Record<string, unknown>, tar
       // which calls Anthropic — wrong direction for a Codex class.
       // TODO: make configurable when classes diverge (CLI flag or class-config).
       agent_provider: 'codex',
-      model: 'gpt-5.4-mini',
       created_at: nowIso(),
     } as AgentGroup;
     createAgentGroup(group);
@@ -283,16 +283,41 @@ function provisionGroup(args: CliArgs, classConfig: Record<string, unknown>, tar
     classConfig,
     argv: process.argv.slice(2),
   });
-  writeContainerConfig(
-    target.folder,
-    makeContainerConfig({
-      kb: args.kb,
-      wiki: args.wiki,
-      folder: target.folder,
-      extraMounts,
-      isStudent: target.role === 'student',
-    }),
-  );
+  const containerConfig = makeContainerConfig({
+    kb: args.kb,
+    wiki: args.wiki,
+    folder: target.folder,
+    extraMounts,
+    isStudent: target.role === 'student',
+  });
+  // Re-runnable: overwrite JSON columns if the row exists; create if new.
+  if (getContainerConfig(group.id)) {
+    updateContainerConfigJson(group.id, 'skills', containerConfig.skills);
+    updateContainerConfigJson(group.id, 'mcp_servers', containerConfig.mcpServers);
+    updateContainerConfigJson(group.id, 'packages_apt', containerConfig.packages.apt);
+    updateContainerConfigJson(group.id, 'packages_npm', containerConfig.packages.npm);
+    updateContainerConfigJson(group.id, 'additional_mounts', containerConfig.additionalMounts);
+  } else {
+    createContainerConfig({
+      agent_group_id: group.id,
+      provider: containerConfig.provider ?? null,
+      model: 'gpt-5.4-mini',
+      effort: null,
+      image_tag: null,
+      assistant_name: containerConfig.assistantName ?? null,
+      max_messages_per_prompt: null,
+      skills: JSON.stringify(containerConfig.skills),
+      mcp_servers: JSON.stringify(containerConfig.mcpServers),
+      packages_apt: JSON.stringify(containerConfig.packages.apt),
+      packages_npm: JSON.stringify(containerConfig.packages.npm),
+      additional_mounts: JSON.stringify(containerConfig.additionalMounts),
+      cli_scope: 'group',
+      env: JSON.stringify(containerConfig.env ?? {}),
+      allowed_models: JSON.stringify(containerConfig.allowedModels ?? []),
+      updated_at: new Date().toISOString(),
+    });
+  }
+  materializeContainerJson(group.id);
 
   return group.id;
 }

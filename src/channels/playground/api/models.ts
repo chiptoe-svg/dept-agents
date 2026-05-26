@@ -2,7 +2,9 @@ import fs from 'fs';
 import path from 'path';
 
 import { MODEL_CATALOG_LOCAL_PATH } from '../../../config.js';
-import { readContainerConfig, writeContainerConfig } from '../../../container-config.js';
+import { materializeContainerJson } from '../../../container-config.js';
+import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
+import { updateContainerConfigJson } from '../../../db/container-configs.js';
 import { readEnvFile } from '../../../env.js';
 import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
 import { listAllForProvider } from '../../../model-discovery.js';
@@ -65,7 +67,9 @@ async function probeLocalServer(): Promise<boolean> {
 
 export async function handleGetModels(draftFolder: string): Promise<ApiResult<ModelsResponse>> {
   try {
-    const cfg = readContainerConfig(draftFolder);
+    const group = getAgentGroupByFolder(draftFolder);
+    if (!group) return { status: 404, body: { error: `Agent group not found: ${draftFolder}` } };
+    const cfg = materializeContainerJson(group.id);
     const catalog = getModelCatalog();
     const catalogIds = new Set(catalog.map((m) => `${m.provider}:${m.id}`));
 
@@ -130,9 +134,10 @@ export function handlePutModels(
   }
   const allowedModels = body.allowedModels as { provider: string; model: string }[];
   try {
-    const cfg = readContainerConfig(draftFolder);
-    cfg.allowedModels = allowedModels;
-    writeContainerConfig(draftFolder, cfg);
+    const group = getAgentGroupByFolder(draftFolder);
+    if (!group) return { status: 404, body: { error: `Agent group not found: ${draftFolder}` } };
+    updateContainerConfigJson(group.id, 'allowed_models', allowedModels);
+    materializeContainerJson(group.id);
     return { status: 200, body: { ok: true, allowedModels } };
   } catch (err) {
     return { status: 500, body: { error: (err as Error).message } };
@@ -152,7 +157,9 @@ export function handlePutActiveModel(
     // Read current provider — if it's changing, route through setProvider
     // so sessions + agent_groups + running containers stay in sync. If
     // only the model is changing, just update container.json.
-    const cfg = readContainerConfig(draftFolder);
+    const group = getAgentGroupByFolder(draftFolder);
+    if (!group) return { status: 404, body: { error: `Agent group not found: ${draftFolder}` } };
+    const cfg = materializeContainerJson(group.id);
     const currentProvider = cfg.provider ?? 'claude';
     if (currentProvider !== provider) {
       const result = setProvider(draftFolder, provider);
@@ -160,19 +167,16 @@ export function handlePutActiveModel(
         return { status: 500, body: { error: `provider switch failed: ${result.reason}` } };
       }
     }
-    // Persist model to the DB — agent_groups.model is the source of truth that
-    // ensureRuntimeFields syncs into container.json on every spawn. Writing
+    // Persist model to the DB — container_configs.model is the source of truth that
+    // materializeContainerJson syncs into container.json on every spawn. Writing
     // only to container.json (as this handler used to) gets silently clobbered
     // on the next container start when the DB-driven sync runs.
     if (!setModel(draftFolder, model)) {
       return { status: 500, body: { error: 'setModel failed (agent group not found by folder)' } };
     }
-    // Re-read after potential setProvider write, then mirror the model into
-    // container.json so the current on-disk state matches the DB without
-    // waiting for the next spawn-time sync.
-    const updated = readContainerConfig(draftFolder);
-    updated.model = model;
-    writeContainerConfig(draftFolder, updated);
+    // Re-materialize after potential setProvider write so the on-disk file
+    // matches the DB without waiting for the next spawn-time sync.
+    materializeContainerJson(group.id);
     return { status: 200, body: { ok: true, activeModel: { provider, model } } };
   } catch (err) {
     return { status: 500, body: { error: (err as Error).message } };

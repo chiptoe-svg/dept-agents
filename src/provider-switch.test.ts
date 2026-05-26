@@ -104,7 +104,6 @@ describe('setProvider', () => {
       folder: 'alpha',
       name: 'alpha',
       agent_provider: 'claude',
-      model: null,
       created_at: ts,
     });
     createSession({
@@ -153,7 +152,6 @@ describe('setProvider', () => {
       folder: 'alpha',
       name: 'alpha',
       agent_provider: 'claude',
-      model: null,
       created_at: new Date().toISOString(),
     });
 

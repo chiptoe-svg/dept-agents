@@ -31,7 +31,8 @@ import {
 } from '../../agent-builder/core.js';
 import { GROUPS_DIR } from '../../config.js';
 import { processImage } from '../../image.js';
-import { readContainerConfig, writeContainerConfig } from '../../container-config.js';
+import { materializeContainerJson } from '../../container-config.js';
+import { updateContainerConfigJson } from '../../db/container-configs.js';
 import { isContainerRunning, killContainer } from '../../container-runner.js';
 import { getAgentGroupByFolder, updateAgentGroup } from '../../db/agent-groups.js';
 import { getActiveSessions, updateSession } from '../../db/sessions.js';
@@ -490,7 +491,9 @@ export async function route(
     const draftFolder = skillsMatch[1]!;
     if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     try {
-      const cfg = readContainerConfig(draftFolder);
+      const group = getAgentGroupByFolder(draftFolder);
+      if (!group) return send(res, 404, { error: `Agent group not found: ${draftFolder}` });
+      const cfg = materializeContainerJson(group.id);
       return send(res, 200, { skills: cfg.skills });
     } catch (err) {
       return send(res, 500, { error: (err as Error).message });
@@ -508,9 +511,10 @@ export async function route(
       return send(res, 400, { error: 'skills must be string[] or "all"' });
     }
     try {
-      const cfg = readContainerConfig(draftFolder);
-      cfg.skills = skills;
-      writeContainerConfig(draftFolder, cfg);
+      const group = getAgentGroupByFolder(draftFolder);
+      if (!group) return send(res, 404, { error: `Agent group not found: ${draftFolder}` });
+      updateContainerConfigJson(group.id, 'skills', skills);
+      materializeContainerJson(group.id);
       return send(res, 200, { ok: true, skills });
     } catch (err) {
       return send(res, 500, { error: (err as Error).message });

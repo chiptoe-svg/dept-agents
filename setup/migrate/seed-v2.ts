@@ -39,7 +39,7 @@ import { upsertUser } from '../../src/modules/permissions/db/users.js';
 import { grantRole, isOwner } from '../../src/modules/permissions/db/user-roles.js';
 import { addMember } from '../../src/modules/permissions/db/agent-group-members.js';
 import { upsertUserDm } from '../../src/modules/permissions/db/user-dms.js';
-import { initContainerConfig, writeContainerConfig } from '../../src/container-config.js';
+import { createContainerConfig, ensureContainerConfig } from '../../src/db/container-configs.js';
 import type { ContainerConfig } from '../../src/container-config.js';
 import type {
   AgentGroup,
@@ -196,7 +196,6 @@ function seed(v1Data: string, dryRun: boolean): SeedStats {
         name: g.name,
         folder: g.folder,
         agent_provider: null,
-        model: null,
         created_at: nowIso(),
       };
       createAgentGroup(row);
@@ -204,16 +203,35 @@ function seed(v1Data: string, dryRun: boolean): SeedStats {
       stats.agentGroups.inserted++;
     }
 
-    // Initialize the per-group container.json. v1 container_config (if any)
-    // gets translated into the v2 shape.
-    initContainerConfig(g.folder);
+    // Initialize the per-group container config row in the DB. v1 container_config
+    // (if any) gets translated into the v2 shape; otherwise ensure a default row.
+    const agId = folderToAgentGroupId.get(g.folder)!;
     if (g.container_config && typeof g.container_config === 'object') {
       try {
-        writeContainerConfig(g.folder, translateContainerConfig(g.container_config));
+        const translated = translateContainerConfig(g.container_config);
+        createContainerConfig({
+          agent_group_id: agId,
+          provider: translated.provider ?? null,
+          effort: null,
+          image_tag: null,
+          assistant_name: translated.assistantName ?? null,
+          max_messages_per_prompt: null,
+          skills: JSON.stringify(translated.skills),
+          mcp_servers: JSON.stringify(translated.mcpServers),
+          packages_apt: JSON.stringify(translated.packages.apt),
+          packages_npm: JSON.stringify(translated.packages.npm),
+          additional_mounts: JSON.stringify(translated.additionalMounts),
+          cli_scope: 'group',
+          env: JSON.stringify(translated.env ?? {}),
+          allowed_models: JSON.stringify(translated.allowedModels ?? []),
+          updated_at: nowIso(),
+        });
         stats.containerConfigs.written++;
       } catch (err) {
-        stats.warnings.push(`Could not write container.json for ${g.folder}: ${(err as Error).message}`);
+        stats.warnings.push(`Could not write container config for ${g.folder}: ${(err as Error).message}`);
       }
+    } else {
+      ensureContainerConfig(agId);
     }
   }
 

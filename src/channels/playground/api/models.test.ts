@@ -6,11 +6,14 @@ describe('models API', () => {
   });
 
   it('GET returns catalog + current whitelist + discovered models', async () => {
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+    }));
     vi.doMock('../../../model-catalog.js', () => ({
       getModelCatalog: () => [{ id: 'claude-haiku-4-5', provider: 'claude' }],
     }));
     vi.doMock('../../../container-config.js', () => ({
-      readContainerConfig: () => ({
+      materializeContainerJson: () => ({
         skills: 'all',
         allowedModels: [{ provider: 'claude', model: 'claude-haiku-4-5' }],
       }),
@@ -44,6 +47,9 @@ describe('models API', () => {
       'fetch',
       vi.fn(async () => ({ ok: true })),
     );
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+    }));
     vi.doMock('../../../model-catalog.js', () => ({
       getModelCatalog: () => [
         { id: 'claude-haiku-4-5', provider: 'claude' },
@@ -52,7 +58,7 @@ describe('models API', () => {
       ],
     }));
     vi.doMock('../../../container-config.js', () => ({
-      readContainerConfig: () => ({ skills: 'all' }),
+      materializeContainerJson: () => ({ skills: 'all' }),
     }));
     vi.doMock('../../../model-discovery.js', () => ({
       listAllForProvider: vi.fn(async () => []),
@@ -72,34 +78,49 @@ describe('models API', () => {
   });
 
   it('PUT replaces the whitelist', async () => {
-    let written: { allowedModels?: { provider: string; model: string }[] } | undefined;
-    vi.doMock('../../../container-config.js', () => ({
-      readContainerConfig: () => ({ skills: 'all' }),
-      writeContainerConfig: (_folder: string, cfg: { allowedModels?: { provider: string; model: string }[] }) => {
-        written = cfg;
+    let written: unknown;
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+    }));
+    vi.doMock('../../../db/container-configs.js', () => ({
+      updateContainerConfigJson: (_id: string, column: string, value: unknown) => {
+        if (column === 'allowed_models') written = value;
       },
+    }));
+    vi.doMock('../../../container-config.js', () => ({
+      materializeContainerJson: () => ({ skills: 'all' }),
     }));
     const { handlePutModels } = await import('./models.js');
     const result = handlePutModels('draft_demo', {
       allowedModels: [{ provider: 'codex', model: 'gpt-5-mini' }],
     });
     expect(result.status).toBe(200);
-    expect(written?.allowedModels).toEqual([{ provider: 'codex', model: 'gpt-5-mini' }]);
+    expect(written).toEqual([{ provider: 'codex', model: 'gpt-5-mini' }]);
   });
 
   it('PUT rejects non-array body', async () => {
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+    }));
+    vi.doMock('../../../db/container-configs.js', () => ({
+      updateContainerConfigJson: () => {},
+    }));
     vi.doMock('../../../container-config.js', () => ({
-      readContainerConfig: () => ({}),
-      writeContainerConfig: () => {},
+      materializeContainerJson: () => ({}),
     }));
     const { handlePutModels } = await import('./models.js');
     expect(handlePutModels('draft_demo', { allowedModels: 'oops' as unknown as never }).status).toBe(400);
   });
 
   it('PUT rejects entries missing provider or model', async () => {
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+    }));
+    vi.doMock('../../../db/container-configs.js', () => ({
+      updateContainerConfigJson: () => {},
+    }));
     vi.doMock('../../../container-config.js', () => ({
-      readContainerConfig: () => ({}),
-      writeContainerConfig: () => {},
+      materializeContainerJson: () => ({}),
     }));
     const { handlePutModels } = await import('./models.js');
     expect(handlePutModels('draft_demo', { allowedModels: [{ provider: 'claude' } as unknown as never] }).status).toBe(
@@ -109,9 +130,11 @@ describe('models API', () => {
 
   it('PUT /active-model persists model to DB (not just container.json)', async () => {
     const setModelCalls: { folder: string; model: string | null }[] = [];
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({ id: 'ag-demo', folder: 'draft_demo', name: 'Demo', agent_provider: null, created_at: '' }),
+    }));
     vi.doMock('../../../container-config.js', () => ({
-      readContainerConfig: () => ({ provider: 'local' }),
-      writeContainerConfig: () => {},
+      materializeContainerJson: () => ({ provider: 'local' }),
     }));
     vi.doMock('../../../model-switch.js', () => ({
       setModel: (folder: string, model: string | null) => {
