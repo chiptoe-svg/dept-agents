@@ -99,7 +99,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `multi-provider-models-tab`
-- **Last tag:** `phase-d-complete-2026-05-26` (20 commits ahead)
+- **Last tag:** `phase-d-complete-2026-05-26` (21 commits ahead)
 
 ### Working tree
 
@@ -107,15 +107,17 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ## multi-provider-models-tab
  M .gitignore
  M config/playground-seats.json
-M  src/channels/playground/api/models-tab-state.ts
-M  src/channels/playground/public/style.css
-M  src/channels/playground/public/tabs/models.js
+M  package.json
+M  pnpm-lock.yaml
+A  src/channels/playground/public/components/cred-dialog.test.ts
+M  tsconfig.json
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+ec89a93 feat(playground): Models tab v2 layout — per-provider sections, greyed/hidden states (mptab-12)
 a64c33d feat(playground): OMLX 'none' variant of cred dialog + reachability endpoint (mptab-11)
 41ab3d5 refactor(playground): extract shared cred-dialog component (mptab-10)
 0c5ad0b feat(api): GET /api/me/models-tab-state endpoint (mptab-9)
@@ -130,9 +132,8 @@ ad9d28d refactor(provider): claude-spec owns Anthropic catalog entries (mptab-2)
 21478a5 docs(plan): multi-provider Models tab implementation plan
 c34711a docs(spec): multi-provider Models tab + per-student auth extension
 d611bc3 feat(compass): state.md project compass + SessionStart hook + auto-refresh
-456c389 chore(format): prettier-format Phase D and persistence-fix files
 ```
 
 ### Last refresh
 
-2026-05-26T19:10:47Z
+2026-05-26T19:44:21Z
