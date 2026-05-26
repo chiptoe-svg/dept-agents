@@ -731,13 +731,16 @@ function escapeHtml(s) {
 
 // Hardcoded provider metadata for the Home Providers card. The `id` values
 // match what auth-registry.ts registers (claude-spec, codex-spec,
-// openai-platform-spec). credentialFileShape drives the cred-dialog variant.
-// Long-term cleanup: have the providers GET return credentialFileShape so this
-// duplication goes away. Until then, keep in sync with the spec modules.
+// openai-platform-spec, omlx-spec, clemson-spec). credentialFileShape drives
+// the cred-dialog variant; apiKey.placeholder is threaded into the api-key
+// paste input. Long-term cleanup: have the providers GET return this metadata
+// so this duplication goes away. Until then, keep in sync with the spec modules.
 const PROVIDERS = [
   { id: 'codex',           displayName: 'OpenAI (ChatGPT subscription)', credentialFileShape: 'mixed' },
   { id: 'claude',          displayName: 'Anthropic',                     credentialFileShape: 'mixed' },
-  { id: 'openai-platform', displayName: 'OpenAI Platform (direct API)',  credentialFileShape: 'api-key' },
+  { id: 'openai-platform', displayName: 'OpenAI Platform (direct API)',  credentialFileShape: 'api-key', apiKey: { placeholder: 'sk-…' } },
+  { id: 'omlx',            displayName: 'OMLX (local server)',           credentialFileShape: 'none' },
+  { id: 'clemson',         displayName: 'Clemson (campus LLM)',          credentialFileShape: 'none' },
 ];
 
 async function renderProvidersCard(body) {
@@ -752,8 +755,14 @@ async function renderProvidersCard(body) {
     for (const p of PROVIDERS) {
       const policy = policies[p.id];
       if (!policy || policy.allow === false) continue;
-      const statusRes = await fetch(`/api/me/providers/${p.id}`, { credentials: 'same-origin' });
-      const status = await statusRes.json();
+      // 'none' shape providers (omlx, clemson) have no per-student creds, so
+      // skip the GET /api/me/providers/<id> fetch — render with an empty
+      // status so the row falls into the renderProviderRow 'none' branch.
+      let status = { hasApiKey: false, hasOAuth: false };
+      if (p.credentialFileShape !== 'none') {
+        const statusRes = await fetch(`/api/me/providers/${p.id}`, { credentials: 'same-origin' });
+        status = await statusRes.json();
+      }
       statuses[p.id] = status;
       rows.push(renderProviderRow(p, policy, status));
     }
@@ -805,12 +814,32 @@ function renderProviderRow(p, policy, status) {
         </div>
       </div>`;
   }
-  // No creds
+  // 'none' shape (omlx, clemson): no per-student creds. Render a status row
+  // with a Settings affordance that opens the cred-dialog's none-variant
+  // (URL field + reachability for omlx, just info for clemson).
+  if (p.credentialFileShape === 'none') {
+    const subtitle = p.id === 'omlx' ? 'Local server' : 'Provided by instructor';
+    return `
+      <div class="provider-row" data-provider="${p.id}">
+        <strong>✅ ${displayName}</strong> · ${subtitle}
+        <div class="home-actions">
+          <button class="btn" data-add="settings">Settings</button>
+        </div>
+      </div>`;
+  }
+  // No creds. Button label depends on what methods the provider supports.
+  // api-key-only providers say "Add API key" (no OAuth path available).
+  // oauth-or-mixed providers default to "Connect" (the dialog's tab logic
+  // shows whichever methods apply once it opens).
+  const addLabel = p.credentialFileShape === 'api-key' ? 'Add API key' : 'Connect';
+  // Use a stable data-add value so wireProviderRow's selector still matches.
+  // The actual cred path (oauth vs api-key) is decided by the dialog from
+  // credentialFileShape — this attribute is just an event-binding hook.
   if (policy.provideDefault) {
     return `
       <div class="provider-row" data-provider="${p.id}">
         <strong>✅ ${displayName}</strong> · Provided by instructor
-        ${policy.allowByo ? `<div class="home-actions"><button class="btn" data-add="oauth">Use my own</button></div>` : ''}
+        ${policy.allowByo ? `<div class="home-actions"><button class="btn" data-add="open">Use my own</button></div>` : ''}
       </div>`;
   }
   if (policy.allowByo) {
@@ -818,7 +847,7 @@ function renderProviderRow(p, policy, status) {
       <div class="provider-row" data-provider="${p.id}">
         <strong>⚠ ${displayName}</strong> · Not connected
         <div class="home-actions">
-          <button class="btn" data-add="oauth">Connect</button>
+          <button class="btn" data-add="open">${addLabel}</button>
         </div>
       </div>`;
   }
