@@ -98,22 +98,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `main`
-- **Last tag:** `phase-d-complete-2026-05-26` (8 commits ahead)
+- **Current:** `multi-provider-models-tab`
+- **Last tag:** `phase-d-complete-2026-05-26` (9 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
+## multi-provider-models-tab
  M .gitignore
  M config/playground-seats.json
-A  docs/superpowers/plans/2026-05-26-multi-provider-models-tab.md
+M  src/providers/auth-registry.test.ts
+M  src/providers/auth-registry.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+21478a5 docs(plan): multi-provider Models tab implementation plan
 c34711a docs(spec): multi-provider Models tab + per-student auth extension
 d611bc3 feat(compass): state.md project compass + SessionStart hook + auto-refresh
 456c389 chore(format): prettier-format Phase D and persistence-fix files
@@ -128,9 +130,8 @@ c6c0284 refactor(container): delete claude.ts + codex.ts adapters (d-4)
 7626779 fix(d-2): allowed_models migration + usage remap + models.js naming
 f233af3 feat(playground): model-provider dropdown replaces provider selector (d-2)
 b175e7e fix(d-1): match adjacent flag-parsing style + cover malformed-env migration path
-49da6fb feat(db): container_configs.model_provider column (d-1)
 ```
 
 ### Last refresh
 
-2026-05-26T17:49:49Z
+2026-05-26T18:00:16Z

@@ -6,11 +6,13 @@
  * adds nothing here; the registry is generic trunk infrastructure.
  */
 
+import type { ModelEntry } from '../model-catalog.js';
+
 export type ProviderAuthSpec = {
   id: string;
   displayName: string;
   proxyRoutePrefix: string; // '/openai/' | '' (anthropic default) | …
-  credentialFileShape: 'oauth-token' | 'api-key' | 'mixed';
+  credentialFileShape: 'oauth-token' | 'api-key' | 'mixed' | 'none';
   oauth?: {
     clientId: string;
     authorizeUrl: string;
@@ -38,6 +40,12 @@ export type ProviderAuthSpec = {
     placeholder: string;
     validatePrefix?: string;
   };
+  /** Catalog entries this provider owns. model-catalog.ts concatenates
+   *  these across all registered specs to form BUILTIN_ENTRIES. */
+  catalogModels?: ModelEntry[];
+  /** Optional liveness probe. OMLX uses it. When defined, models-tab-state
+   *  caches the result for 30 seconds. */
+  reachability?: () => Promise<boolean>;
 };
 
 const registry = new Map<string, ProviderAuthSpec>();
