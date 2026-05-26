@@ -1243,8 +1243,30 @@ function piHandleTurnEnd(trace, event, st) {
   trace.scrollTop = trace.scrollHeight;
 }
 
+/**
+ * Pi-agent-core's internal lifecycle markers — fired at adapter-specific
+ * points (`save_point` after each tool exec, `settled` at end-of-turn,
+ * `after_provider_response`/`before_provider_payload` around each model
+ * call, etc.). Useful for debugging the harness itself; pure noise for
+ * an end-user reading a trace. Filter them out so the trace looks the
+ * same across anthropic / openai-codex / future providers.
+ *
+ * Real failures still get through because the synthetic `nanoclaw_error`
+ * event (emitted by poll-loop on provider error) is NOT in this set.
+ */
+const PI_INTERNAL_EVENT_TYPES = new Set([
+  'save_point',
+  'settled',
+  'after_provider_response',
+  'before_provider_payload',
+  'context',
+  'before_compact',
+  'after_compact',
+]);
+
 /** Fallback: render any unrecognised pi event as a compact generic line. */
 function piAppendGenericEvent(trace, event) {
+  if (event && PI_INTERNAL_EVENT_TYPES.has(event.type)) return;
   const target = trace._currentTurnUl || trace;
   const li = document.createElement('li');
   // nanoclaw_error is the synthetic event the poll-loop emits when a
