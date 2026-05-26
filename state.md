@@ -99,24 +99,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `multi-provider-models-tab`
-- **Last tag:** `phase-d-complete-2026-05-26` (14 commits ahead)
+- **Last tag:** `phase-d-complete-2026-05-26` (15 commits ahead)
 
 ### Working tree
 
 ```
 ## multi-provider-models-tab
+M  .env.example
  M .gitignore
  M config/playground-seats.json
-M  src/model-catalog.ts
-M  src/providers/index.ts
-A  src/providers/omlx-spec.test.ts
-A  src/providers/omlx-spec.ts
+M  src/credential-proxy.test.ts
+M  src/credential-proxy.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+e55cede feat(provider): omlx-spec (local server with reachability probe) (mptab-6)
 7964d7c feat(provider): openai-platform-spec (API-key direct OpenAI API) (mptab-5)
 ed2ab99 refactor(catalog): assemble BUILTIN_ENTRIES from spec modules (mptab-4)
 a6270a2 refactor(provider): codex-spec owns OpenAI-codex catalog entries (mptab-3)
@@ -131,9 +131,8 @@ b204567 fix(persistence): backfill messages_out usage via seq bound (cross-proce
 d4a8147 Merge planning docs from plans/pi-prep-2026-05-25
 d2b7256 fix(persistence): backfill messages_out usage on tool-call-only turns
 4cec55a refactor(playground): remove dead trace paths (d-5)
-59dc17c fix(d-4): delete dead sdk-probe script + surface missing-provider error
 ```
 
 ### Last refresh
 
-2026-05-26T18:29:26Z
+2026-05-26T18:34:04Z

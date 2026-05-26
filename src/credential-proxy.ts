@@ -79,6 +79,13 @@ export function setStudentCredsHook(fn: StudentCredsHook): void {
   studentCredsHook = fn;
 }
 
+/** Resolve the OMLX upstream auth token. Defaults to literal "godfrey"
+ *  so the auth-substitution path is always exercised even on installs
+ *  that haven't configured a real key. Override by setting OMLX_API_KEY. */
+export function resolveOmlxKey(): string {
+  return process.env.OMLX_API_KEY ?? 'godfrey';
+}
+
 export function serializeResolvedCredsError(
   result: Extract<ResolvedCreds, { kind: 'connect_required' | 'forbidden' }>,
 ): { status: number; body: Record<string, unknown> } {
@@ -511,11 +518,11 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
         } else if (isOmlx) {
           // Local OpenAI-compatible server. Container sends OPENAI_API_KEY=placeholder
           // or OMLX_API_KEY=placeholder; we replace with OMLX_API_KEY here. Defaults
-          // to literal "local" if unset, since many local servers ignore auth entirely
-          // but the SDK still sends a header.
+          // to literal "godfrey" if unset, which keeps the auth-substitution path
+          // always exercised even on installs that haven't configured a real key.
           delete headers['authorization'];
           delete headers['x-api-key'];
-          headers['authorization'] = `Bearer ${secrets.OMLX_API_KEY || 'local'}`;
+          headers['authorization'] = `Bearer ${secrets.OMLX_API_KEY || resolveOmlxKey()}`;
         } else if (authMode === 'api-key' && !studentCredsApplied) {
           // Anthropic API key mode: inject x-api-key on every request
           delete headers['x-api-key'];
