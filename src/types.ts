@@ -36,6 +36,10 @@ export interface ContainerConfigRow {
   additional_mounts: string;
   /** 'group' (default) — reserved for future per-session configs. */
   cli_scope: string;
+  /** JSON-encoded Record<string, string> — classroom-only per-group env vars. */
+  env: string;
+  /** JSON-encoded { provider: string; model: string }[] — classroom-only per-group model allowlist. */
+  allowed_models: string;
   updated_at: string;
 }
 
