@@ -314,6 +314,7 @@ function provisionGroup(args: CliArgs, classConfig: Record<string, unknown>, tar
       cli_scope: 'group',
       env: JSON.stringify(containerConfig.env ?? {}),
       allowed_models: JSON.stringify(containerConfig.allowedModels ?? []),
+      model_provider: null,
       updated_at: new Date().toISOString(),
     });
   }

@@ -31,6 +31,7 @@ function presentConfig(row: ContainerConfigRow): Record<string, unknown> {
     cli_scope: row.cli_scope,
     env: JSON.parse(row.env),
     allowed_models: JSON.parse(row.allowed_models),
+    model_provider: row.model_provider,
     updated_at: row.updated_at,
   };
 }
@@ -217,7 +218,7 @@ registerResource({
       access: 'approval',
       description:
         'Update container config scalar fields. Saves and immediately materializes + restarts the container. ' +
-        'Use --id <group-id> and any of: --provider, --model, --effort, --image-tag, --assistant-name, --max-messages-per-prompt, --cli-scope.',
+        'Use --id <group-id> and any of: --provider, --model, --effort, --image-tag, --assistant-name, --max-messages-per-prompt, --cli-scope, --model-provider.',
       handler: async (args, ctx) => {
         const id = args.id as string;
         if (!id) throw new Error('--id is required');
@@ -227,7 +228,14 @@ registerResource({
         const updates: Partial<
           Pick<
             ContainerConfigRow,
-            'provider' | 'model' | 'effort' | 'image_tag' | 'assistant_name' | 'max_messages_per_prompt' | 'cli_scope'
+            | 'provider'
+            | 'model'
+            | 'effort'
+            | 'image_tag'
+            | 'assistant_name'
+            | 'max_messages_per_prompt'
+            | 'cli_scope'
+            | 'model_provider'
           >
         > = {};
         if (args.provider !== undefined) updates.provider = args.provider as string;
@@ -244,10 +252,13 @@ registerResource({
           }
           updates.cli_scope = scope;
         }
+        if (args['model-provider'] !== undefined || args.model_provider !== undefined) {
+          updates.model_provider = (args['model-provider'] ?? args.model_provider) as string;
+        }
 
         if (Object.keys(updates).length === 0) {
           throw new Error(
-            'Nothing to update — provide at least one of: --provider, --model, --effort, --image-tag, --assistant-name, --max-messages-per-prompt, --cli-scope',
+            'Nothing to update — provide at least one of: --provider, --model, --effort, --image-tag, --assistant-name, --max-messages-per-prompt, --cli-scope, --model-provider',
           );
         }
 

@@ -69,6 +69,12 @@ export interface ContainerConfig {
    * the playground Models tab or `ncl groups config update`.
    */
   allowedModels?: { provider: string; model: string }[];
+  /**
+   * Pi-provider model provider (e.g. "anthropic", "openai"). Passed through
+   * to the pi runner's modelProvider option. When unset, pi falls back to
+   * the NANOCLAW_PI_MODEL_PROVIDER env var, then its own default.
+   */
+  modelProvider?: string;
 }
 
 /** Classroom default: skills explicitly granted (empty, not "all"). */
@@ -108,6 +114,7 @@ export function configFromDb(row: ContainerConfigRow, group: AgentGroup): Contai
     allowedModels: row.allowed_models
       ? (JSON.parse(row.allowed_models) as { provider: string; model: string }[])
       : undefined,
+    modelProvider: row.model_provider ?? undefined,
   };
 }
 

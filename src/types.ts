@@ -39,6 +39,8 @@ export interface ContainerConfigRow {
   env: string;
   /** JSON-encoded { provider: string; model: string }[] — classroom-only per-group model allowlist. */
   allowed_models: string;
+  /** Pi-provider model provider (e.g. "anthropic", "openai"). Scalar TEXT, not JSON. */
+  model_provider: string | null;
   updated_at: string;
 }
 

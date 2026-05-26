@@ -74,6 +74,8 @@ export function backfillContainerConfigs(): void {
       // Classroom-only fields (added by migration 019).
       env: JSON.stringify(legacy.env ?? {}),
       allowed_models: JSON.stringify(legacy.allowedModels ?? []),
+      // Added by migration 021 — null for legacy rows (migration handles backfill from env).
+      model_provider: null,
       updated_at: new Date().toISOString(),
     };
 

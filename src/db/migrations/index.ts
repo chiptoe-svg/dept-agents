@@ -17,6 +17,7 @@ import { migration017 } from './017-container-configs.js';
 import { migration018 } from './018-cli-scope.js';
 import { migration019 } from './019-container-configs-classroom-fields.js';
 import { migration020 } from './020-drop-agent-groups-model.js';
+import { migration021 } from './021-container-configs-model-provider.js';
 import { moduleApprovalsPendingApprovals } from './module-approvals-pending-approvals.js';
 import { moduleApprovalsTitleOptions } from './module-approvals-title-options.js';
 import { moduleClassLoginTokens } from './module-class-login-tokens.js';
@@ -49,6 +50,7 @@ const migrations: Migration[] = [
   migration018,
   migration019,
   migration020,
+  migration021,
   moduleClassLoginTokens,
   moduleClassLoginPins,
   moduleClassTelegramPair,
