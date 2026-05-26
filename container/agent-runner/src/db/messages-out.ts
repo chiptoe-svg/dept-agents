@@ -143,14 +143,31 @@ export function getRoutingBySeq(
 }
 
 /**
- * Backfill provider/model/usage on messages_out rows that were written mid-turn
- * (e.g. by send_message MCP tool) before usage data was available.
+ * Read the current max seq in messages_out. Used as a turn boundary marker
+ * — capture before harness.prompt(), then backfillUsage uses it as a lower
+ * bound to scope the UPDATE to rows written DURING that turn.
+ */
+export function readMaxOutboundSeq(): number {
+  const row = getOutboundDb().prepare('SELECT COALESCE(MAX(seq), 0) AS m FROM messages_out').get() as { m: number };
+  return row.m;
+}
+
+/**
+ * Backfill provider/model/usage on chat rows written DURING this turn
+ * (i.e. seq > sinceSeq) that don't already have usage.
  *
- * Only touches rows where tokens_in IS NULL so pre-populated rows (e.g. those
- * written by dispatchResultText for direct-text turns) are not overwritten.
+ * Matches on seq rather than in_reply_to because MCP tools like `send_message`
+ * run in a SEPARATE PROCESS (bun spawns container/agent-runner/src/mcp-tools/index.ts)
+ * — so `current-batch.ts`'s module-level inReplyTo set by the poll-loop process
+ * is never visible to the MCP server process, leaving in_reply_to NULL on
+ * tool-written rows. The agent-runner is single-batch-at-a-time per session,
+ * so "rows written since sinceSeq" cleanly bounds the current turn.
+ *
+ * The `tokens_in IS NULL` guard keeps pre-populated rows (dispatchResultText
+ * for direct-text turns) from being overwritten.
  */
 export function backfillUsage(
-  inReplyTo: string,
+  sinceSeq: number,
   usage: { tokens_in: number | null; tokens_out: number | null; provider: string | null; model: string | null },
 ): void {
   getOutboundDb()
@@ -160,11 +177,12 @@ export function backfillUsage(
              tokens_out = $tokens_out,
              provider = $provider,
              model = $model
-       WHERE in_reply_to = $in_reply_to
+       WHERE seq > $since_seq
+         AND kind = 'chat'
          AND tokens_in IS NULL`,
     )
     .run({
-      $in_reply_to: inReplyTo,
+      $since_seq: sinceSeq,
       $tokens_in: usage.tokens_in,
       $tokens_out: usage.tokens_out,
       $provider: usage.provider,

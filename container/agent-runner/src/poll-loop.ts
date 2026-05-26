@@ -1,6 +1,6 @@
 import { findByName, findByRouting, getAllDestinations, type DestinationEntry } from './destinations.js';
 import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } from './db/messages-in.js';
-import { backfillUsage, writeMessageOut } from './db/messages-out.js';
+import { backfillUsage, readMaxOutboundSeq, writeMessageOut } from './db/messages-out.js';
 import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import { clearContinuation, migrateLegacyContinuation, setContinuation } from './db/session-state.js';
 import { clearCurrentInReplyTo, setCurrentInReplyTo } from './current-batch.js';
@@ -228,6 +228,10 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
     const processingIds = ids.filter((id) => !commandIds.includes(id) && !skippedSet.has(id));
     // Publish the batch's in_reply_to so MCP tools (send_message, send_file)
     // can stamp it on outbound rows — needed for a2a return-path routing.
+    // NOTE: setCurrentInReplyTo only reaches in-process callers (e.g.
+    // dispatchResultText). MCP tools run in a separate process so their
+    // writes have NULL in_reply_to — the usage backfill below uses a seq
+    // lower bound instead of matching on in_reply_to.
     setCurrentInReplyTo(routing.inReplyTo);
     try {
       const result = await processQuery(query, routing, processingIds, config.providerName);
@@ -314,6 +318,12 @@ async function processQuery(
 ): Promise<QueryResult> {
   let queryContinuation: string | undefined;
   let done = false;
+
+  // Turn boundary marker — any chat row written from here on belongs to this
+  // turn. Used by backfillUsage to scope the UPDATE to current-turn rows.
+  // Captured here (not in the caller) because nothing in this turn has
+  // written outbound yet — the query iterator is about to start.
+  const maxSeqBeforeTurn = readMaxOutboundSeq();
 
   // Concurrent polling: push follow-ups into the active query as they arrive.
   // We do NOT force-end the stream on silence — keeping the query open avoids
@@ -462,13 +472,13 @@ async function processQuery(
           };
           dispatchResultText(event.text, routing, cost);
         }
-        // Backfill usage onto any messages_out rows written mid-turn by MCP
+        // Backfill usage onto any chat rows written DURING this turn by MCP
         // tools (e.g. send_message) — they write routing/content but have no
-        // usage yet because the turn hasn't completed. Only rows with NULL
+        // usage because the turn hasn't completed. Only rows with NULL
         // tokens_in are updated; pre-populated rows from dispatchResultText
         // above are not overwritten.
-        if (routing.inReplyTo && (event.tokens?.input != null || event.provider || event.model)) {
-          backfillUsage(routing.inReplyTo, {
+        if (event.tokens?.input != null || event.provider || event.model) {
+          backfillUsage(maxSeqBeforeTurn, {
             tokens_in: event.tokens?.input ?? null,
             tokens_out: event.tokens?.output ?? null,
             provider: event.provider ?? null,
