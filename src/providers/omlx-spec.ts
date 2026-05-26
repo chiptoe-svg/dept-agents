@@ -36,6 +36,11 @@ registerProvider({
       displayName: 'Qwen 3.6 (35B, MLX 4-bit)',
       origin: 'local',
       costPer1kTokensUsd: 0,
+      // mlx-omni-server returns prompt-cache reads in usage (verified via
+      // smoke test 2026-05-26 — cdbc213 — `cacheRead: 20480`).
+      // costPer1kCachedInUsd: 0 lets cost-tracking notice the bucket
+      // consistently with other providers — zero dollars either way.
+      costPer1kCachedInUsd: 0,
       avgLatencySec: 8,
       paramCount: '35B',
       modalities: ['text', 'image'],

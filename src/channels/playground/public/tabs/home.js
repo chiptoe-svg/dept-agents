@@ -729,9 +729,15 @@ function escapeHtml(s) {
 
 // ── classroom-provider-auth:providers-card-impl START ─────────────────────
 
+// Hardcoded provider metadata for the Home Providers card. The `id` values
+// match what auth-registry.ts registers (claude-spec, codex-spec,
+// openai-platform-spec). credentialFileShape drives the cred-dialog variant.
+// Long-term cleanup: have the providers GET return credentialFileShape so this
+// duplication goes away. Until then, keep in sync with the spec modules.
 const PROVIDERS = [
-  { id: 'codex',  displayName: 'OpenAI',     credentialFileShape: 'mixed' },
-  { id: 'claude', displayName: 'Anthropic',  credentialFileShape: 'mixed' },
+  { id: 'codex',           displayName: 'OpenAI (ChatGPT subscription)', credentialFileShape: 'mixed' },
+  { id: 'claude',          displayName: 'Anthropic',                     credentialFileShape: 'mixed' },
+  { id: 'openai-platform', displayName: 'OpenAI Platform (direct API)',  credentialFileShape: 'api-key' },
 ];
 
 async function renderProvidersCard(body) {
