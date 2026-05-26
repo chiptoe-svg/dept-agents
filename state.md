@@ -99,7 +99,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `multi-provider-models-tab`
-- **Last tag:** `phase-d-complete-2026-05-26` (18 commits ahead)
+- **Last tag:** `phase-d-complete-2026-05-26` (19 commits ahead)
 
 ### Working tree
 
@@ -107,14 +107,17 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ## multi-provider-models-tab
  M .gitignore
  M config/playground-seats.json
-A  src/channels/playground/public/components/cred-dialog.js
-M  src/channels/playground/public/tabs/home.js
+A  src/channels/playground/api/omlx-reachability.test.ts
+A  src/channels/playground/api/omlx-reachability.ts
+M  src/channels/playground/public/components/cred-dialog.js
+M  src/channels/playground/server.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+41ab3d5 refactor(playground): extract shared cred-dialog component (mptab-10)
 0c5ad0b feat(api): GET /api/me/models-tab-state endpoint (mptab-9)
 8592718 feat(api): greying-rule pure function for Models tab state (mptab-8)
 3dadbd7 fix(proxy): default OMLX_API_KEY to 'godfrey' (mptab-7)
@@ -129,9 +132,8 @@ c34711a docs(spec): multi-provider Models tab + per-student auth extension
 d611bc3 feat(compass): state.md project compass + SessionStart hook + auto-refresh
 456c389 chore(format): prettier-format Phase D and persistence-fix files
 ef309cc fix(host): writeOutboundDirect uses RW opener + recover stale outbound -journal at startup
-b204567 fix(persistence): backfill messages_out usage via seq bound (cross-process)
 ```
 
 ### Last refresh
 
-2026-05-26T18:56:08Z
+2026-05-26T19:03:15Z

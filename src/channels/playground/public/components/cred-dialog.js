@@ -11,7 +11,7 @@
  *   'oauth-token' -> single OAuth tab
  *   'api-key'     -> single API-key paste tab
  *   'mixed'       -> tabs + active-method radio when both creds set
- *   'none'        -> mptab-11 will add (URL field + reachability)
+ *   'none'        -> URL field + reachability probe (no credentials stored)
  *
  * Sets data-tab, data-active-method, data-role attributes on key DOM nodes so
  * mptab-13's happy-dom tests can assert structure.
@@ -93,7 +93,6 @@ export function openCredDialog({ providerId, providerSpec, currentCredState, onS
   } else if (credentialFileShape === 'mixed') {
     buildMixedVariant(body, providerId, providerSpec, currentCredState, onSaved);
   } else if (credentialFileShape === 'none') {
-    // TODO mptab-11: add URL-field + reachability-probe variant for local-server providers
     buildNoneVariant(body, providerId, providerSpec, currentCredState, onSaved);
   } else {
     const p = document.createElement('p');
@@ -490,10 +489,7 @@ function buildMixedVariant(body, providerId, providerSpec, currentCredState, onS
 
 /**
  * 'none' — local-server provider (no credentials needed, just connectivity).
- * Stub for mptab-11 which will add URL field + reachability probe.
  * Produces: [data-role="server-url"], [data-role="reachability"] — no [data-tab].
- *
- * TODO mptab-11: replace stub with real URL-field + reachability endpoint
  */
 function buildNoneVariant(body, providerId, providerSpec, currentCredState, onSaved) {
   const { displayName } = providerSpec;
@@ -531,6 +527,29 @@ function buildNoneVariant(body, providerId, providerSpec, currentCredState, onSa
   checkBtn.className = 'btn';
   checkBtn.setAttribute('data-role', 'check-reachability');
   checkBtn.textContent = 'Check';
+
+  checkBtn.addEventListener('click', async () => {
+    const reachabilityDiv = section.querySelector('[data-role="reachability"]');
+    reachabilityDiv.textContent = 'Checking…';
+    try {
+      const res = await fetch(`/api/me/providers/${providerId}/reachability`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        reachabilityDiv.textContent = `✗ ${res.status} ${res.statusText}`;
+        return;
+      }
+      const resBody = await res.json();
+      const checkedAt = new Date(resBody.checkedAt).toLocaleTimeString();
+      reachabilityDiv.textContent = resBody.ok
+        ? `✓ Reachable · checked ${checkedAt}`
+        : `✗ Unreachable · checked ${checkedAt}`;
+    } catch (err) {
+      reachabilityDiv.textContent = `✗ Network error · ${(err && err.message) || err}`;
+    }
+  });
+
   actions.appendChild(checkBtn);
   section.appendChild(actions);
 
