@@ -99,23 +99,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `multi-provider-models-tab`
-- **Last tag:** `phase-d-complete-2026-05-26` (15 commits ahead)
+- **Last tag:** `phase-d-complete-2026-05-26` (16 commits ahead)
 
 ### Working tree
 
 ```
 ## multi-provider-models-tab
-M  .env.example
  M .gitignore
  M config/playground-seats.json
-M  src/credential-proxy.test.ts
-M  src/credential-proxy.ts
+A  src/channels/playground/api/models-tab-state.test.ts
+A  src/channels/playground/api/models-tab-state.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+3dadbd7 fix(proxy): default OMLX_API_KEY to 'godfrey' (mptab-7)
 e55cede feat(provider): omlx-spec (local server with reachability probe) (mptab-6)
 7964d7c feat(provider): openai-platform-spec (API-key direct OpenAI API) (mptab-5)
 ed2ab99 refactor(catalog): assemble BUILTIN_ENTRIES from spec modules (mptab-4)
@@ -130,9 +130,8 @@ ef309cc fix(host): writeOutboundDirect uses RW opener + recover stale outbound -
 b204567 fix(persistence): backfill messages_out usage via seq bound (cross-process)
 d4a8147 Merge planning docs from plans/pi-prep-2026-05-25
 d2b7256 fix(persistence): backfill messages_out usage on tool-call-only turns
-4cec55a refactor(playground): remove dead trace paths (d-5)
 ```
 
 ### Last refresh
 
-2026-05-26T18:34:04Z
+2026-05-26T18:38:05Z
