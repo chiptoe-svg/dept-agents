@@ -294,12 +294,17 @@ export class PiProvider implements AgentProvider {
     // would throw on every turn when modelProvider was omitted from the
     // config — making the failure mode "container hangs on first message"
     // instead of "container falls back to a sensible default".
-    let modelProvider = options.modelProvider;
+    //
+    // Precedence: options (from container.json modelProvider field, which the
+    // host populates from container_configs.model_provider once that column
+    // exists) → NANOCLAW_PI_MODEL_PROVIDER env var (the install-local escape
+    // hatch via container_configs.env) → DEFAULT_MODEL_PROVIDER.
+    let modelProvider = options.modelProvider || process.env.NANOCLAW_PI_MODEL_PROVIDER;
     if (!modelProvider) {
       modelProvider = DEFAULT_MODEL_PROVIDER;
       console.error(
-        `[pi] options.modelProvider was not set; defaulting to "${DEFAULT_MODEL_PROVIDER}". ` +
-          `Set container_configs.provider explicitly to silence this warning.`,
+        `[pi] modelProvider not set (container.json or NANOCLAW_PI_MODEL_PROVIDER env). ` +
+          `Defaulting to "${DEFAULT_MODEL_PROVIDER}".`,
       );
     }
 
