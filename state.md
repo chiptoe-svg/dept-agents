@@ -99,7 +99,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `multi-provider-models-tab`
-- **Last tag:** `phase-d-complete-2026-05-26` (22 commits ahead)
+- **Last tag:** `phase-d-complete-2026-05-26` (23 commits ahead)
 
 ### Working tree
 
@@ -107,14 +107,16 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ## multi-provider-models-tab
  M .gitignore
  M config/playground-seats.json
-M  src/channels/playground/api/class-controls.test.ts
-M  src/channels/playground/api/class-controls.ts
+M  docs/superpowers/plans/2026-05-14-omlx-local-model-integration.md
+M  src/providers/omlx-spec.test.ts
+M  src/providers/omlx-spec.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+2ee648b feat(class-controls): default openai-platform + omlx provider entries (mptab-14)
 81f1030 test(playground): cred-dialog variant tests via happy-dom (mptab-13)
 ec89a93 feat(playground): Models tab v2 layout — per-provider sections, greyed/hidden states (mptab-12)
 a64c33d feat(playground): OMLX 'none' variant of cred dialog + reachability endpoint (mptab-11)
@@ -129,9 +131,8 @@ a6270a2 refactor(provider): codex-spec owns OpenAI-codex catalog entries (mptab-
 ad9d28d refactor(provider): claude-spec owns Anthropic catalog entries (mptab-2)
 1226ec5 feat(provider): extend ProviderAuthSpec with catalogModels + reachability + 'none' shape (mptab-1)
 21478a5 docs(plan): multi-provider Models tab implementation plan
-c34711a docs(spec): multi-provider Models tab + per-student auth extension
 ```
 
 ### Last refresh
 
-2026-05-26T19:48:47Z
+2026-05-26T19:57:39Z

@@ -7,7 +7,16 @@ async function probeReachability(): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 1500);
-    const res = await fetch(`${OMLX_BASE_URL}/v1/models`, { signal: ctrl.signal });
+    // OMLX servers may require a bearer token even on /v1/models. Send the same
+    // token the credential-proxy would substitute on real outbound requests so
+    // the probe semantics match runtime: unreachable means the server is down
+    // OR the key is wrong — both are user-actionable. Defaults to 'godfrey' per
+    // resolveOmlxKey() (mptab-7).
+    const token = process.env.OMLX_API_KEY ?? 'godfrey';
+    const res = await fetch(`${OMLX_BASE_URL}/v1/models`, {
+      signal: ctrl.signal,
+      headers: { Authorization: `Bearer ${token}` },
+    });
     clearTimeout(timer);
     return res.ok;
   } catch {
