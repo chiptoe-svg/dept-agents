@@ -1225,8 +1225,9 @@ function piHandleToolExecutionEnd(trace, event, st) {
     card.resultEl.textContent = formatTracePayloadFull(result);
     card.resultEl.style.display = '';
   }
-  // Open the details so the result is immediately visible.
-  if (card.details) card.details.open = true;
+  // Leave the details collapsed — the summary preview is enough at a glance;
+  // click to drill into args + full result. (Auto-opening on completion
+  // meant tool-using turns produced a wall of inline JSON.)
 
   if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
   trace.scrollTop = trace.scrollHeight;
