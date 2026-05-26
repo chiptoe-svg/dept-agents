@@ -129,6 +129,48 @@ function usageFromReply(message: AssistantMessage): TurnUsage {
   };
 }
 
+/** Empty TurnUsage for per-turn accumulation. */
+function newEmptyTurnUsage(): TurnUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    inputCostUsd: 0,
+    outputCostUsd: 0,
+    cacheReadCostUsd: 0,
+    cacheWriteCostUsd: 0,
+    totalCostUsd: 0,
+  };
+}
+
+/**
+ * Fold one assistant message's usage into the per-turn accumulator. Each
+ * model call in a tool-using turn fires its own message_end with its own
+ * usage; the playground's AGENT TURN SUM expects the sum across the turn,
+ * not just the last call's numbers. Model/provider are stamped from the
+ * last seen message so the sum carries a representative attribution.
+ */
+function accumulateUsage(acc: TurnUsage, message: AssistantMessage): void {
+  const u = message.usage;
+  if (!u) return;
+  acc.inputTokens = (acc.inputTokens ?? 0) + (u.input ?? 0);
+  acc.outputTokens = (acc.outputTokens ?? 0) + (u.output ?? 0);
+  acc.cacheReadTokens = (acc.cacheReadTokens ?? 0) + (u.cacheRead ?? 0);
+  acc.cacheWriteTokens = (acc.cacheWriteTokens ?? 0) + (u.cacheWrite ?? 0);
+  acc.totalTokens = (acc.totalTokens ?? 0) + (u.totalTokens ?? 0);
+  if (u.cost) {
+    acc.inputCostUsd = (acc.inputCostUsd ?? 0) + (u.cost.input ?? 0);
+    acc.outputCostUsd = (acc.outputCostUsd ?? 0) + (u.cost.output ?? 0);
+    acc.cacheReadCostUsd = (acc.cacheReadCostUsd ?? 0) + (u.cost.cacheRead ?? 0);
+    acc.cacheWriteCostUsd = (acc.cacheWriteCostUsd ?? 0) + (u.cost.cacheWrite ?? 0);
+    acc.totalCostUsd = (acc.totalCostUsd ?? 0) + (u.cost.total ?? 0);
+  }
+  if (message.model) acc.model = message.model;
+  if (message.provider) acc.provider = message.provider;
+}
+
 /** Map pi's per-turn TurnUsage onto classroom's result.tokens shape. */
 function tokensFromUsage(usage: TurnUsage): {
   input: number;
@@ -375,12 +417,36 @@ export class PiProvider implements AgentProvider {
           }),
         }));
 
+        // Per-turn usage accumulator. harness.prompt() only returns the
+        // FINAL AssistantMessage with its own usage; intermediate model
+        // calls within the same turn fire message_end events with their
+        // own usage. Without accumulating, the result event (and the
+        // playground's AGENT TURN SUM) only reports the last call, not
+        // the sum across the turn — wildly under-counting cost for
+        // multi-call turns (e.g. tool-using turns where each tool result
+        // triggers another model call).
+        let turnUsageSum = newEmptyTurnUsage();
+
         // Option D: pass pi's events through unchanged so the playground trace
         // renderer (chat.js) can show streaming text, per-toolcall lifecycle,
         // and thinking blocks. `activity` keeps the poll-loop's idle-timer
-        // honest during long runs.
+        // honest during long runs. Side-effect: accumulate usage from
+        // message_end events for the turn-sum fix above.
+        // Provider/model attribution stamped onto the turn_start passthrough
+        // so the playground can render an 'AGENT CALL provider/model' header
+        // at the top of each turn (mirrors the DIRECT CALL header format).
+        // pi-agent-core's native turn_start doesn't carry these.
+        const turnMeta = { provider: model.provider, model: model.id };
+
         unsubscribe = harness.subscribe(async (event: AgentHarnessEvent) => {
-          queue.push({ type: 'activity' }, { type: 'pi_event', event });
+          if (event.type === 'message_end' && event.message.role === 'assistant') {
+            accumulateUsage(turnUsageSum, event.message);
+          }
+          let outbound: unknown = event;
+          if (event.type === 'turn_start') {
+            outbound = { ...event, _nanoclawMeta: turnMeta };
+          }
+          queue.push({ type: 'activity' }, { type: 'pi_event', event: outbound });
         });
 
         const meta = await session.getMetadata();
@@ -399,6 +465,8 @@ export class PiProvider implements AgentProvider {
 
           const nextPrompt = queuedPrompts.shift()!;
           activeTurn = true;
+          // Reset the turn accumulator at the start of each prompt.
+          turnUsageSum = newEmptyTurnUsage();
           try {
             const reply = await harness.prompt(nextPrompt);
             const usage = usageFromReply(reply);
@@ -429,12 +497,21 @@ export class PiProvider implements AgentProvider {
             } catch {
               // Best-effort only: context visibility should never break the turn.
             }
+            // Prefer the accumulated turn-sum over the final reply's
+            // single-call usage. Fall back to the reply when the
+            // accumulator is empty (single-call turn, no message_end
+            // events captured).
+            const finalUsage: TurnUsage =
+              turnUsageSum.inputTokens || turnUsageSum.outputTokens
+                ? { ...turnUsageSum, provider: usage.provider, model: usage.model }
+                : usage;
+
             queue.push({
               type: 'result',
               text: assistantText(reply),
-              tokens: tokensFromUsage(usage),
-              provider: usage.provider,
-              model: usage.model,
+              tokens: tokensFromUsage(finalUsage),
+              provider: finalUsage.provider,
+              model: finalUsage.model,
             });
           } finally {
             activeTurn = false;

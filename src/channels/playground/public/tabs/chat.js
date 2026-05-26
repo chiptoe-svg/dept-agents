@@ -826,11 +826,28 @@ function appendPiEvent(trace, event) {
 function piHandleTurnStart(trace, event, st) {
   const target = trace._currentTurnUl || trace;
   const li = document.createElement('li');
-  li.className = 'trace trace-turn-divider';
-  const kindEl = document.createElement('div');
-  kindEl.className = 'trace-kind';
-  kindEl.textContent = event.turnId ? `— turn ${event.turnId} —` : '— new turn —';
-  li.appendChild(kindEl);
+  li.className = 'trace trace-agent-call-head';
+
+  // AGENT CALL header — mirrors the DIRECT CALL format. provider/model
+  // are stamped onto the turn_start by pi.ts via _nanoclawMeta (pi-agent-core
+  // doesn't carry them natively). Falls back to a plain divider when absent.
+  const meta = event._nanoclawMeta;
+  const head = document.createElement('div');
+  head.className = 'trace-event-head';
+  const kindSpan = document.createElement('span');
+  kindSpan.className = 'trace-event-kind';
+  kindSpan.textContent = 'AGENT CALL';
+  head.appendChild(kindSpan);
+  if (meta && (meta.provider || meta.model)) {
+    const codeEl = document.createElement('code');
+    codeEl.textContent = `${meta.provider || ''}/${meta.model || ''}`.replace(/^\/|\/$/g, '');
+    head.appendChild(codeEl);
+  } else if (event.turnId) {
+    const codeEl = document.createElement('code');
+    codeEl.textContent = `turn ${event.turnId}`;
+    head.appendChild(codeEl);
+  }
+  li.appendChild(head);
   target.appendChild(li);
 
   // Reset per-turn pi streaming state.
