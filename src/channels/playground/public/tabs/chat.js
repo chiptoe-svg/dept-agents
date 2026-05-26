@@ -509,33 +509,14 @@ function finalizeTurn(turnEl) {
   if (!turnEl) return;
   const foot = turnEl.querySelector('.trace-turn-foot');
   if (!foot) return;
-  // Codex's `tokenUsage.total` (which we surface as agent_call) is the
-  // THREAD CUMULATIVE total — every call codex has ever made on this
-  // thread since it started, not the current turn's cost. Per-turn cost
-  // is the sum of model_call deltas within this turn.
-  //
-  // For claude (single API call per user turn), no per-call model_call
-  // events fire — the agent_call IS the turn. Detect that case and fall
-  // back to agent_call's tokens.
-  const modelCalls = turnEl.querySelectorAll('.trace-model-call');
   const agentCall = turnEl.querySelector('.trace-agent-call');
-  let tokensIn = 0, tokensOut = 0, tokensCached = 0, tokensReasoning = 0, cost = 0;
-  if (modelCalls.length > 0) {
-    // Codex-style turn — sum the per-call deltas.
-    for (const li of modelCalls) {
-      tokensIn       += parseFloat(li.dataset.tokensIn       || '0') || 0;
-      tokensOut      += parseFloat(li.dataset.tokensOut      || '0') || 0;
-      tokensCached   += parseFloat(li.dataset.tokensCached   || '0') || 0;
-      tokensReasoning += parseFloat(li.dataset.tokensReasoning || '0') || 0;
-      cost           += parseFloat(li.dataset.cost           || '0') || 0;
-    }
-  } else if (agentCall) {
-    // Claude-style turn — agent_call IS the turn (single API call).
+  let tokensIn = 0, tokensOut = 0, cost = 0;
+  if (agentCall) {
     tokensIn  = parseFloat(agentCall.dataset.tokensIn  || '0') || 0;
     tokensOut = parseFloat(agentCall.dataset.tokensOut || '0') || 0;
     cost      = parseFloat(agentCall.dataset.cost      || '0') || 0;
   } else {
-    // Neither — non-LLM events only (tool calls without a model summary).
+    // pi-event turns — aggregate any cost annotations from pi message_end rows.
     for (const li of turnEl.querySelectorAll('[data-cost]')) {
       cost += parseFloat(li.dataset.cost || '0') || 0;
     }
@@ -546,12 +527,7 @@ function finalizeTurn(turnEl) {
   }
   const parts = [];
   if (tokensIn > 0) parts.push(`${tokensIn} in`);
-  if (tokensCached > 0) parts.push(`${tokensCached} cached`);
-  // Reasoning is a subset of output tokens, not a separate bucket — show it
-  // in parens after `out`, matching how each model-call row renders it.
-  if (tokensOut > 0) {
-    parts.push(tokensReasoning > 0 ? `${tokensOut} out (${tokensReasoning} reasoning)` : `${tokensOut} out`);
-  }
+  if (tokensOut > 0) parts.push(`${tokensOut} out`);
   if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
   foot.textContent = `turn total: ${parts.join(' · ')}`;
 }
@@ -631,35 +607,16 @@ function appendAgentReply(log, data) {
 
 function appendTraceEvent(trace, data) {
   // pi_event wrapper: { type: 'pi_event', event: <native pi-agent-core event> }
-  // Route to the pi renderer and return early — existing paths are unaffected.
+  // Route to the pi renderer and return early.
   if (data.type === 'pi_event') {
     return appendPiEvent(trace, data.event);
-  }
-
-  // model_call has its own renderer — it carries token deltas not an
-  // input/content payload, so it doesn't fit the tool envelope template
-  // below. Split off early.
-  if (data.type === 'model_call') {
-    return appendModelCallTrace(trace, data);
   }
 
   const li = document.createElement('li');
   const kind = data.kind || data.eventType || 'event';
   li.className = `trace trace-${kind}`;
 
-  // Recognize tool envelopes emitted by the agent-runner (mirrors v2 logTrace).
-  let summary = '';
-  if (data.type === 'tool_use') {
-    summary = `tool · ${data.toolName || data.tool || 'unknown'}`;
-  } else if (data.type === 'tool_result') {
-    summary = data.isError ? 'tool result · error' : 'tool result';
-  } else if (kind === 'tool_use') {
-    summary = `tool_call · ${data.toolName || data.tool || ''}`;
-  } else if (kind === 'tool_result') {
-    summary = `tool_result · ${data.isError ? 'error' : 'ok'}`;
-  } else {
-    summary = data.summary || data.message || kind;
-  }
+  const summary = data.summary || data.message || kind;
 
   // Native <details>/<summary> gives a built-in disclosure triangle for
   // free — collapsed view shows kind + a one-line preview; expanded view
@@ -1102,7 +1059,7 @@ function piHandleMessageEnd(trace, event, st) {
 /**
  * tool_execution_start: begin a tool execution status card, keyed on toolCallId.
  * Mirrors the .trace-event / .trace-event-head / .trace-event-kind / .trace-event-body
- * pattern used by appendModelCallTrace (head + body, optionally expandable).
+ * pattern (head + body, optionally expandable).
  * Border-left uses .trace-tool_use accent colour (#4a90e2) until the result arrives.
  */
 function piHandleToolExecutionStart(trace, event, st) {
@@ -1389,93 +1346,6 @@ function appendChatNote(log, text) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-/**
- * Direct-chat trace events. In agent mode the trace is populated by the
- * SSE stream (tool_use, system events, etc.); in direct mode there's
- * only one event per turn — the API call itself.
- */
-/**
- * Synthetic trace event for an agent-mode LLM call. Built from the same
- * provider/model/tokens/latency fields the chat bubble's footer uses, so
- * a tool-less turn still leaves a record in the trace pane. Cost is
- * computed client-side by looking up the catalog entry stashed at
- * window.__pg.catalog (populated by loadModelDropdowns).
- */
-/**
- * Renders a single LLM call mid-turn — emitted by the agent-runner each
- * time the underlying model responds (per thread/tokenUsage/updated.last
- * for codex). Sits between tool_use/tool_result entries, so a multi-tool
- * turn shows N model_call entries instead of one cumulative summary.
- * Provider/model isn't carried in the event payload (the agent-runner
- * doesn't include them per-call); we pull them from the chat tab's
- * current dropdown selection, which matches the running container.
- */
-function appendModelCallTrace(trace, data) {
-  if (!trace) return;
-  const li = document.createElement('li');
-  li.className = 'trace-event trace-model-call';
-  const provSel = document.getElementById('provider-sel');
-  const modelSel = document.getElementById('model-sel');
-  const provider = provSel ? provSel.value : '';
-  const model = modelSel ? modelSel.value : '';
-  const tokensIn = typeof data.tokensIn === 'number' ? data.tokensIn : 0;
-  const tokensOut = typeof data.tokensOut === 'number' ? data.tokensOut : 0;
-  const cached = typeof data.tokensCached === 'number' ? data.tokensCached : 0;
-  const reasoning = typeof data.tokensReasoning === 'number' ? data.tokensReasoning : 0;
-  const cachedNote = cached > 0 ? `, ${cached} cached` : '';
-  const outBreakdown = reasoning > 0 ? `${tokensOut} out (${reasoning} reasoning)` : `${tokensOut} out`;
-  // Cost: use the same client-side helper as appendAgentTraceCall, but
-  // bill cached input at the cheaper rate (mirrors direct-chat.ts:priceFor).
-  const cost = computeAgentCallCost(provider, model, tokensIn, tokensOut, cached);
-  const costText = cost != null ? (cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`) : '';
-  const summaryText = `${tokensIn} in${cachedNote} · ${outBreakdown}${costText ? ` · ${costText}` : ''}`;
-
-  const head = document.createElement('div');
-  head.className = 'trace-event-head';
-  const kindSpan = document.createElement('span');
-  kindSpan.className = 'trace-event-kind';
-  kindSpan.textContent = 'model call';
-  const codeEl = document.createElement('code');
-  codeEl.textContent = `${provider}/${model}`;
-  head.appendChild(kindSpan);
-  head.appendChild(codeEl);
-  li.appendChild(head);
-
-  const responseText = typeof data.responsePreview === 'string' ? data.responsePreview : null;
-  if (responseText) {
-    const details = document.createElement('details');
-    details.className = 'trace-details';
-    const summaryEl = document.createElement('summary');
-    summaryEl.className = 'trace-summary';
-    const bodySpan = document.createElement('span');
-    bodySpan.className = 'trace-event-body';
-    bodySpan.textContent = summaryText;
-    summaryEl.appendChild(bodySpan);
-    details.appendChild(summaryEl);
-    const bodyEl = document.createElement('pre');
-    bodyEl.className = 'trace-body';
-    bodyEl.textContent = responseText;
-    details.appendChild(bodyEl);
-    li.appendChild(details);
-  } else {
-    const bodyDiv = document.createElement('div');
-    bodyDiv.className = 'trace-event-body';
-    bodyDiv.textContent = summaryText;
-    li.appendChild(bodyDiv);
-  }
-
-  li.dataset.tokensIn = tokensIn;
-  li.dataset.tokensOut = tokensOut;
-  li.dataset.tokensCached = cached;
-  li.dataset.tokensReasoning = reasoning;
-  if (cost != null) li.dataset.cost = cost;
-  const target = trace._currentTurnUl || trace;
-  target.appendChild(li);
-  // Eager-finalize so the turn-total footer updates live as events arrive.
-  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
-  trace.scrollTop = trace.scrollHeight;
 }
 
 function appendAgentTraceCall(trace, data) {

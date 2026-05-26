@@ -165,43 +165,10 @@ export type ProviderEvent =
    */
   | { type: 'compacted'; text: string }
   /**
-   * Tool invocation by the agent. Providers MUST emit this when the
-   * model calls a tool (Bash, file read, MCP, etc.) so the playground
-   * trace panel can surface what the agent is doing under the hood.
-   * Other delivery surfaces (Telegram, Slack, etc.) drop trace events;
-   * they only ever land on a `playground` channel destination.
-   */
-  | { type: 'tool_use'; toolUseId: string; toolName: string; input: unknown }
-  /**
-   * Tool result returning to the agent. Paired with a prior tool_use by
-   * `toolUseId`. `isError` is the SDK-reported execution outcome (not
-   * "the tool reported a failure logically" — that's domain-specific
-   * and lives in the content).
-   */
-  | { type: 'tool_result'; toolUseId: string; content: unknown; isError?: boolean }
-  /**
-   * One round-trip to the underlying LLM (one OpenAI/Anthropic API call).
-   * Codex turns may make several of these in sequence — one per agent
-   * message, separated by tool execution. Providers SHOULD emit this so
-   * the playground trace pane can show per-call breakdowns, not just the
-   * cumulative `result` summary at end-of-turn. Tokens are this call's
-   * delta, NOT cumulative.
-   */
-  | {
-      type: 'model_call';
-      tokensIn: number;
-      tokensCached: number;
-      tokensOut: number;
-      tokensReasoning: number;
-      /** Text the model generated for this call (absent on tool-use-only calls). */
-      responsePreview?: string;
-    }
-  /**
    * Pi-native event passthrough. When pi is the harness, pi-agent-core's
    * own events are forwarded unchanged so the playground trace panel can
    * render pi's richer vocabulary directly (streaming text, per-tool
-   * live updates, thinking deltas) instead of the lossy translation to
-   * `tool_use`/`tool_result`/`model_call`. Trace consumers dispatch on
+   * live updates, thinking deltas). Trace consumers dispatch on
    * `event.type` (the inner pi event type). Kept as `unknown` so this
    * file has no dependency on the pi packages.
    */

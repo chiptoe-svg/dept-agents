@@ -527,9 +527,6 @@ function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
     case 'compacted':
       log(`Compacted: ${event.text}`);
       break;
-    case 'tool_use':
-    case 'tool_result':
-    case 'model_call':
     case 'pi_event':
       emitTraceToPlayground(event, routing);
       break;
@@ -548,35 +545,15 @@ function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
  * pushToDraft. Telegram/Slack/etc. never see them.
  */
 function emitTraceToPlayground(
-  event: ProviderEvent & { type: 'tool_use' | 'tool_result' | 'model_call' | 'pi_event' },
+  event: ProviderEvent & { type: 'pi_event' },
   routing: RoutingContext,
 ): void {
   if (routing.channelType !== 'playground' || !routing.platformId) return;
 
-  let payload: Record<string, unknown>;
-  if (event.type === 'tool_use') {
-    payload = { type: 'tool_use', toolUseId: event.toolUseId, toolName: event.toolName, input: event.input };
-  } else if (event.type === 'tool_result') {
-    payload = { type: 'tool_result', toolUseId: event.toolUseId, content: event.content, isError: event.isError };
-  } else if (event.type === 'pi_event') {
-    // Option D: forward pi-agent-core's native event unchanged. The
-    // playground's chat.js renderer dispatches on event.event.type and
-    // renders text deltas, thinking blocks, per-tool lifecycle cards, etc.
-    // The wrapper shape mirrors what chat.js expects in appendTraceEvent.
-    payload = { type: 'pi_event', event: event.event };
-  } else {
-    // model_call — per-response token deltas. The playground renderer
-    // pairs this with the agent group's current provider/model (already
-    // visible in the dropdown) to compute cost client-side.
-    payload = {
-      type: 'model_call',
-      tokensIn: event.tokensIn,
-      tokensCached: event.tokensCached,
-      tokensOut: event.tokensOut,
-      tokensReasoning: event.tokensReasoning,
-      ...(event.responsePreview ? { responsePreview: event.responsePreview } : {}),
-    };
-  }
+  // Forward pi-agent-core's native event unchanged. The playground's
+  // chat.js renderer dispatches on event.event.type and renders text
+  // deltas, thinking blocks, per-tool lifecycle cards, etc.
+  const payload = { type: 'pi_event', event: event.event };
 
   writeMessageOut({
     id: generateId(),
