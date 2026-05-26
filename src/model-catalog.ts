@@ -2,6 +2,12 @@ import fs from 'fs';
 
 import { MODEL_CATALOG_LOCAL_PATH } from './config.js';
 import { readCachedCodexModels, refreshCodexCatalog } from './model-catalog-refresh.js';
+import { listProviderSpecs } from './providers/auth-registry.js';
+
+// Side-effect imports so registrations happen before any catalog read.
+import './providers/claude-spec.js';
+import './providers/codex-spec.js';
+// Future provider modules add their own import line here.
 
 export interface ModelEntry {
   /** Stable id, used in container.json allowedModels and chat-tab dropdowns. */
@@ -57,7 +63,8 @@ export interface ModelEntry {
   default?: boolean;
 }
 
-const BUILTIN_ENTRIES: ModelEntry[] = [
+/** Local entries pending migration to omlx-spec.ts in mptab-6. */
+const LOCAL_ENTRIES_PENDING_OMLX_SPEC: ModelEntry[] = [
   {
     id: 'Qwen3.6-35B-A3B-UD-MLX-4bit',
     modelProvider: 'local',
@@ -76,6 +83,12 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
     default: true,
   },
 ];
+
+/** Returns the assembled built-in catalog: concat of every registered
+ *  ProviderAuthSpec's catalogModels. Order: registration order. */
+export function getBuiltinEntries(): ModelEntry[] {
+  return [...listProviderSpecs().flatMap((s) => s.catalogModels ?? []), ...LOCAL_ENTRIES_PENDING_OMLX_SPEC];
+}
 
 function readLocalEntries(): ModelEntry[] {
   if (!fs.existsSync(MODEL_CATALOG_LOCAL_PATH)) return [];
@@ -98,14 +111,14 @@ export function getModelCatalog(): ModelEntry[] {
 
   // Refresh layer: drop-on-disappear for codex models that have aged out of
   // OpenAI's docs page, plus surface newly-listed IDs as minimal entries
-  // (no pricing — they're still hand-curated by editing BUILTIN_ENTRIES or
-  // the Models-tab local override flow when prices need to attach).
+  // (no pricing — they're still hand-curated by editing codex-spec.ts catalogModels
+  // or the Models-tab local override flow when prices need to attach).
   // Fires the background fetch as a side effect on every catalog read so
   // the cache stays warm without a dedicated scheduler. The refresh module
   // self-rate-limits via its 24h cache + in-flight guard, so this is cheap.
   refreshCodexCatalog().catch(() => {});
   const refreshed = readCachedCodexModels();
-  let builtins = BUILTIN_ENTRIES;
+  let builtins = getBuiltinEntries();
   if (refreshed && refreshed.length > 0) {
     const allowedCodex = new Set(refreshed);
     builtins = builtins.filter((e) => e.modelProvider !== 'openai-codex' || allowedCodex.has(e.id));
@@ -119,7 +132,7 @@ export function getModelCatalog(): ModelEntry[] {
           displayName: id,
           origin: 'cloud',
           modalities: ['text'],
-          notes: `Auto-discovered from developers.openai.com/codex/models on ${new Date().toISOString().slice(0, 10)}. Pricing not yet curated — edit src/model-catalog.ts BUILTIN_ENTRIES or use the Models tab to set rates.`,
+          notes: `Auto-discovered from developers.openai.com/codex/models on ${new Date().toISOString().slice(0, 10)}. Pricing not yet curated — edit codex-spec.ts catalogModels or use the Models tab to set rates.`,
         });
       }
     }
