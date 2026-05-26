@@ -110,7 +110,6 @@ async function main(): Promise<void> {
       name: args.agentName,
       folder,
       agent_provider: null,
-      model: null,
       created_at: now,
     });
     ag = getAgentGroupByFolder(folder)!;

@@ -415,6 +415,10 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
         // ── per-student-provider-auth:proxy-invocation START ──────────────────────
         let studentCredsApplied = false;
         if (agentGroupId && (isOpenAI || (!isGoogle && !isOmlx))) {
+          // NOTE: 'codex'/'claude' here are AUTH provider IDs (matching what
+          // codex-spec.ts / claude-spec.ts register in auth-registry.ts), NOT the
+          // agent harness provider (agent_groups.agent_provider, now always 'pi').
+          // These two namespaces share strings but are independent — do not merge.
           const providerId = isOpenAI ? 'codex' : 'claude';
           const resolved = await studentCredsHook(agentGroupId, providerId);
           if (resolved) {
@@ -492,15 +496,41 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           headers['x-api-key'] = secrets.ANTHROPIC_API_KEY;
         } else if (!studentCredsApplied) {
           // Anthropic OAuth mode: replace placeholder Bearer token with
-          // the real one only when the container actually sends an
-          // Authorization header (exchange request + auth probes).
-          // Post-exchange requests use x-api-key only, so they pass
-          // through without token injection.
+          // the real one when the container sends an Authorization header.
+          // Two distinct use patterns end up here:
+          //   1. Claude Code SDK — exchanges OAuth for an API key first
+          //      (Authorization header on the exchange call), then uses
+          //      the resulting API key via x-api-key on subsequent calls.
+          //   2. Direct OAuth (pi-ai with the sk-ant-oat- prefix) — uses
+          //      the OAuth token as a Bearer on every call. Anthropic
+          //      requires the `anthropic-beta: oauth-2025-04-20` header
+          //      for these; without it the API returns "Invalid bearer
+          //      token" regardless of token validity. The Claude SDK
+          //      already adds this header itself, so unconditionally
+          //      forcing it here is a no-op for SDK callers.
           if (headers['authorization']) {
             delete headers['authorization'];
             const token = await getOAuthToken(envOAuthToken);
             if (token) {
               headers['authorization'] = `Bearer ${token}`;
+              const existingBeta = headers['anthropic-beta'];
+              const oauthBeta = 'oauth-2025-04-20';
+              if (typeof existingBeta === 'string' && existingBeta.length > 0) {
+                if (
+                  !existingBeta
+                    .split(',')
+                    .map((s) => s.trim())
+                    .includes(oauthBeta)
+                ) {
+                  headers['anthropic-beta'] = `${existingBeta},${oauthBeta}`;
+                }
+              } else if (Array.isArray(existingBeta)) {
+                if (!existingBeta.includes(oauthBeta)) {
+                  headers['anthropic-beta'] = [...existingBeta, oauthBeta];
+                }
+              } else {
+                headers['anthropic-beta'] = oauthBeta;
+              }
             }
           }
         }

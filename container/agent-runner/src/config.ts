@@ -12,6 +12,17 @@ const CONFIG_PATH = '/workspace/agent/container.json';
 export interface RunnerConfig {
   provider: string;
   model?: string;
+  /**
+   * Reasoning effort (`'low' | 'medium' | 'high' | 'xhigh' | 'max'`). Forwarded
+   * to the agent provider. Only providers that surface a reasoning knob
+   * (pi, codex) consume it.
+   */
+  effort?: string;
+  /**
+   * Upstream model-provider routing id used by pi (`anthropic`, `openai-codex`,
+   * `deepseek`, ...). Single-target providers ignore this.
+   */
+  modelProvider?: string;
   assistantName: string;
   groupName: string;
   agentGroupId: string;
@@ -38,8 +49,11 @@ export function loadConfig(): RunnerConfig {
   }
 
   _config = {
-    provider: (raw.provider as string) || 'claude',
+    // No default — index.ts asserts this is set and throws a clear error if not.
+    provider: (raw.provider as string),
     model: (raw.model as string) || undefined,
+    effort: (raw.effort as string) || undefined,
+    modelProvider: (raw.modelProvider as string) || undefined,
     assistantName: (raw.assistantName as string) || '',
     groupName: (raw.groupName as string) || '',
     agentGroupId: (raw.agentGroupId as string) || '',

@@ -15,7 +15,6 @@ function mkGroup(folder: string): void {
     name: folder,
     folder,
     agent_provider: 'codex',
-    model: 'gpt-5.4-mini',
     created_at: new Date().toISOString(),
   });
 }

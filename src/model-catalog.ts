@@ -6,7 +6,7 @@ import { readCachedCodexModels, refreshCodexCatalog } from './model-catalog-refr
 export interface ModelEntry {
   /** Stable id, used in container.json allowedModels and chat-tab dropdowns. */
   id: string;
-  provider: 'claude' | 'codex' | 'opencode' | 'ollama' | string;
+  modelProvider: 'anthropic' | 'openai-codex' | 'local' | 'opencode' | 'ollama' | string;
   displayName: string;
   /** "cloud" | "local" — drives card styling and whether host/context/etc. show. */
   origin: 'cloud' | 'local';
@@ -60,7 +60,7 @@ export interface ModelEntry {
 const BUILTIN_ENTRIES: ModelEntry[] = [
   {
     id: 'claude-haiku-4-5',
-    provider: 'claude',
+    modelProvider: 'anthropic',
     displayName: 'claude-haiku-4-5',
     origin: 'cloud',
     costPer1kInUsd: 0.001,
@@ -75,7 +75,7 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
   },
   {
     id: 'claude-sonnet-4-6',
-    provider: 'claude',
+    modelProvider: 'anthropic',
     displayName: 'claude-sonnet-4-6',
     origin: 'cloud',
     costPer1kInUsd: 0.003,
@@ -98,7 +98,7 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
   // post-class punch list will eventually keep this in sync automatically.
   {
     id: 'gpt-5.5',
-    provider: 'codex',
+    modelProvider: 'openai-codex',
     displayName: 'gpt-5.5',
     origin: 'cloud',
     costPer1kInUsd: 0.005,
@@ -112,7 +112,7 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
   },
   {
     id: 'gpt-5.4',
-    provider: 'codex',
+    modelProvider: 'openai-codex',
     displayName: 'gpt-5.4',
     origin: 'cloud',
     costPer1kInUsd: 0.0025,
@@ -125,7 +125,7 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
   },
   {
     id: 'gpt-5.4-mini',
-    provider: 'codex',
+    modelProvider: 'openai-codex',
     displayName: 'gpt-5.4-mini',
     origin: 'cloud',
     costPer1kInUsd: 0.00075,
@@ -138,7 +138,7 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
   },
   {
     id: 'gpt-5.3-codex',
-    provider: 'codex',
+    modelProvider: 'openai-codex',
     displayName: 'gpt-5.3-codex',
     origin: 'cloud',
     costPer1kInUsd: 0.00175,
@@ -151,7 +151,7 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
   },
   {
     id: 'gpt-5.2',
-    provider: 'codex',
+    modelProvider: 'openai-codex',
     displayName: 'gpt-5.2',
     origin: 'cloud',
     // Pricing not on current pricing page (older general-purpose model);
@@ -165,7 +165,7 @@ const BUILTIN_ENTRIES: ModelEntry[] = [
   },
   {
     id: 'Qwen3.6-35B-A3B-UD-MLX-4bit',
-    provider: 'local',
+    modelProvider: 'local',
     displayName: 'Qwen 3.6 (35B, MLX 4-bit)',
     origin: 'local',
     costPer1kTokensUsd: 0,
@@ -199,7 +199,7 @@ export function getModelCatalog(): ModelEntry[] {
   // an operator's local-catalog-local.json acts as an override layer
   // (used by the Models tab's edit / set-default flows).
   const localEntries = readLocalEntries();
-  const localIds = new Set(localEntries.map((e) => `${e.provider}:${e.id}`));
+  const localIds = new Set(localEntries.map((e) => `${e.modelProvider}:${e.id}`));
 
   // Refresh layer: drop-on-disappear for codex models that have aged out of
   // OpenAI's docs page, plus surface newly-listed IDs as minimal entries
@@ -213,14 +213,14 @@ export function getModelCatalog(): ModelEntry[] {
   let builtins = BUILTIN_ENTRIES;
   if (refreshed && refreshed.length > 0) {
     const allowedCodex = new Set(refreshed);
-    builtins = builtins.filter((e) => e.provider !== 'codex' || allowedCodex.has(e.id));
+    builtins = builtins.filter((e) => e.modelProvider !== 'openai-codex' || allowedCodex.has(e.id));
     for (const id of refreshed) {
-      const inBuiltins = builtins.some((e) => e.provider === 'codex' && e.id === id);
-      const inLocal = localIds.has(`codex:${id}`);
+      const inBuiltins = builtins.some((e) => e.modelProvider === 'openai-codex' && e.id === id);
+      const inLocal = localIds.has(`openai-codex:${id}`);
       if (!inBuiltins && !inLocal) {
         builtins.push({
           id,
-          provider: 'codex',
+          modelProvider: 'openai-codex',
           displayName: id,
           origin: 'cloud',
           modalities: ['text'],
@@ -230,6 +230,6 @@ export function getModelCatalog(): ModelEntry[] {
     }
   }
 
-  builtins = builtins.filter((e) => !localIds.has(`${e.provider}:${e.id}`));
+  builtins = builtins.filter((e) => !localIds.has(`${e.modelProvider}:${e.id}`));
   return [...builtins, ...localEntries];
 }

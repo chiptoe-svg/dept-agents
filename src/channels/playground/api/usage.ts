@@ -72,7 +72,7 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const catalog = getModelCatalog();
-  const catalogByKey = new Map(catalog.map((e) => [`${e.provider}:${e.id}`, e]));
+  const catalogByKey = new Map(catalog.map((e) => [`${e.modelProvider}:${e.id}`, e]));
 
   // Aggregation buckets keyed by `provider:model` so we can look up pricing.
   const thisMonth = new Map<string, { tokensIn: number; tokensOut: number; tokensCached: number }>();
@@ -98,8 +98,16 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
         model: string | null;
         content: string | null;
       }[];
+      // Translate legacy provider names stored in historical messages_out rows
+      // to the new catalog names used by catalogByKey ('anthropic', 'openai-codex').
+      const LEGACY_PROVIDER_REMAP: Record<string, string> = {
+        claude: 'anthropic',
+        codex: 'openai-codex',
+      };
+
       for (const row of rows) {
-        const key = `${row.provider ?? '?'}:${row.model ?? '?'}`;
+        const provider = LEGACY_PROVIDER_REMAP[row.provider ?? ''] ?? row.provider ?? '?';
+        const key = `${provider}:${row.model ?? '?'}`;
         const ti = row.tokens_in ?? 0;
         const to = row.tokens_out ?? 0;
         // Parse cacheRead from the content JSON blob (no dedicated DB column).
@@ -113,7 +121,11 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
         }
         // codex/openai: tokens_in = total including cached → deduct to get non-cached.
         // claude: tokens_in = non-cached only → cacheRead is additive.
-        const isOpenAi = row.provider === 'codex' || row.provider === 'openai' || row.provider === 'openai-custom';
+        const isOpenAi =
+          row.provider === 'codex' ||
+          row.provider === 'openai-codex' ||
+          row.provider === 'openai' ||
+          row.provider === 'openai-custom';
         const tiNonCached = isOpenAi ? ti - rawCacheRead : ti;
         const tc = rawCacheRead;
         if (!total.has(key)) total.set(key, { tokensIn: 0, tokensOut: 0, tokensCached: 0 });

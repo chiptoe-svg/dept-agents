@@ -1,6 +1,6 @@
 import { findByName, findByRouting, getAllDestinations, type DestinationEntry } from './destinations.js';
 import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } from './db/messages-in.js';
-import { writeMessageOut } from './db/messages-out.js';
+import { backfillUsage, readMaxOutboundSeq, writeMessageOut } from './db/messages-out.js';
 import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import { clearContinuation, migrateLegacyContinuation, setContinuation } from './db/session-state.js';
 import { clearCurrentInReplyTo, setCurrentInReplyTo } from './current-batch.js';
@@ -18,6 +18,30 @@ import type { AgentProvider, AgentQuery, ProviderEvent } from './providers/types
 
 const POLL_INTERVAL_MS = 1000;
 const ACTIVE_POLL_INTERVAL_MS = 500;
+
+/**
+ * Number of consecutive `database disk image is malformed` errors after which
+ * the follow-up poll gives up and exits the process. At ACTIVE_POLL_INTERVAL_MS
+ * = 500ms this is roughly 5 seconds — long enough to dodge a transient torn
+ * read during a host write, short enough to recover quickly from a poisoned
+ * page cache (host-sweep then respawns with a fresh mount).
+ */
+const CORRUPTION_STREAK_EXIT = 10;
+
+/**
+ * True for SQLite errors that indicate a corrupt READ view — almost always a
+ * cross-mount page-cache coherency issue on Docker Desktop macOS rather than
+ * actual file damage (host-side integrity_check passes). Reopening the DB
+ * handle inside this process does NOT recover; only a fresh container mount
+ * does. Caller's job is to exit so host-sweep respawns the container.
+ */
+export function isCorruptionError(msg: string): boolean {
+  return (
+    msg.includes('database disk image is malformed') ||
+    msg.includes('SQLITE_CORRUPT') ||
+    msg.includes('file is not a database')
+  );
+}
 
 function log(msg: string): void {
   console.error(`[poll-loop] ${msg}`);
@@ -59,6 +83,19 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
   // a Codex thread id never gets handed to Claude or vice versa.
   let continuation: string | undefined = migrateLegacyContinuation(config.providerName);
 
+  // Before resuming, drop a session whose on-disk transcript has grown too
+  // large/old to cold-resume within the host's idle ceiling. Without this a
+  // long-lived hub keeps trying to reload an ever-growing .jsonl, hangs the
+  // first turn, and gets killed before it can reply (then repeats forever).
+  if (continuation) {
+    const rotateReason = config.provider.maybeRotateContinuation?.(continuation, config.cwd);
+    if (rotateReason) {
+      log(`Rotating session — ${rotateReason}; starting fresh`);
+      clearContinuation(config.providerName);
+      continuation = undefined;
+    }
+  }
+
   if (continuation) {
     log(`Resuming agent session ${continuation}`);
   }
@@ -68,9 +105,13 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
   clearStaleProcessingAcks();
 
   let pollCount = 0;
+  let isFirstPoll = true;
   while (true) {
     // Skip system messages — they're responses for MCP tools (e.g., ask_user_question)
-    const messages = getPendingMessages().filter((m) => m.kind !== 'system');
+    // First-poll flag flips off after first read so on_wake=1 messages
+    // only land on the freshly-restarted container.
+    const messages = getPendingMessages(isFirstPoll).filter((m) => m.kind !== 'system');
+    isFirstPoll = false;
     pollCount++;
 
     // Periodic heartbeat so we know the loop is alive
@@ -187,6 +228,10 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
     const processingIds = ids.filter((id) => !commandIds.includes(id) && !skippedSet.has(id));
     // Publish the batch's in_reply_to so MCP tools (send_message, send_file)
     // can stamp it on outbound rows — needed for a2a return-path routing.
+    // NOTE: setCurrentInReplyTo only reaches in-process callers (e.g.
+    // dispatchResultText). MCP tools run in a separate process so their
+    // writes have NULL in_reply_to — the usage backfill below uses a seq
+    // lower bound instead of matching on in_reply_to.
     setCurrentInReplyTo(routing.inReplyTo);
     try {
       const result = await processQuery(query, routing, processingIds, config.providerName);
@@ -274,6 +319,12 @@ async function processQuery(
   let queryContinuation: string | undefined;
   let done = false;
 
+  // Turn boundary marker — any chat row written from here on belongs to this
+  // turn. Used by backfillUsage to scope the UPDATE to current-turn rows.
+  // Captured here (not in the caller) because nothing in this turn has
+  // written outbound yet — the query iterator is about to start.
+  const maxSeqBeforeTurn = readMaxOutboundSeq();
+
   // Concurrent polling: push follow-ups into the active query as they arrive.
   // We do NOT force-end the stream on silence — keeping the query open avoids
   // re-spawning the SDK subprocess (~few seconds) and re-loading the .jsonl
@@ -285,6 +336,7 @@ async function processQuery(
   // will kill the container and messages get reset to pending.
   let pollInFlight = false;
   let endedForCommand = false;
+  let corruptionStreak = 0;
   const pollHandle = setInterval(() => {
     if (done || pollInFlight || endedForCommand) return;
     pollInFlight = true;
@@ -355,6 +407,31 @@ async function processQuery(
         // path is not, so it needs its own.
         const errMsg = err instanceof Error ? err.message : String(err);
         log(`Follow-up poll error: ${errMsg}`);
+
+        // Detect SQLite cross-mount corruption (Docker Desktop macOS virtiofs /
+        // gRPC-FUSE coherency bug — the kernel page cache for the inbound.db
+        // bind mount can latch a torn snapshot mid-host-write, after which
+        // every fresh openInboundDb() in this process sees the same broken
+        // view. Reopening inside the container does NOT recover; only a fresh
+        // container mount does. Exit so the host sweep respawns us.
+        if (isCorruptionError(errMsg)) {
+          corruptionStreak += 1;
+          if (corruptionStreak >= CORRUPTION_STREAK_EXIT) {
+            log(
+              `Follow-up poll: ${corruptionStreak} consecutive '${errMsg}' errors — ` +
+                `inbound.db page cache is poisoned. Exiting so host respawns with a fresh mount.`,
+            );
+            // Stop touching the heartbeat so host-sweep stale detection fires
+            // promptly even if exit() races with in-flight async work.
+            done = true;
+            clearInterval(pollHandle);
+            // Defer exit one tick so this log line flushes through Docker's
+            // log driver before the process dies.
+            setTimeout(() => process.exit(75), 100);
+          }
+        } else {
+          corruptionStreak = 0;
+        }
       } finally {
         pollInFlight = false;
       }
@@ -395,6 +472,19 @@ async function processQuery(
           };
           dispatchResultText(event.text, routing, cost);
         }
+        // Backfill usage onto any chat rows written DURING this turn by MCP
+        // tools (e.g. send_message) — they write routing/content but have no
+        // usage because the turn hasn't completed. Only rows with NULL
+        // tokens_in are updated; pre-populated rows from dispatchResultText
+        // above are not overwritten.
+        if (event.tokens?.input != null || event.provider || event.model) {
+          backfillUsage(maxSeqBeforeTurn, {
+            tokens_in: event.tokens?.input ?? null,
+            tokens_out: event.tokens?.output ?? null,
+            provider: event.provider ?? null,
+            model: event.model ?? null,
+          });
+        }
       } else if (event.type === 'compacted') {
         // The SDK auto-compacted the conversation. After compaction the
         // model often drops the learned `<message to="…">` wrapping
@@ -434,6 +524,25 @@ function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
       log(
         `Error: ${event.message} (retryable: ${event.retryable}${event.classification ? `, ${event.classification}` : ''})`,
       );
+      // Also surface to the playground trace so the user sees what went wrong
+      // instead of staring at a missing reply. Wrapped as a pi_event with a
+      // synthetic _error type — chat.js's appendPiEvent default path renders
+      // unknown types via piAppendGenericEvent, which gives us a visible row
+      // with the message text.
+      if (routing.channelType === 'playground' && routing.platformId) {
+        emitTraceToPlayground(
+          {
+            type: 'pi_event',
+            event: {
+              type: 'nanoclaw_error',
+              message: event.message,
+              retryable: event.retryable,
+              classification: event.classification,
+            },
+          },
+          routing,
+        );
+      }
       break;
     case 'progress':
       log(`Progress: ${event.message}`);
@@ -441,9 +550,7 @@ function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
     case 'compacted':
       log(`Compacted: ${event.text}`);
       break;
-    case 'tool_use':
-    case 'tool_result':
-    case 'model_call':
+    case 'pi_event':
       emitTraceToPlayground(event, routing);
       break;
   }
@@ -461,29 +568,15 @@ function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
  * pushToDraft. Telegram/Slack/etc. never see them.
  */
 function emitTraceToPlayground(
-  event: ProviderEvent & { type: 'tool_use' | 'tool_result' | 'model_call' },
+  event: ProviderEvent & { type: 'pi_event' },
   routing: RoutingContext,
 ): void {
   if (routing.channelType !== 'playground' || !routing.platformId) return;
 
-  let payload: Record<string, unknown>;
-  if (event.type === 'tool_use') {
-    payload = { type: 'tool_use', toolUseId: event.toolUseId, toolName: event.toolName, input: event.input };
-  } else if (event.type === 'tool_result') {
-    payload = { type: 'tool_result', toolUseId: event.toolUseId, content: event.content, isError: event.isError };
-  } else {
-    // model_call — per-response token deltas. The playground renderer
-    // pairs this with the agent group's current provider/model (already
-    // visible in the dropdown) to compute cost client-side.
-    payload = {
-      type: 'model_call',
-      tokensIn: event.tokensIn,
-      tokensCached: event.tokensCached,
-      tokensOut: event.tokensOut,
-      tokensReasoning: event.tokensReasoning,
-      ...(event.responsePreview ? { responsePreview: event.responsePreview } : {}),
-    };
-  }
+  // Forward pi-agent-core's native event unchanged. The playground's
+  // chat.js renderer dispatches on event.event.type and renders text
+  // deltas, thinking blocks, per-tool lifecycle cards, etc.
+  const payload = { type: 'pi_event', event: event.event };
 
   writeMessageOut({
     id: generateId(),

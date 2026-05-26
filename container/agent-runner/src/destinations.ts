@@ -86,9 +86,34 @@ export function buildSystemPromptAddendum(assistantName?: string): string {
     sections.push(['# You are ' + assistantName, '', `Your name is **${assistantName}**. Use it when the channel asks who you are, when introducing yourself, and when signing any message that explicitly calls for a signature.`].join('\n'));
   }
 
+  // Per-harness fragment (provider-specific quirks). Read at runtime from
+  // /app/CLAUDE.providers/<provider>.md if present. Container-runner mounts
+  // container/CLAUDE.providers/ there; absent file means no fragment for
+  // this provider, which is fine.
+  const providerFragment = readProviderFragment();
+  if (providerFragment) sections.push(providerFragment);
+
   sections.push(buildDestinationsSection());
 
   return sections.join('\n\n');
+}
+
+function readProviderFragment(): string | null {
+  // Defensive: tests of buildSystemPromptAddendum don't loadConfig first,
+  // and a missing fragment file is the common case. Both return null
+  // silently so the addendum still composes.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getConfig } = require('./config.js') as typeof import('./config.js');
+    const provider = getConfig().provider;
+    const fragmentPath = `/app/CLAUDE.providers/${provider}.md`;
+    if (!fs.existsSync(fragmentPath)) return null;
+    return fs.readFileSync(fragmentPath, 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 function buildDestinationsSection(): string {

@@ -8,5 +8,3 @@
  */
 import './auth.js';
 import './codex-auth.js';
-import './model.js';
-import './provider.js';

@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NanoClaw — Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0d1117;
+      --surface:    #161b22;
+      --border:     #30363d;
+      --muted:      #8b949e;
+      --dim:        #484f58;
+      --text:       #e6edf3;
+
+      --ch-bg:  rgba(180,30,30,.14);  --ch-bd:  #8b1a1a;  --ch-tx:  #f28b82;
+      --h-bg:   rgba(20,55,160,.14);  --h-bd:   #1a3a8b;  --h-tx:   #79c0ff;
+      --c-bg:   rgba(20,110,20,.14);  --c-bd:   #1a6b1a;  --c-tx:   #7ee787;
+      --db-bg:  rgba(80,20,130,.14);  --db-bd:  #6b35aa;  --db-tx:  #c084fc;
+      --px-bg:  rgba(130,90,10,.14);  --px-bd:  #8b6a0a;  --px-tx:  #fcd34d;
+      --sub-bg: rgba(10,100,90,.14);  --sub-bd: #0d7a6e;  --sub-tx: #5eead4;
+      --ext-bg: rgba(40,40,40,.4);    --ext-bd: #30363d;  --ext-tx: #8b949e;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      line-height: 1;
+      min-height: 100vh;
+    }
+
+    header {
+      text-align: center;
+      padding: 2.8rem 1rem 2.2rem;
+    }
+    header h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -.035em;
+    }
+    header .sub {
+      color: var(--muted);
+      font-size: .8rem;
+      margin-top: .5rem;
+    }
+    header .sub kbd {
+      font-family: inherit;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: .1em .4em;
+      font-size: .75rem;
+    }
+
+    .scroll-wrap { overflow-x: auto; padding: 0 2rem 6rem; }
+
+    /* ── Diagram ─────────────────────────────────────────────────── */
+    .diagram {
+      position: relative;
+      width: 1080px;
+      margin: 0 auto;
+    }
+
+    #svg-arrows {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      overflow: visible;
+      z-index: 1;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────── */
+    .row {
+      display: flex;
+      justify-content: center;
+      gap: .55rem;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 2;
+    }
+
+    .lbl {
+      text-align: center;
+      font-size: .59rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin: 1.8rem 0 .55rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .gap { height: 2.2rem; position: relative; z-index: 2; }
+
+    .grp {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: .9rem .9rem .7rem;
+      position: relative;
+      z-index: 2;
+    }
+    .grp .row + .row { margin-top: .5rem; }
+
+    .data-cols {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+    }
+    .data-cols .col-grp {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .6rem .75rem .65rem;
+    }
+    .data-cols .col-lbl {
+      font-size: .54rem;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      color: var(--dim);
+      text-align: center;
+      margin-bottom: .45rem;
+    }
+
+    /* ── Box ─────────────────────────────────────────────────────── */
+    .box {
+      border-radius: 8px;
+      padding: .5rem .95rem;
+      font-size: .72rem;
+      font-weight: 500;
+      line-height: 1.45;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: filter .15s, transform .15s, box-shadow .15s;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .box:hover { filter: brightness(1.35); transform: translateY(-2px); }
+    .box.hi    { box-shadow: 0 0 0 2px currentColor, 0 0 14px rgba(255,255,255,.1); filter: brightness(1.3); }
+    .box small { display: block; font-size: .62rem; opacity: .65; font-weight: 400; margin-top: .15rem; }
+
+    .ext { background: var(--ext-bg); border-color: var(--ext-bd); color: var(--ext-tx); }
+    .ch  { background: var(--ch-bg);  border-color: var(--ch-bd);  color: var(--ch-tx); }
+    .h   { background: var(--h-bg);   border-color: var(--h-bd);   color: var(--h-tx); }
+    .c   { background: var(--c-bg);   border-color: var(--c-bd);   color: var(--c-tx); }
+    .db  { background: var(--db-bg);  border-color: var(--db-bd);  color: var(--db-tx); }
+    .px  { background: var(--px-bg);  border-color: var(--px-bd);  color: var(--px-tx); }
+    .sub { background: var(--sub-bg); border-color: var(--sub-bd); color: var(--sub-tx); }
+
+    /* ── Animations ──────────────────────────────────────────────── */
+    @keyframes flow { to { stroke-dashoffset: -22; } }
+    .animated { stroke-dasharray: 5 5; animation: flow .65s linear infinite; }
+
+    /* ── Legend ──────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .55rem 1.4rem;
+      justify-content: center;
+      padding: 1.5rem 2rem 0;
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
+    }
+    .leg-item { display: flex; align-items: center; gap: .45rem; font-size: .68rem; color: var(--muted); }
+    .leg-chip { width: 13px; height: 13px; border-radius: 4px; border: 1px solid; flex-shrink: 0; }
+
+    .arrow-key {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem 1.2rem;
+      justify-content: center;
+      margin-top: .9rem;
+      padding-bottom: 1rem;
+    }
+    .ak { display: flex; align-items: center; gap: .45rem; font-size: .65rem; color: var(--dim); }
+    .ak svg { flex-shrink: 0; }
+
+    /* ── Detail panel ────────────────────────────────────────────── */
+    #panel {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      width: 295px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem 1.2rem;
+      display: none;
+      z-index: 999;
+      box-shadow: 0 12px 40px rgba(0,0,0,.65);
+      animation: fadeUp .18s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0);   }
+    }
+    #panel-x {
+      position: absolute;
+      top: .75rem; right: 1rem;
+      cursor: pointer;
+      color: var(--dim);
+      font-size: .85rem;
+    }
+    #panel-x:hover { color: var(--muted); }
+    #panel h3 { font-size: .8rem; color: var(--text); margin-bottom: .55rem; font-family: monospace; padding-right: 1rem; }
+    #panel p  { font-size: .72rem; color: var(--muted); line-height: 1.65; }
+    #panel .fpath { font-family: monospace; font-size: .67rem; color: #3fb950; margin-top: .7rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>NanoClaw</h1>
+  <p class="sub">Architecture overview &nbsp;&middot;&nbsp; <kbd>click</kbd> any component to inspect</p>
+</header>
+
+<div class="scroll-wrap">
+<div class="diagram" id="diagram">
+
+  <svg id="svg-arrows"></svg>
+
+  <!-- External user -->
+  <div class="lbl">External</div>
+  <div class="row">
+    <div class="box ext" id="ext-user"
+      data-t="User / Platform"
+      data-d="End-users send and receive messages through their native platform (Telegram, Slack, web browser, etc.). Each platform message is normalised by its channel adapter before entering the host routing layer."
+      data-p="">
+      &#x1F464; User / Platform
+    </div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- Channel adapters -->
+  <div class="lbl">Channel Adapters &nbsp;&middot;&nbsp; skill-installed from the channels branch</div>
+  <div class="row" id="row-ch">
+    <div class="box ch" id="ch-tg"
+      data-t="Telegram"
+      data-d="Telegram Bot API adapter. Handles commands, markdown sanitisation, typing indicators, user pairing (PIN-based), and classroom enrolment flows."
+      data-p="src/channels/telegram.ts">Telegram</div>
+
+    <div class="box ch" id="ch-sl"
+      data-t="Slack"
+      data-d="Slack Events API adapter. Routes DMs and channel mentions. Handles thread-level session isolation."
+      data-p="src/channels/slack/adapter.ts">Slack</div>
+
+    <div class="box ch" id="ch-dc"
+      data-t="Discord"
+      data-d="Discord Gateway adapter. Routes guild messages and DMs into the session model."
+      data-p="src/channels/discord/adapter.ts">Discord</div>
+
+    <div class="box ch" id="ch-pg"
+      data-t="Playground"
+      data-d="HTTP-based web playground. Hosts the agent builder UI, Google OAuth flows, live chat, and pairing gates. The primary human-in-the-loop surface for classroom workflows."
+      data-p="src/channels/playground/adapter.ts">Playground</div>
+
+    <div class="box ch" id="ch-cli"
+      data-t="CLI Channel"
+      data-d="Local CLI adapter for terminal-based interaction with an agent session."
+      data-p="src/channels/cli.ts">CLI</div>
+
+    <div class="box ch" id="ch-more"
+      data-t="+ More Channels"
+      data-d="WhatsApp, Microsoft Teams, iMessage, Webex, Matrix, Linear, GitHub, Resend, Google Chat -- all skill-installed from the channels branch and registered via the channel registry."
+      data-p="src/channels/">+ WhatsApp &middot; Teams &middot; iMessage &middot; &hellip;</div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- Host process -->
+  <div class="lbl">Host Process &nbsp;&middot;&nbsp; Node / pnpm</div>
+  <div class="grp" id="grp-host">
+    <div class="row" id="row-ha">
+      <div class="box h" id="h-cmd"
+        data-t="command-gate.ts"
+        data-d="Intercepts admin commands (e.g. /ncl ...) at the router boundary before they reach any container. Queries user_roles directly -- no container spawn required. Unauthorized or unrecognised commands are rejected here."
+        data-p="src/command-gate.ts">command-gate</div>
+
+      <div class="box h" id="h-rtr"
+        data-t="router.ts"
+        data-d="Core inbound router. Resolves messaging group -> agent group -> session. Applies trigger rules, unknown-sender policy, and accumulate-gate. Writes messages_in to inbound.db and wakes the container."
+        data-p="src/router.ts">router.ts</div>
+
+      <div class="box h" id="h-sm"
+        data-t="session-manager.ts"
+        data-d="Resolves or creates the session record in central DB. Opens inbound.db and outbound.db under data/v2-sessions/. Manages the .heartbeat file path used by the container."
+        data-p="src/session-manager.ts">session-manager</div>
+
+      <div class="box h" id="h-cr"
+        data-t="container-runner.ts"
+        data-d="Spawns per-session Docker or Apple containers via wakeContainer() -> spawnContainer(). Builds container args, injects credential-proxy env vars, mounts session DBs, writes session routing and destinations."
+        data-p="src/container-runner.ts">container-runner</div>
+    </div>
+    <div class="row" id="row-hb">
+      <div class="box h" id="h-sw"
+        data-t="host-sweep.ts"
+        data-d="60-second sweep. Syncs processing_ack between host and containers, detects stale or crashed containers, wakes due scheduled messages, handles recurrence rules, and triggers central DB backups."
+        data-p="src/host-sweep.ts">host-sweep <small>60 s timer</small></div>
+
+      <div class="box h" id="h-del"
+        data-t="delivery.ts"
+        data-d="Polls outbound.db for new messages_out rows. Delivers each message through the originating channel adapter. Also handles system-action payloads: schedule creation, approval flow initiation, and self-mod apply."
+        data-p="src/delivery.ts">delivery.ts</div>
+    </div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- Data layer -->
+  <div class="lbl">Data Layer</div>
+  <div class="data-cols" id="data-layer">
+    <div class="col-grp" id="col-sdbs">
+      <div class="col-lbl">Per-Session DBs &nbsp;&middot;&nbsp; data/v2-sessions/&hellip;/</div>
+      <div class="row">
+        <div class="box db" id="db-in"
+          data-t="inbound.db"
+          data-d="Host writes, container reads. Tables: messages_in (inbound queue), pending_questions (ask_user_question flow), processing_ack (heartbeat sync). Host uses even seq numbers. journal_mode=DELETE is load-bearing for cross-mount visibility."
+          data-p="src/db/session-db.ts">
+          &#x1F4E5; inbound.db <small>messages_in &middot; pending_questions &middot; ack</small>
+        </div>
+        <div class="box db" id="db-out"
+          data-t="outbound.db"
+          data-d="Container writes, host reads. Tables: messages_out (response queue), session_state (agent continuation -- Claude resumes a .jsonl transcript, Codex reloads a thread ID). Container uses odd seq numbers."
+          data-p="src/db/session-db.ts">
+          &#x1F4E4; outbound.db <small>messages_out &middot; session_state</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-grp" id="col-infra">
+      <div class="col-lbl">Infrastructure</div>
+      <div class="row">
+        <div class="box db" id="db-cdb"
+          data-t="Central DB -- data/v2.db"
+          data-d="Persistent store for all non-session state: users, user_roles, agent_groups, messaging_groups, messaging_group_agents (wirings), sessions registry, pending_approvals, user_dms, chat_sdk_*, schema_version. Migrations in src/db/migrations/."
+          data-p="src/db/">
+          &#x1F5C4; Central DB <small>v2.db &middot; users &middot; groups &middot; wirings</small>
+        </div>
+        <div class="box px" id="h-prx"
+          data-t="credential-proxy.ts -- :3001"
+          data-d="Local HTTP proxy bound to :3001. Containers send placeholder API keys; the proxy substitutes real keys/OAuth tokens at request time. Routes by path prefix: default -> Anthropic, /openai/* -> OpenAI. Secrets never enter container env vars or context."
+          data-p="src/credential-proxy.ts">
+          &#x1F510; credential-proxy <small>:3001 &middot; substitutes real keys</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- Agent container -->
+  <div class="lbl">Agent Container &nbsp;&middot;&nbsp; Bun &nbsp;&middot;&nbsp; one per session</div>
+  <div class="grp" id="grp-ctr">
+    <div class="row" id="row-ctr">
+      <div class="box c" id="c-poll"
+        data-t="poll-loop.ts -- runPollLoop()"
+        data-d="Main agent loop. Polls inbound.db for pending messages_in. Skips accumulate-only batches (trigger=0). Marks processing, runs the full request/response cycle, marks completed. Resumes prior session continuation across restarts. Clears stale processing_ack on startup."
+        data-p="container/agent-runner/src/poll-loop.ts">poll-loop</div>
+
+      <div class="box c" id="c-fmt"
+        data-t="formatter.ts"
+        data-d="Parses the inbound message batch: categorises kind (chat, system, file), extracts sender ID, extracts routing context (destination, thread), detects /clear and runner commands."
+        data-p="container/agent-runner/src/formatter.ts">formatter</div>
+
+      <div class="box c" id="c-prov"
+        data-t="Provider abstraction"
+        data-d="Calls the configured AI provider (Claude, OpenAI, or Codex). All API traffic goes to ANTHROPIC_BASE_URL=http://host.docker.internal:3001 so the credential proxy can inject real keys. Supports streaming, tool use, compaction events, and session continuation."
+        data-p="container/agent-runner/src/providers/">provider</div>
+
+      <div class="box c" id="c-mcp"
+        data-t="MCP Tools"
+        data-d="Container-side MCP tools available to the agent: scheduling (send_later, recur), interactive (ask_user_question), self-mod (install_packages, add_mcp_server), destinations (send to other groups), agent-to-agent routing."
+        data-p="container/agent-runner/src/mcp-tools/">MCP tools</div>
+    </div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- External APIs -->
+  <div class="row">
+    <div class="box ext" id="ext-api"
+      data-t="Anthropic / OpenAI APIs"
+      data-d="External AI provider endpoints. All container traffic is proxied through credential-proxy.ts -- containers never hold real API keys. The proxy rewrites x-api-key / Authorization headers at request time."
+      data-p="">
+      &#x1F310; Anthropic &nbsp;&middot;&nbsp; OpenAI APIs
+    </div>
+  </div>
+
+  <div class="gap"></div>
+
+  <!-- Subsystems -->
+  <div class="lbl">Subsystems</div>
+  <div class="row" id="row-sub">
+    <div class="box sub" id="s-class"
+      data-t="Classroom Subsystem"
+      data-d="Instructor-owned classroom with four role tiers (admin, instructor, TA, student). Handles enrolment passcodes, Telegram / Playground pairing, per-student container config scaffolding, Codex auth, and Google OAuth flows. Students get isolated agent containers."
+      data-p="src/class-*.ts">
+      &#x1F393; Classroom <small>enrol &middot; pair &middot; provision</small>
+    </div>
+
+    <div class="box sub" id="s-know"
+      data-t="Knowledge Subsystem"
+      data-d="Document ingestion pipeline (chunk, embed, store). Supports PDF and plain text. Vector corpus for retrieval at query time. MRR and hit@k benchmarking evaluates retrieval quality against labelled query sets."
+      data-p="src/knowledge/">
+      &#x1F4DA; Knowledge <small>pipeline &middot; corpus &middot; benchmarks</small>
+    </div>
+
+    <div class="box sub" id="s-gws"
+      data-t="Google Workspace"
+      data-d="GWS MCP relay server exposes Drive, Gmail, and Calendar as MCP tools to agents. Manages per-user OAuth tokens via gws-token.ts. Student Google auth flows handled by student-google-auth.ts."
+      data-p="src/gws-*.ts">
+      &#x2601;&#xFE0F; Google Workspace <small>Drive &middot; Gmail &middot; Calendar</small>
+    </div>
+
+    <div class="box sub" id="s-cli"
+      data-t="ncl CLI"
+      data-d="Admin CLI over Unix socket (on host) or session DB transport (inside containers). CRUD for agent groups, messaging groups, wirings, users, roles, members, destinations. Read-only for sessions, dropped messages, approvals."
+      data-p="src/cli/">
+      &#x1F5A5; ncl CLI <small>groups &middot; wirings &middot; roles</small>
+    </div>
+
+    <div class="box sub" id="s-mod"
+      data-t="Host Modules -- src/modules/"
+      data-d="Shared host modules: approvals (pick approver, request, handle), permissions/access (canAccessAgentGroup -- owner/global-admin/scoped-admin/member), self-mod apply (rebuild image, restart container), scheduling, interactive ask-question, agent-to-agent routing, mount-security, typing indicators."
+      data-p="src/modules/">
+      &#x1F527; Modules <small>approvals &middot; permissions &middot; self-mod</small>
+    </div>
+
+    <div class="box sub" id="s-bld"
+      data-t="Agent Builder"
+      data-d="Draft/apply workflow for creating and updating agent groups via the Playground UI. Manages draft groups (CLAUDE.md, skills, container config), validates them, then promotes drafts to live groups with ensureDraftWiring() and applyDraft()."
+      data-p="src/agent-builder/">
+      &#x1F3D7; Agent Builder <small>draft &rarr; validate &rarr; apply</small>
+    </div>
+  </div>
+
+</div><!-- /diagram -->
+
+<!-- Legend -->
+<div style="max-width:1080px;margin:0 auto;">
+  <div class="legend">
+    <div class="leg-item"><div class="leg-chip" style="background:var(--ch-bg);border-color:var(--ch-bd)"></div>Channel Adapters</div>
+    <div class="leg-item"><div class="leg-chip" style="background:var(--h-bg);border-color:var(--h-bd)"></div>Host Process</div>
+    <div class="leg-item"><div class="leg-chip" style="background:var(--c-bg);border-color:var(--c-bd)"></div>Agent Container</div>
+    <div class="leg-item"><div class="leg-chip" style="background:var(--db-bg);border-color:var(--db-bd)"></div>Databases</div>
+    <div class="leg-item"><div class="leg-chip" style="background:var(--px-bg);border-color:var(--px-bd)"></div>Credential Proxy</div>
+    <div class="leg-item"><div class="leg-chip" style="background:var(--sub-bg);border-color:var(--sub-bd)"></div>Subsystems</div>
+  </div>
+  <div class="arrow-key">
+    <div class="ak">
+      <svg width="38" height="10" viewBox="0 0 38 10">
+        <defs><marker id="l1" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#8b1a1a"/></marker></defs>
+        <line x1="0" y1="5" x2="32" y2="5" stroke="#8b1a1a" stroke-width="1.5" marker-end="url(#l1)"/>
+      </svg>
+      inbound message flow
+    </div>
+    <div class="ak">
+      <svg width="38" height="10" viewBox="0 0 38 10">
+        <defs><marker id="l2" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#1a6ed8"/></marker></defs>
+        <line x1="0" y1="5" x2="32" y2="5" stroke="#1a6ed8" stroke-width="1.5" marker-end="url(#l2)"/>
+      </svg>
+      host routing / delivery
+    </div>
+    <div class="ak">
+      <svg width="38" height="10" viewBox="0 0 38 10">
+        <defs><marker id="l3" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#2ea043"/></marker></defs>
+        <line x1="0" y1="5" x2="32" y2="5" stroke="#2ea043" stroke-width="1.5" marker-end="url(#l3)"/>
+      </svg>
+      container / agent
+    </div>
+    <div class="ak">
+      <svg width="38" height="10" viewBox="0 0 38 10">
+        <defs><marker id="l4" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#8b5cf6"/></marker></defs>
+        <line x1="0" y1="5" x2="32" y2="5" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#l4)"/>
+      </svg>
+      DB read / write
+    </div>
+    <div class="ak">
+      <svg width="38" height="10" viewBox="0 0 38 10">
+        <defs><marker id="l5" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#f59e0b"/></marker></defs>
+        <line x1="0" y1="5" x2="32" y2="5" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#l5)"/>
+      </svg>
+      credential / API
+    </div>
+    <div class="ak">
+      <svg width="38" height="10" viewBox="0 0 38 10">
+        <defs><marker id="l6" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3z" fill="#484f58"/></marker></defs>
+        <line x1="0" y1="5" x2="32" y2="5" stroke="#484f58" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#l6)"/>
+      </svg>
+      periodic / background
+    </div>
+  </div>
+</div>
+
+</div><!-- /scroll-wrap -->
+
+<!-- Detail panel -->
+<div id="panel">
+  <span id="panel-x">&#x2715;</span>
+  <h3 id="panel-t"></h3>
+  <p  id="panel-d"></p>
+  <div class="fpath" id="panel-p"></div>
+</div>
+
+<script>
+// ── Panel ──────────────────────────────────────────────────────────────────
+const panel  = document.getElementById('panel');
+const panelT = document.getElementById('panel-t');
+const panelD = document.getElementById('panel-d');
+const panelP = document.getElementById('panel-p');
+let   sel    = null;
+
+document.querySelectorAll('.box').forEach(function(b) {
+  b.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (sel) sel.classList.remove('hi');
+    sel = b;
+    b.classList.add('hi');
+    panelT.textContent = b.dataset.t;
+    panelD.textContent = b.dataset.d;
+    panelP.textContent = b.dataset.p ? '📁 ' + b.dataset.p : '';
+    panel.style.display = 'block';
+  });
+});
+
+document.getElementById('panel-x').addEventListener('click', function() {
+  panel.style.display = 'none';
+  if (sel) { sel.classList.remove('hi'); sel = null; }
+});
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.box') && !e.target.closest('#panel')) {
+    panel.style.display = 'none';
+    if (sel) { sel.classList.remove('hi'); sel = null; }
+  }
+});
+
+// ── Arrow drawing ──────────────────────────────────────────────────────────
+var svg  = document.getElementById('svg-arrows');
+var diag = document.getElementById('diagram');
+
+function P(id) {
+  var el = document.getElementById(id);
+  if (!el) return null;
+  var er = el.getBoundingClientRect();
+  var dr = diag.getBoundingClientRect();
+  var x  = er.left - dr.left + er.width  / 2;
+  var y  = er.top  - dr.top  + er.height / 2;
+  return { x: x, y: y,
+    t: er.top  - dr.top,
+    b: er.top  - dr.top  + er.height,
+    l: er.left - dr.left,
+    r: er.left - dr.left + er.width,
+    w: er.width, h: er.height };
+}
+
+function mkDefs() {
+  var ns = 'http://www.w3.org/2000/svg';
+  var defs = document.createElementNS(ns, 'defs');
+  var palette = [
+    ['gray',   '#484f58'],
+    ['red',    '#8b1a1a'],
+    ['blue',   '#1a6ed8'],
+    ['green',  '#2ea043'],
+    ['purple', '#8b5cf6'],
+    ['amber',  '#f59e0b'],
+  ];
+  palette.forEach(function(pair) {
+    var name = pair[0], fill = pair[1];
+    var m = document.createElementNS(ns, 'marker');
+    m.setAttribute('id', 'arr-' + name);
+    m.setAttribute('markerWidth', '8');
+    m.setAttribute('markerHeight', '8');
+    m.setAttribute('refX', '7');
+    m.setAttribute('refY', '3');
+    m.setAttribute('orient', 'auto');
+    var p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', 'M0,0 L0,6 L8,3z');
+    p.setAttribute('fill', fill);
+    m.appendChild(p);
+    defs.appendChild(m);
+  });
+  return defs;
+}
+
+function mkPath(d, stroke, marker, opts) {
+  opts = opts || {};
+  var ns = 'http://www.w3.org/2000/svg';
+  var p = document.createElementNS(ns, 'path');
+  p.setAttribute('d', d);
+  p.setAttribute('stroke', stroke);
+  p.setAttribute('stroke-width', String(opts.w || 1.5));
+  p.setAttribute('fill', 'none');
+  p.setAttribute('opacity', String(opts.o || 0.7));
+  if (marker) p.setAttribute('marker-end', 'url(#arr-' + marker + ')');
+  if (opts.dash)     p.setAttribute('stroke-dasharray', '5 5');
+  if (opts.animated) { p.setAttribute('stroke-dasharray', '5 5'); p.classList.add('animated'); }
+  svg.appendChild(p);
+}
+
+// Vertical bezier: bottom-center of A -> top-center of B
+function vc(a, b) {
+  var mid = (a.b + b.t) / 2;
+  return 'M ' + a.x + ' ' + a.b +
+         ' C ' + a.x + ' ' + mid +
+         ' '  + b.x + ' ' + mid +
+         ' '  + b.x + ' ' + b.t;
+}
+
+// Horizontal: right-center of A -> left-center of B
+function hl(a, b) {
+  return 'M ' + a.r + ' ' + a.y + ' L ' + b.l + ' ' + b.y;
+}
+
+// Corner bezier between arbitrary points
+function cb(x1, y1, x2, y2) {
+  var mx = (x1 + x2) / 2;
+  var my = (y1 + y2) / 2;
+  return 'M ' + x1 + ' ' + y1 +
+         ' C ' + x1 + ' ' + my +
+         ' '  + x2 + ' ' + my +
+         ' '  + x2 + ' ' + y2;
+}
+
+function draw() {
+  svg.setAttribute('width',  diag.offsetWidth);
+  svg.setAttribute('height', diag.offsetHeight);
+
+  // Clear previous children safely
+  while (svg.firstChild) {
+    svg.removeChild(svg.firstChild);
+  }
+
+  svg.appendChild(mkDefs());
+
+  var user = P('ext-user');
+  var chTg = P('ch-tg');
+  var chMr = P('ch-more');
+  var cmd  = P('h-cmd');
+  var rtr  = P('h-rtr');
+  var sm   = P('h-sm');
+  var cr   = P('h-cr');
+  var sw   = P('h-sw');
+  var del_ = P('h-del');
+  var dbi  = P('db-in');
+  var dbo  = P('db-out');
+  var cdb  = P('db-cdb');
+  var prx  = P('h-prx');
+  var poll = P('c-poll');
+  var fmt  = P('c-fmt');
+  var prov = P('c-prov');
+  var mcp  = P('c-mcp');
+  var api  = P('ext-api');
+
+  if (!user || !rtr || !poll) return;
+
+  var chCx = (chTg.x + chMr.x) / 2;
+
+  // 1. User -> channels (inbound entry)
+  mkPath('M ' + user.x + ' ' + user.b + ' L ' + user.x + ' ' + chTg.t,
+    '#484f58', 'gray', { w: 1, o: 0.45 });
+
+  // 2. Channels -> router  (animated inbound)
+  mkPath('M ' + chCx  + ' ' + chTg.b  +
+         ' C ' + chCx + ' ' + ((chTg.b + rtr.t) / 2 + 18) +
+         ' '   + rtr.x + ' ' + ((chTg.b + rtr.t) / 2 - 18) +
+         ' '   + rtr.x + ' ' + rtr.t,
+    '#8b1a1a', 'red', { animated: true });
+
+  // 3. command-gate -> router
+  mkPath(hl(cmd, rtr), '#1a6ed8', 'blue', { w: 1.2 });
+
+  // 4. router -> session-manager
+  mkPath(hl(rtr, sm), '#1a6ed8', 'blue');
+
+  // 5. session-manager -> container-runner
+  mkPath(hl(sm, cr), '#1a6ed8', 'blue');
+
+  // 6. session-manager -> inbound.db (host writes)
+  mkPath(cb(sm.x, sm.b, dbi.x, dbi.t), '#8b5cf6', 'purple');
+
+  // 7. container-runner -> poll-loop (spawn)
+  mkPath(cb(cr.x, cr.b, poll.x, poll.t), '#2ea043', 'green');
+
+  // 8. inbound.db -> poll-loop (container reads -- dashed)
+  mkPath(vc(dbi, poll), '#8b5cf6', 'purple', { dash: true });
+
+  // 9. poll -> formatter -> provider
+  mkPath(hl(poll, fmt),  '#2ea043', 'green');
+  mkPath(hl(fmt,  prov), '#2ea043', 'green');
+
+  // 10. provider -> mcp tools (optional tool calls -- dashed)
+  mkPath(hl(prov, mcp), '#2ea043', 'green', { dash: true, w: 1.2 });
+
+  // 11. poll-loop -> outbound.db (write results; arc under diagram)
+  mkPath('M ' + poll.x + ' ' + poll.b +
+         ' C ' + poll.x + ' ' + (poll.b + 30) +
+         ' '   + dbo.x  + ' ' + (dbo.b  + 30) +
+         ' '   + dbo.x  + ' ' + dbo.b,
+    '#8b5cf6', 'purple', { w: 1.5 });
+
+  // 12. outbound.db -> delivery (delivery polls -- dashed, upward)
+  mkPath(cb(dbo.x, dbo.t, del_.x, del_.b), '#1a6ed8', 'blue', { dash: true });
+
+  // 13. delivery -> channels (animated return)
+  mkPath('M ' + del_.x + ' ' + del_.t +
+         ' C ' + del_.x + ' ' + ((del_.t + chMr.b) / 2) +
+         ' '   + chMr.x + ' ' + ((del_.t + chMr.b) / 2) +
+         ' '   + chMr.x + ' ' + chMr.b,
+    '#1a6ed8', 'blue', { animated: true });
+
+  // 14. provider -> credential proxy
+  mkPath('M ' + prov.r + ' ' + prov.y +
+         ' C ' + (prov.r + 40) + ' ' + prov.y +
+         ' '   + prx.x + ' '   + (prx.b + 22) +
+         ' '   + prx.x + ' '   + prx.b,
+    '#f59e0b', 'amber');
+
+  // 15. credential proxy -> external APIs
+  mkPath(vc(prx, api), '#f59e0b', 'amber');
+
+  // 16. host-sweep <-> session-manager (periodic sweep -- dashed)
+  mkPath('M ' + sw.r + ' ' + sw.y + ' L ' + sm.l + ' ' + sm.y,
+    '#484f58', 'gray', { dash: true, w: 1, o: 0.45 });
+
+  // 17. router reads central DB (background -- dashed, low opacity)
+  mkPath(cb(rtr.x, rtr.b, cdb.x, cdb.t), '#484f58', 'gray', { dash: true, w: 1, o: 0.35 });
+}
+
+window.addEventListener('load',   draw);
+window.addEventListener('resize', draw);
+</script>
+</body>
+</html>

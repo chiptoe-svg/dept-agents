@@ -289,7 +289,6 @@ async function createBenchGroupViaDb(
     name: folder,
     folder,
     agent_provider: system.provider,
-    model: system.model,
     created_at: new Date().toISOString(),
   });
 

@@ -135,13 +135,13 @@ function loadProviderModelDropdowns(el, folder) {
       const allow = (data.allowedModels && data.allowedModels.length > 0)
         ? new Set(data.allowedModels.map((a) => `${a.provider}/${a.model}`))
         : null;
-      const visible = allow ? catalog.filter((m) => allow.has(`${m.provider}/${m.id}`)) : catalog;
-      const providers = [...new Set(visible.map((m) => m.provider))];
+      const visible = allow ? catalog.filter((m) => allow.has(`${m.modelProvider}/${m.id}`)) : catalog;
+      const providers = [...new Set(visible.map((m) => m.modelProvider))];
       provSel.innerHTML = '';
       for (const p of providers) provSel.add(new Option(p, p));
       const renderModels = () => {
         modelSel.innerHTML = '';
-        for (const m of visible.filter((mm) => mm.provider === provSel.value)) {
+        for (const m of visible.filter((mm) => mm.modelProvider === provSel.value)) {
           modelSel.add(new Option(m.displayName || m.id, m.id));
         }
       };

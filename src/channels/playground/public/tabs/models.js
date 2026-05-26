@@ -16,18 +16,18 @@ export function mountModels(el) {
         <p class="hint">💡 Local models cost $0 per token but spend your hardware. Cloud models cost real money but are faster on commodity laptops.</p>
       </header>
 
-      <section class="model-section" data-provider="claude">
+      <section class="model-section" data-provider="anthropic">
         <header class="model-section-header">
           <h4 class="models-section-title">Claude (Anthropic)</h4>
         </header>
-        <div class="model-grid" data-grid="claude"></div>
+        <div class="model-grid" data-grid="anthropic"></div>
       </section>
 
-      <section class="model-section" data-provider="codex">
+      <section class="model-section" data-provider="openai-codex">
         <header class="model-section-header">
           <h4 class="models-section-title">Codex (OpenAI)</h4>
         </header>
-        <div class="model-grid" data-grid="codex"></div>
+        <div class="model-grid" data-grid="openai-codex"></div>
       </section>
 
       <section class="model-section" data-provider="local">
@@ -53,7 +53,13 @@ function loadModels(el, folder) {
     .then(async (data) => {
       catalogCache = data.catalog || [];
       discoveredCache = data.discovered || [];
-      allowedModelsCache = data.allowedModels || [];
+      // Server returns { provider, model }; normalize to { modelProvider, model }
+      // for internal consistency with the rest of the UI (modelProvider is the
+      // field name used everywhere else in this file).
+      allowedModelsCache = (data.allowedModels || []).map((a) => ({
+        modelProvider: a.provider ?? a.modelProvider,
+        model: a.model,
+      }));
       activeModel = data.activeModel || null;
       originalAllowed = JSON.parse(JSON.stringify(allowedModelsCache));
       await renderSections(el);
@@ -112,11 +118,11 @@ async function renderSections(el) {
     ccPolicies.codex  !== undefined ? providerStatusPill('codex',  ccPolicies.codex)  : Promise.resolve(null),
   ]);
 
-  const pillByProvider = { claude: claudePill, codex: codexPill };
+  const pillByProvider = { anthropic: claudePill, 'openai-codex': codexPill };
 
   // ── classroom-provider-auth:models-status-pill END ────────────────────────
 
-  for (const provider of ['claude', 'codex', 'local']) {
+  for (const provider of ['anthropic', 'openai-codex', 'local']) {
     const grid = el.querySelector(`[data-grid="${provider}"]`);
     if (!grid) continue;
     const section = grid.closest('.model-section');
@@ -146,14 +152,14 @@ async function renderSections(el) {
 
     grid.innerHTML = '';
 
-    const curated = catalogCache.filter((m) => m.provider === provider);
-    const discovered = discoveredCache.filter((d) => d.provider === provider);
+    const curated = catalogCache.filter((m) => m.modelProvider === provider);
+    const discovered = discoveredCache.filter((d) => d.modelProvider === provider);
 
     if (curated.length === 0 && discovered.length === 0) {
       grid.innerHTML = `<div class="muted" style="grid-column: 1 / -1; padding: 12px;">No ${provider} models available. ${
         provider === 'local'
           ? 'Start mlx-omni-server on localhost:8000.'
-          : `Add a provider key (${provider === 'claude' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}) to .env.`
+          : `Add a provider key (${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}) to .env.`
       }</div>`;
       continue;
     }
@@ -168,15 +174,15 @@ async function renderSections(el) {
 }
 
 function isActive(model) {
-  return activeModel && activeModel.provider === model.provider && activeModel.model === (model.id || model.model);
+  return activeModel && activeModel.modelProvider === model.modelProvider && activeModel.model === (model.id || model.model);
 }
 
 function buildCard(m) {
   const card = document.createElement('div');
   card.className = `model-card origin-${m.origin || 'cloud'}`;
-  const isAllowed = allowedModelsCache.some((a) => a.provider === m.provider && a.model === m.id);
+  const isAllowed = allowedModelsCache.some((a) => a.modelProvider === m.modelProvider && a.model === m.id);
   if (isAllowed) card.classList.add('selected');
-  if (isActive({ provider: m.provider, model: m.id })) card.classList.add('active');
+  if (isActive({ modelProvider: m.modelProvider, model: m.id })) card.classList.add('active');
 
   const chipsHtml = (m.chips || []).map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('');
   // Prefer split rates when available (codex catalog uses these now); fall
@@ -210,13 +216,13 @@ function buildCard(m) {
       </div>`;
   }
 
-  const activeBadge = isActive({ provider: m.provider, model: m.id })
+  const activeBadge = isActive({ modelProvider: m.modelProvider, model: m.id })
     ? `<span class="active-badge">● Active</span>`
     : '';
   const star = m.default ? '★' : '☆';
   const starTitle = m.default
-    ? `Default for ${m.provider} — click to unset`
-    : `Set as default for ${m.provider}`;
+    ? `Default for ${m.modelProvider} — click to unset`
+    : `Set as default for ${m.modelProvider}`;
   const starClass = m.default ? 'default-star is-default' : 'default-star';
 
   card.innerHTML = `
@@ -235,31 +241,31 @@ function buildCard(m) {
   `;
 
   card.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-    toggleModel({ provider: m.provider, id: m.id }, e.target.checked, card);
+    toggleModel({ modelProvider: m.modelProvider, id: m.id }, e.target.checked, card);
   });
   card.querySelector('.edit-metadata-btn').addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    openAddMetadataModal({ provider: m.provider, id: m.id }, m);
+    openAddMetadataModal({ modelProvider: m.modelProvider, id: m.id }, m);
   });
   card.querySelector('.default-star').addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleDefault({ provider: m.provider, id: m.id });
+    toggleDefault({ modelProvider: m.modelProvider, id: m.id });
   });
   return card;
 }
 
 function buildDiscoveredCard(d) {
   const card = document.createElement('div');
-  card.className = `model-card origin-${d.provider === 'local' ? 'local' : 'cloud'} model-card-discovered`;
-  const isAllowed = allowedModelsCache.some((a) => a.provider === d.provider && a.model === d.id);
+  card.className = `model-card origin-${d.modelProvider === 'local' ? 'local' : 'cloud'} model-card-discovered`;
+  const isAllowed = allowedModelsCache.some((a) => a.modelProvider === d.modelProvider && a.model === d.id);
   if (isAllowed) card.classList.add('selected');
-  if (isActive({ provider: d.provider, model: d.id })) card.classList.add('active');
+  if (isActive({ modelProvider: d.modelProvider, model: d.id })) card.classList.add('active');
 
   const providerChip =
-    d.provider === 'claude' ? '☁ Anthropic' : d.provider === 'codex' ? '☁ OpenAI' : '💻 local';
-  const activeBadge = isActive({ provider: d.provider, model: d.id })
+    d.modelProvider === 'anthropic' ? '☁ Anthropic' : d.modelProvider === 'openai-codex' ? '☁ OpenAI' : '💻 local';
+  const activeBadge = isActive({ modelProvider: d.modelProvider, model: d.id })
     ? `<span class="active-badge">● Active</span>`
     : '';
 
@@ -275,19 +281,19 @@ function buildDiscoveredCard(d) {
   `;
 
   card.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-    toggleModel({ provider: d.provider, id: d.id }, e.target.checked, card);
+    toggleModel({ modelProvider: d.modelProvider, id: d.id }, e.target.checked, card);
   });
   card.querySelector('.add-metadata-btn').addEventListener('click', () => openAddMetadataModal(d));
   return card;
 }
 
-async function toggleDefault({ provider, id }) {
+async function toggleDefault({ modelProvider, id }) {
   try {
     const r = await fetch('/api/catalog/toggle-default', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ provider, id }),
+      body: JSON.stringify({ modelProvider, id }),
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
@@ -304,25 +310,26 @@ async function toggleDefault({ provider, id }) {
 }
 
 async function toggleModel(model, checked, card) {
-  // Update local cache.
+  // Update local cache (stored using modelProvider for internal consistency).
   allowedModelsCache = allowedModelsCache.filter(
-    (a) => !(a.provider === model.provider && a.model === model.id),
+    (a) => !(a.modelProvider === model.modelProvider && a.model === model.id),
   );
   if (checked) {
-    allowedModelsCache.push({ provider: model.provider, model: model.id });
+    allowedModelsCache.push({ modelProvider: model.modelProvider, model: model.id });
     card.classList.add('selected');
   } else {
     card.classList.remove('selected');
   }
 
-  // PUT to backend.
+  // PUT to backend. Server expects { provider, model } on the wire.
+  const wireModels = allowedModelsCache.map((a) => ({ provider: a.modelProvider, model: a.model }));
   const folder = window.__pg.agent.folder;
   try {
     const r = await fetch(`/api/drafts/${folder}/models`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ allowedModels: allowedModelsCache }),
+      body: JSON.stringify({ allowedModels: wireModels }),
     });
     if (!r.ok) throw new Error(`status ${r.status}`);
     if (JSON.stringify(allowedModelsCache) !== JSON.stringify(originalAllowed)) {
@@ -335,7 +342,7 @@ async function toggleModel(model, checked, card) {
     // Revert visual state on failure.
     if (checked) {
       allowedModelsCache = allowedModelsCache.filter(
-        (a) => !(a.provider === model.provider && a.model === model.id),
+        (a) => !(a.modelProvider === model.modelProvider && a.model === model.id),
       );
       card.classList.remove('selected');
       card.querySelector('input[type="checkbox"]').checked = false;
@@ -395,7 +402,7 @@ function openAddMetadataModal(discovered, existing) {
     <div class="modal" role="dialog" aria-modal="true">
       <h3>${title}</h3>
       <p class="muted">${subtitle}</p>
-      <button type="button" class="btn auto-fill-btn">✨ Auto-fill from ${escapeHtml(discovered.provider === 'local' ? 'HuggingFace' : 'built-in table')}</button>
+      <button type="button" class="btn auto-fill-btn">✨ Auto-fill from ${escapeHtml(discovered.modelProvider === 'local' ? 'HuggingFace' : 'built-in table')}</button>
       <div class="auto-fill-status muted"></div>
       <form id="add-metadata-form" class="add-metadata-form">
         <label>Display name <span class="required">*</span><br>
@@ -441,7 +448,7 @@ function openAddMetadataModal(discovered, existing) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ provider: discovered.provider, id: discovered.id }),
+        body: JSON.stringify({ provider: discovered.modelProvider, id: discovered.id }),
       });
       if (!r.ok) {
         status.textContent = `Lookup failed (${r.status}).`;
@@ -480,9 +487,9 @@ function openAddMetadataModal(discovered, existing) {
     const modalities = fd.getAll('modalities');
     const entry = {
       id: discovered.id,
-      provider: discovered.provider,
+      modelProvider: discovered.modelProvider,
       displayName: String(fd.get('displayName') || discovered.id),
-      origin: discovered.provider === 'local' ? 'local' : 'cloud',
+      origin: discovered.modelProvider === 'local' ? 'local' : 'cloud',
     };
     const paramCount = String(fd.get('paramCount') || '').trim();
     if (paramCount) entry.paramCount = paramCount;
@@ -499,7 +506,7 @@ function openAddMetadataModal(discovered, existing) {
     if (bestFor) entry.bestFor = bestFor;
     // Local-only nicety: stamp host from the omlx convention so the card's
     // local-extras block populates the same way builtin entries do.
-    if (discovered.provider === 'local') entry.host = 'http://localhost:8000';
+    if (discovered.modelProvider === 'local') entry.host = 'http://localhost:8000';
 
     try {
       const r = await fetch('/api/catalog/local-entries', {

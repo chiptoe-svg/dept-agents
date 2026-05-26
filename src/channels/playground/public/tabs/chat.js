@@ -86,16 +86,16 @@ function loadModelDropdowns(el, folder) {
       // to appear in the dropdown — the user checked it in the Models tab
       // but couldn't actually select it for chat.
       const catalog = data.catalog || [];
-      const discovered = (data.discovered || []).map((d) => ({ provider: d.provider, id: d.id }));
+      const discovered = (data.discovered || []).map((d) => ({ modelProvider: d.modelProvider, id: d.id }));
       const combined = [...catalog, ...discovered];
       // Stash the merged catalog so appendAgentTraceCall (called from the SSE
       // handler in wireSse — a separate scope) can look up cost fields by
-      // provider+model when rendering an agent-mode call entry.
+      // modelProvider+model when rendering an agent-mode call entry.
       if (window.__pg) window.__pg.catalog = combined;
       const allow = (data.allowedModels && data.allowedModels.length > 0)
         ? new Set(data.allowedModels.map((a) => `${a.provider}/${a.model}`))
         : null;
-      const visible = allow ? combined.filter((m) => allow.has(`${m.provider}/${m.id}`)) : combined;
+      const visible = allow ? combined.filter((m) => allow.has(`${m.modelProvider}/${m.id}`)) : combined;
 
       // Filter providers by class-controls — owner sees everything;
       // students see only what the instructor authorized.
@@ -110,29 +110,29 @@ function loadModelDropdowns(el, folder) {
       // failed call. Applies to everyone, owner included. A provider absent
       // from the map stays visible (defensive: don't hide on partial data).
       const providerAuth = data.providerAuth || {};
-      const providers = [...new Set(visible.map((m) => m.provider))].filter(
+      const providers = [...new Set(visible.map((m) => m.modelProvider))].filter(
         (p) => (!providerAllowed || providerAllowed(p)) && providerAuth[p] !== false,
       );
       provSel.innerHTML = '';
       for (const p of providers) provSel.add(new Option(p, p));
 
-      // Pre-select the currently active provider+model returned by the API,
+      // Pre-select the currently active modelProvider+model returned by the API,
       // falling back to the first catalog entries when none is set. Without
-      // this the dropdowns default to whatever happens to be first alphabetically
-      // (`claude` / `claude-haiku-4-5`), misrepresenting agents currently
-      // configured for a different provider — confusing AND a footgun, since
-      // clicking elsewhere then `Apply` would silently rewrite the active model.
+      // this the dropdowns default to whatever happens to be first alphabetically,
+      // misrepresenting agents currently configured for a different provider —
+      // confusing AND a footgun, since clicking elsewhere then `Apply` would
+      // silently rewrite the active model.
       const active = data.activeModel;
-      if (active && providers.includes(active.provider)) {
-        provSel.value = active.provider;
+      if (active && providers.includes(active.modelProvider)) {
+        provSel.value = active.modelProvider;
       }
 
       const renderModels = () => {
         modelSel.innerHTML = '';
-        for (const m of visible.filter((mm) => mm.provider === provSel.value)) {
+        for (const m of visible.filter((mm) => mm.modelProvider === provSel.value)) {
           modelSel.add(new Option(m.displayName || m.id, m.id));
         }
-        if (active && active.provider === provSel.value) {
+        if (active && active.modelProvider === provSel.value) {
           // Use Array.from to test for membership without triggering a change event.
           const ids = Array.from(modelSel.options).map((o) => o.value);
           if (ids.includes(active.model)) modelSel.value = active.model;
@@ -156,23 +156,28 @@ function loadModelDropdowns(el, folder) {
             return;
           }
         }
+        // All provider flips respawn the container. Pick the first available
+        // model for the new provider and PUT both atomically.
+        renderModels();
+        const newModel = modelSel.value;
         try {
-          const r = await fetch(`/api/drafts/${folder}/provider`, {
+          const r = await fetch(`/api/drafts/${folder}/active-model`, {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ provider: newProvider }),
+            body: JSON.stringify({ modelProvider: newProvider, model: newModel }),
           });
           if (!r.ok) throw new Error(`status ${r.status}`);
           lastProvider = newProvider;
-          renderModels();
+          lastModel = newModel;
           // Fresh container = fresh conversation. Clear the chat log.
-          const log = el.querySelector('#chat-log');
-          if (log) log.innerHTML = '';
-          appendSystemNote(log, `— provider switched to ${newProvider}; container respawning —`);
+          const log2 = el.querySelector('#chat-log');
+          if (log2) log2.innerHTML = '';
+          appendSystemNote(log2, `— provider switched to ${newProvider}; container respawning —`);
         } catch (err) {
           appendSystemNote(el.querySelector('#chat-log'), `Provider switch failed: ${String(err)}`);
           provSel.value = lastProvider;
+          renderModels();
         }
       });
       renderModels();
@@ -184,19 +189,16 @@ function loadModelDropdowns(el, folder) {
         const newModel = modelSel.value;
         if (newModel === lastModel) return;
 
-        // In agent mode the model is persisted to container.json +
-        // agent_groups.model. The codex/local provider re-reads container.json
-        // each turn, so a same-provider switch applies on the next message —
-        // no respawn, conversation intact. The claude provider freezes its
-        // model at container spawn, so switching it needs a respawn: warn
-        // first and clear the dropped conversation.
+        // In agent mode every model flip persists to the DB and kills the
+        // running container — all providers freeze their model at spawn time
+        // now that everything runs through pi. Warn when there's a live
+        // conversation to lose.
         // In direct mode the dropdown directly controls the request body, no
         // persisted state changes and no container involved.
         const isAgentMode = el.querySelector('#mode-agent')?.classList.contains('active');
         if (isAgentMode) {
-          const needsRespawn = provSel.value === 'claude';
-          // Only warn (respawn case) when there's a live conversation to lose.
-          if (needsRespawn && log.querySelector('.msg.user, .msg.agent')) {
+          // Only warn when there's a live conversation to lose.
+          if (log.querySelector('.msg.user, .msg.agent')) {
             const ok = await showModelSwitchModal(lastModel, newModel);
             if (!ok) {
               modelSel.value = lastModel;
@@ -208,16 +210,12 @@ function loadModelDropdowns(el, folder) {
               method: 'PUT',
               headers: { 'content-type': 'application/json' },
               credentials: 'same-origin',
-              body: JSON.stringify({ provider: provSel.value, model: newModel }),
+              body: JSON.stringify({ modelProvider: provSel.value, model: newModel }),
             });
             if (!r.ok) throw new Error(`status ${r.status}`);
             lastModel = newModel;
-            if (needsRespawn) {
-              log.replaceChildren();
-              appendSystemNote(log, `— model switched to ${newModel}; container respawning —`);
-            } else {
-              appendChatNote(log, `— model switched to ${newModel}; next reply will use it —`);
-            }
+            log.replaceChildren();
+            appendSystemNote(log, `— model switched to ${newModel}; container respawning —`);
           } catch (err) {
             appendChatNote(log, `Model switch failed: ${String(err)}`);
             modelSel.value = lastModel;
@@ -499,6 +497,7 @@ function wireTraceClear(el) {
     const trace = el.querySelector('#trace-log');
     trace.innerHTML = '<li class="trace-empty">Trace cleared.</li>';
     trace._currentTurnUl = null;
+    trace._piState = null;
   });
 }
 
@@ -510,33 +509,14 @@ function finalizeTurn(turnEl) {
   if (!turnEl) return;
   const foot = turnEl.querySelector('.trace-turn-foot');
   if (!foot) return;
-  // Codex's `tokenUsage.total` (which we surface as agent_call) is the
-  // THREAD CUMULATIVE total — every call codex has ever made on this
-  // thread since it started, not the current turn's cost. Per-turn cost
-  // is the sum of model_call deltas within this turn.
-  //
-  // For claude (single API call per user turn), no per-call model_call
-  // events fire — the agent_call IS the turn. Detect that case and fall
-  // back to agent_call's tokens.
-  const modelCalls = turnEl.querySelectorAll('.trace-model-call');
   const agentCall = turnEl.querySelector('.trace-agent-call');
-  let tokensIn = 0, tokensOut = 0, tokensCached = 0, tokensReasoning = 0, cost = 0;
-  if (modelCalls.length > 0) {
-    // Codex-style turn — sum the per-call deltas.
-    for (const li of modelCalls) {
-      tokensIn       += parseFloat(li.dataset.tokensIn       || '0') || 0;
-      tokensOut      += parseFloat(li.dataset.tokensOut      || '0') || 0;
-      tokensCached   += parseFloat(li.dataset.tokensCached   || '0') || 0;
-      tokensReasoning += parseFloat(li.dataset.tokensReasoning || '0') || 0;
-      cost           += parseFloat(li.dataset.cost           || '0') || 0;
-    }
-  } else if (agentCall) {
-    // Claude-style turn — agent_call IS the turn (single API call).
+  let tokensIn = 0, tokensOut = 0, cost = 0;
+  if (agentCall) {
     tokensIn  = parseFloat(agentCall.dataset.tokensIn  || '0') || 0;
     tokensOut = parseFloat(agentCall.dataset.tokensOut || '0') || 0;
     cost      = parseFloat(agentCall.dataset.cost      || '0') || 0;
   } else {
-    // Neither — non-LLM events only (tool calls without a model summary).
+    // pi-event turns — aggregate any cost annotations from pi message_end rows.
     for (const li of turnEl.querySelectorAll('[data-cost]')) {
       cost += parseFloat(li.dataset.cost || '0') || 0;
     }
@@ -547,12 +527,7 @@ function finalizeTurn(turnEl) {
   }
   const parts = [];
   if (tokensIn > 0) parts.push(`${tokensIn} in`);
-  if (tokensCached > 0) parts.push(`${tokensCached} cached`);
-  // Reasoning is a subset of output tokens, not a separate bucket — show it
-  // in parens after `out`, matching how each model-call row renders it.
-  if (tokensOut > 0) {
-    parts.push(tokensReasoning > 0 ? `${tokensOut} out (${tokensReasoning} reasoning)` : `${tokensOut} out`);
-  }
+  if (tokensOut > 0) parts.push(`${tokensOut} out`);
   if (cost > 0) parts.push(cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`);
   foot.textContent = `turn total: ${parts.join(' · ')}`;
 }
@@ -631,30 +606,17 @@ function appendAgentReply(log, data) {
 }
 
 function appendTraceEvent(trace, data) {
-  // model_call has its own renderer — it carries token deltas not an
-  // input/content payload, so it doesn't fit the tool envelope template
-  // below. Split off early.
-  if (data.type === 'model_call') {
-    return appendModelCallTrace(trace, data);
+  // pi_event wrapper: { type: 'pi_event', event: <native pi-agent-core event> }
+  // Route to the pi renderer and return early.
+  if (data.type === 'pi_event') {
+    return appendPiEvent(trace, data.event);
   }
 
   const li = document.createElement('li');
   const kind = data.kind || data.eventType || 'event';
   li.className = `trace trace-${kind}`;
 
-  // Recognize tool envelopes emitted by the agent-runner (mirrors v2 logTrace).
-  let summary = '';
-  if (data.type === 'tool_use') {
-    summary = `tool · ${data.toolName || data.tool || 'unknown'}`;
-  } else if (data.type === 'tool_result') {
-    summary = data.isError ? 'tool result · error' : 'tool result';
-  } else if (kind === 'tool_use') {
-    summary = `tool_call · ${data.toolName || data.tool || ''}`;
-  } else if (kind === 'tool_result') {
-    summary = `tool_result · ${data.isError ? 'error' : 'ok'}`;
-  } else {
-    summary = data.summary || data.message || kind;
-  }
+  const summary = data.summary || data.message || kind;
 
   // Native <details>/<summary> gives a built-in disclosure triangle for
   // free — collapsed view shows kind + a one-line preview; expanded view
@@ -691,6 +653,602 @@ function appendTraceEvent(trace, data) {
   target.appendChild(li);
   // Eager-finalize so the turn-total footer updates live as events arrive.
   if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+  trace.scrollTop = trace.scrollHeight;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pi-native event renderer (Option D)
+//
+// Pi-agent-core events arrive as:
+//   { type: 'pi_event', event: { type: <pi-event-type>, ...fields } }
+//
+// Per-trace state is kept in trace._piState so multiple simultaneous pi turns
+// can share the same trace element without stomping each other. State cleared
+// on each turn_start.
+//
+// CSS patterns mirrored from existing tool_use / tool_result rendering:
+//   - Cards use <details>/<summary> with classes trace-details / trace-summary
+//     / trace-kind / trace-preview / trace-body — identical disclosure triangle.
+//   - Event rows use .trace.trace-<kind> (border-left accent) for event kinds
+//     that don't need expansion (turn_start, message_start, usage).
+//   - Tool execution cards use .trace-event.trace-event-head/.trace-event-kind/
+//     .trace-event-body matching the model-call / direct-call pattern.
+//   - Streaming text bubble uses .trace-event with .trace-event-body for live
+//     append — same inline-mono text style as trace-event-body.
+//   - Thinking panel uses <details> collapsed by default, body in .trace-body
+//     (matches existing trace-body pre style: monospaced, scrollable, max 400px).
+//   - Error state uses .trace-error (red text, already defined).
+//
+// Synthetic test events — paste into the browser dev console while the
+// playground is open to exercise each code path manually:
+//
+//   // 1. Streaming text delta (appends to live bubble)
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_start', message: { role: 'assistant' } } });
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Hello world' } } });
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: ' — streaming!' } } });
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_end', message: { usage: { input: 120, output: 30, cacheRead: 0, cacheWrite: 0, cost: { total: 0.00042 } } } } });
+//
+//   // 2. Tool execution start + end
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'tool_execution_start', toolCallId: 'tc1', toolName: 'bash', args: { cmd: 'ls' } } });
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'tool_execution_end', toolCallId: 'tc1', result: { stdout: 'file.txt\nREADME.md' } } });
+//
+//   // 3. Tool call card (message_update variants)
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_update', assistantMessageEvent: { type: 'toolcall_start', contentIndex: 0 } } });
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_update', assistantMessageEvent: { type: 'toolcall_delta', contentIndex: 0 } } });
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_update', assistantMessageEvent: { type: 'toolcall_end', toolCall: { name: 'bash', arguments: { cmd: 'ls' }, id: 'tc1' } } } });
+//
+//   // 4. Thinking delta (collapsible panel, default collapsed)
+//   window.__pgTestPiEvent({ type: 'pi_event', event: { type: 'message_update', assistantMessageEvent: { type: 'thinking_delta', delta: 'Let me think about this…' } } });
+//
+//   // Helper to route synthetic events through the same handler as SSE events.
+//   // Attach once after the trace panel is visible:
+//   //   window.__pgTestPiEvent = (data) => {
+//   //     const trace = document.getElementById('trace-log');
+//   //     if (!trace._currentTurnUl) {
+//   //       // ensure a turn exists
+//   //       trace._currentTurnUl = trace;
+//   //     }
+//   //     appendTraceEvent(trace, data);
+//   //   };
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Top-level router for pi-agent-core native events. Dispatches on
+ * event.type (the inner pi event type field). State is kept on
+ * trace._piState so it survives across multiple call sites without
+ * closure capture.
+ *
+ * @param {Element} trace  — the #trace-log <ul> element
+ * @param {object}  event  — the native pi-agent-core event object
+ */
+function appendPiEvent(trace, event) {
+  if (!trace || !event || !event.type) return;
+
+  // Lazily initialize per-trace pi state.
+  if (!trace._piState) {
+    trace._piState = {
+      messageBubble: null,      // current streaming assistant text <li>
+      messageTextEl: null,      // .trace-event-body inside the bubble
+      thinkingDetails: null,    // <details> for thinking content
+      thinkingBodyEl: null,     // <pre> inside thinking details
+      toolCallCards: {},        // contentIndex → { li, bodyEl }
+      toolExecCards: {},        // toolCallId → { li, statusEl, argsEl, resultEl }
+    };
+  }
+  const st = trace._piState;
+
+  switch (event.type) {
+    case 'agent_start':
+    case 'agent_end':
+      // Internal markers — no UI.
+      break;
+
+    case 'turn_start':
+      return piHandleTurnStart(trace, event, st);
+
+    case 'message_start':
+      return piHandleMessageStart(trace, event, st);
+
+    case 'message_update':
+      return piHandleMessageUpdate(trace, event, st);
+
+    case 'message_end':
+      return piHandleMessageEnd(trace, event, st);
+
+    case 'tool_execution_start':
+      return piHandleToolExecutionStart(trace, event, st);
+
+    case 'tool_execution_update':
+      return piHandleToolExecutionUpdate(trace, event, st);
+
+    case 'tool_execution_end':
+      return piHandleToolExecutionEnd(trace, event, st);
+
+    case 'turn_end':
+      return piHandleTurnEnd(trace, event, st);
+
+    default:
+      // Unknown pi event — render as a compact generic trace line so new
+      // events don't silently vanish while the renderer catches up.
+      piAppendGenericEvent(trace, event);
+  }
+}
+
+/**
+ * turn_start: section divider showing turn number. Resets streaming state
+ * so the next assistant message gets a fresh bubble.
+ */
+function piHandleTurnStart(trace, event, st) {
+  const target = trace._currentTurnUl || trace;
+  const li = document.createElement('li');
+  li.className = 'trace trace-agent-call-head';
+
+  // AGENT CALL header — mirrors the DIRECT CALL format. provider/model
+  // are stamped onto the turn_start by pi.ts via _nanoclawMeta (pi-agent-core
+  // doesn't carry them natively). Falls back to a plain divider when absent.
+  const meta = event._nanoclawMeta;
+  const head = document.createElement('div');
+  head.className = 'trace-event-head';
+  const kindSpan = document.createElement('span');
+  kindSpan.className = 'trace-event-kind';
+  kindSpan.textContent = 'AGENT CALL';
+  head.appendChild(kindSpan);
+  if (meta && (meta.provider || meta.model)) {
+    const codeEl = document.createElement('code');
+    codeEl.textContent = `${meta.provider || ''}/${meta.model || ''}`.replace(/^\/|\/$/g, '');
+    head.appendChild(codeEl);
+  } else if (event.turnId) {
+    const codeEl = document.createElement('code');
+    codeEl.textContent = `turn ${event.turnId}`;
+    head.appendChild(codeEl);
+  }
+  li.appendChild(head);
+  target.appendChild(li);
+
+  // Reset per-turn pi streaming state.
+  st.messageBubble = null;
+  st.messageTextEl = null;
+  st.thinkingDetails = null;
+  st.thinkingBodyEl = null;
+  st.toolCallCards = {};
+  // Do NOT clear toolExecCards here — executions can cross turn boundaries.
+
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * message_start: begin a new assistant bubble in the trace panel.
+ * Only creates a card for assistant messages — user messages flow through
+ * the main chat log, not the trace pane.
+ */
+function piHandleMessageStart(trace, event, st) {
+  const role = (event.message && event.message.role) || 'unknown';
+  if (role !== 'assistant') return;
+
+  const target = trace._currentTurnUl || trace;
+  const li = document.createElement('li');
+  li.className = 'trace-event trace-pi-message';
+
+  // Use <details>/<summary> so the assistant body collapses behind a
+  // disclosure triangle — matches the tool_use / TOOL EXEC rows for
+  // visual consistency. Open during streaming so the user sees text
+  // arrive live; auto-collapsed by piHandleMessageEnd once done.
+  const details = document.createElement('details');
+  details.className = 'trace-details trace-pi-message-details';
+  details.open = true;
+
+  const summaryEl = document.createElement('summary');
+  summaryEl.className = 'trace-summary';
+  const kindEl = document.createElement('span');
+  kindEl.className = 'trace-kind';
+  kindEl.textContent = 'assistant';
+  summaryEl.appendChild(kindEl);
+  // Preview span — filled with a one-line snippet of the streaming text
+  // by piHandleTextDelta so the collapsed summary stays informative.
+  const previewEl = document.createElement('span');
+  previewEl.className = 'trace-preview';
+  previewEl.textContent = '';
+  summaryEl.appendChild(previewEl);
+  details.appendChild(summaryEl);
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'trace-event-body';
+  bodyEl.style.cssText = 'white-space:pre-wrap;';
+  bodyEl.textContent = '';
+  details.appendChild(bodyEl);
+
+  li.appendChild(details);
+  target.appendChild(li);
+
+  st.messageBubble = li;
+  st.messageTextEl = bodyEl;
+  st.messagePreviewEl = previewEl;
+  st.messageDetails = details;
+  // Reset thinking state for the new message.
+  st.thinkingDetails = null;
+  st.thinkingBodyEl = null;
+
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * message_update: dispatches on assistantMessageEvent.type.
+ */
+function piHandleMessageUpdate(trace, event, st) {
+  const ame = event.assistantMessageEvent;
+  if (!ame) return;
+
+  switch (ame.type) {
+    case 'text_delta':
+      return piHandleTextDelta(trace, ame, st);
+    case 'thinking_delta':
+      return piHandleThinkingDelta(trace, ame, st);
+    case 'toolcall_start':
+      return piHandleToolcallStart(trace, ame, st);
+    case 'toolcall_delta':
+      // Nothing to show until toolcall_end carries the full args.
+      break;
+    case 'toolcall_end':
+      return piHandleToolcallEnd(trace, ame, st);
+    default:
+      break;
+  }
+}
+
+/** text_delta: append to the current streaming bubble (single growing element). */
+function piHandleTextDelta(trace, ame, st) {
+  if (!st.messageTextEl) {
+    // No open bubble — create a minimal one so deltas aren't lost.
+    piHandleMessageStart(trace, { message: { role: 'assistant' } }, st);
+  }
+  if (st.messageTextEl && typeof ame.delta === 'string') {
+    st.messageTextEl.textContent += ame.delta;
+    // Keep summary preview in sync with the first ~80 chars so the
+    // post-collapse summary line is informative.
+    if (st.messagePreviewEl) {
+      const flat = st.messageTextEl.textContent.replace(/\s+/g, ' ').trim();
+      st.messagePreviewEl.textContent = flat.length > 80 ? flat.slice(0, 80) + '…' : flat;
+    }
+  }
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * thinking_delta: append to a collapsible "Thinking" panel attached to
+ * the current message bubble. Created on first delta, default collapsed.
+ * Mirrors the <details>/<summary> disclosure pattern of tool_use cards.
+ */
+function piHandleThinkingDelta(trace, ame, st) {
+  if (!st.thinkingDetails && st.messageBubble) {
+    // Create the thinking collapsible panel inside the current bubble.
+    const details = document.createElement('details');
+    details.className = 'trace-details trace-pi-thinking';
+    // Default collapsed (no `open` attribute).
+    const summaryEl = document.createElement('summary');
+    summaryEl.className = 'trace-summary';
+    const kindEl = document.createElement('span');
+    kindEl.className = 'trace-kind';
+    kindEl.textContent = 'thinking';
+    summaryEl.appendChild(kindEl);
+    details.appendChild(summaryEl);
+    const bodyEl = document.createElement('pre');
+    bodyEl.className = 'trace-body';
+    bodyEl.textContent = '';
+    details.appendChild(bodyEl);
+    st.messageBubble.appendChild(details);
+    st.thinkingDetails = details;
+    st.thinkingBodyEl = bodyEl;
+  }
+  if (st.thinkingBodyEl && typeof ame.delta === 'string') {
+    st.thinkingBodyEl.textContent += ame.delta;
+  }
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * toolcall_start: begin a tool call card in the trace, keyed on contentIndex.
+ * Shows a pending card — finalized by toolcall_end.
+ */
+function piHandleToolcallStart(trace, ame, st) {
+  const idx = ame.contentIndex;
+  const target = trace._currentTurnUl || trace;
+
+  const li = document.createElement('li');
+  li.className = 'trace trace-tool_use';
+
+  const details = document.createElement('details');
+  details.className = 'trace-details';
+  const summaryEl = document.createElement('summary');
+  summaryEl.className = 'trace-summary';
+  const kindEl = document.createElement('span');
+  kindEl.className = 'trace-kind';
+  kindEl.textContent = 'tool call · pending…';
+  summaryEl.appendChild(kindEl);
+  const previewEl = document.createElement('span');
+  previewEl.className = 'trace-preview';
+  previewEl.textContent = '';
+  summaryEl.appendChild(previewEl);
+  details.appendChild(summaryEl);
+  const bodyEl = document.createElement('pre');
+  bodyEl.className = 'trace-body';
+  bodyEl.textContent = '';
+  details.appendChild(bodyEl);
+  li.appendChild(details);
+  target.appendChild(li);
+
+  st.toolCallCards[idx] = { li, kindEl, previewEl, bodyEl };
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * toolcall_end: finalize the tool call card with name + args. Marks the card
+ * with the tool name and shows full args JSON in the expanded body.
+ * Mirrors the existing tool_use disclosure style.
+ */
+function piHandleToolcallEnd(trace, ame, st) {
+  const tc = ame.toolCall;
+  if (!tc) return;
+
+  // Try to match a pending card by contentIndex. Fall back to creating a new
+  // card if toolcall_start was somehow missed.
+  const idx = ame.contentIndex;
+  let card = st.toolCallCards != null ? st.toolCallCards[idx] : null;
+  if (!card) {
+    piHandleToolcallStart(trace, ame, st);
+    card = st.toolCallCards[idx];
+    if (!card) return;
+  }
+
+  const name = tc.name || 'unknown';
+  const args = tc.arguments != null ? tc.arguments : {};
+  const argsStr = formatTracePayloadFull(args);
+  const previewStr = formatTracePreview(args);
+
+  card.kindEl.textContent = `tool call · ${name}`;
+  card.previewEl.textContent = previewStr;
+  card.bodyEl.textContent = argsStr;
+
+  // Tag with tool-call id so tool_execution_end can find it.
+  if (tc.id) card.li.dataset.toolCallId = tc.id;
+
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * message_end: seal the bubble. Show usage line if message.usage is present.
+ * Usage fields: input, output, cacheRead, cacheWrite, cost.total.
+ */
+function piHandleMessageEnd(trace, event, st) {
+  // Auto-collapse the assistant body now that streaming is done — the
+  // summary still shows the preview snippet, click to re-expand.
+  if (st.messageDetails) st.messageDetails.open = false;
+
+  const usage = event.message && event.message.usage;
+  if (!usage || !st.messageBubble) return;
+
+  const parts = [];
+  if (typeof usage.input === 'number') parts.push(`${usage.input} in`);
+  if (typeof usage.cacheRead === 'number' && usage.cacheRead > 0) parts.push(`${usage.cacheRead} cache-`);
+  if (typeof usage.cacheWrite === 'number' && usage.cacheWrite > 0) parts.push(`${usage.cacheWrite} cache+`);
+  if (typeof usage.output === 'number') parts.push(`${usage.output} out`);
+  if (usage.cost && typeof usage.cost.total === 'number') {
+    const c = usage.cost.total;
+    parts.push(c < 0.001 ? `$${c.toFixed(5)}` : `$${c.toFixed(4)}`);
+  }
+
+  if (parts.length > 0) {
+    const usageEl = document.createElement('div');
+    usageEl.className = 'trace-event-body';
+    usageEl.style.cssText = 'font-size:10px;color:#888;margin-top:3px;';
+    usageEl.textContent = parts.join(' · ');
+    st.messageBubble.appendChild(usageEl);
+  }
+
+  // Stash tokens on the bubble li for finalizeTurn to aggregate.
+  if (typeof usage.input === 'number') st.messageBubble.dataset.tokensIn = usage.input;
+  if (typeof usage.output === 'number') st.messageBubble.dataset.tokensOut = usage.output;
+  if (usage.cacheRead > 0) st.messageBubble.dataset.tokensCacheRead = usage.cacheRead;
+  if (usage.cacheWrite > 0) st.messageBubble.dataset.tokensCacheCreation = usage.cacheWrite;
+  if (usage.cost && typeof usage.cost.total === 'number') st.messageBubble.dataset.cost = usage.cost.total;
+
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * tool_execution_start: begin a tool execution status card, keyed on toolCallId.
+ * Mirrors the .trace-event / .trace-event-head / .trace-event-kind / .trace-event-body
+ * pattern (head + body, optionally expandable).
+ * Border-left uses .trace-tool_use accent colour (#4a90e2) until the result arrives.
+ */
+function piHandleToolExecutionStart(trace, event, st) {
+  const { toolCallId, toolName, args } = event;
+  const target = trace._currentTurnUl || trace;
+
+  const li = document.createElement('li');
+  li.className = 'trace-event trace-pi-tool-exec';
+
+  // Head row: kind label + tool name.
+  const head = document.createElement('div');
+  head.className = 'trace-event-head';
+  const kindSpan = document.createElement('span');
+  kindSpan.className = 'trace-event-kind';
+  kindSpan.textContent = 'tool exec';
+  const codeEl = document.createElement('code');
+  codeEl.textContent = toolName || toolCallId || '?';
+  head.appendChild(kindSpan);
+  head.appendChild(codeEl);
+  li.appendChild(head);
+
+  // Args disclosed via <details>/<summary>, same as tool_use cards.
+  const argsPayload = args != null ? args : null;
+  let statusEl;
+  if (argsPayload != null) {
+    const details = document.createElement('details');
+    details.className = 'trace-details';
+    const summaryEl = document.createElement('summary');
+    summaryEl.className = 'trace-summary';
+    statusEl = document.createElement('span');
+    statusEl.className = 'trace-event-body trace-pending';
+    statusEl.textContent = 'running…';
+    summaryEl.appendChild(statusEl);
+    details.appendChild(summaryEl);
+    const argsEl = document.createElement('pre');
+    argsEl.className = 'trace-body';
+    argsEl.textContent = formatTracePayloadFull(argsPayload);
+    details.appendChild(argsEl);
+    // Placeholder for result (appended by tool_execution_end).
+    const resultEl = document.createElement('pre');
+    resultEl.className = 'trace-body';
+    resultEl.style.display = 'none';
+    details.appendChild(resultEl);
+    li.appendChild(details);
+    st.toolExecCards[toolCallId] = { li, statusEl, resultEl, details };
+  } else {
+    statusEl = document.createElement('div');
+    statusEl.className = 'trace-event-body trace-pending';
+    statusEl.textContent = 'running…';
+    li.appendChild(statusEl);
+    st.toolExecCards[toolCallId] = { li, statusEl, resultEl: null, details: null };
+  }
+
+  target.appendChild(li);
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * tool_execution_update: stream partial result text into the status slot if
+ * available. partialResult may be a string or object.
+ */
+function piHandleToolExecutionUpdate(trace, event, st) {
+  const card = st.toolExecCards[event.toolCallId];
+  if (!card) return;
+  if (event.partialResult != null && card.statusEl) {
+    card.statusEl.classList.remove('trace-pending');
+    card.statusEl.textContent = formatTracePreview(event.partialResult);
+  }
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * tool_execution_end: finalize the execution card. Show result in the body.
+ * Removes pending style; adds full result as expandable body.
+ * Border-left switches to .trace-tool_result accent (#87a96b) on success.
+ */
+function piHandleToolExecutionEnd(trace, event, st) {
+  const card = st.toolExecCards[event.toolCallId];
+  const result = event.result;
+
+  if (!card) {
+    // Card was never started (missed tool_execution_start) — render inline.
+    const target = trace._currentTurnUl || trace;
+    const li = document.createElement('li');
+    li.className = 'trace trace-tool_result';
+    const details = document.createElement('details');
+    details.className = 'trace-details';
+    const summaryEl = document.createElement('summary');
+    summaryEl.className = 'trace-summary';
+    const kindEl = document.createElement('span');
+    kindEl.className = 'trace-kind';
+    kindEl.textContent = `tool result · ${event.toolCallId || '?'}`;
+    summaryEl.appendChild(kindEl);
+    const previewEl = document.createElement('span');
+    previewEl.className = 'trace-preview';
+    previewEl.textContent = formatTracePreview(result);
+    summaryEl.appendChild(previewEl);
+    details.appendChild(summaryEl);
+    const bodyEl = document.createElement('pre');
+    bodyEl.className = 'trace-body';
+    bodyEl.textContent = formatTracePayloadFull(result);
+    details.appendChild(bodyEl);
+    li.appendChild(details);
+    target.appendChild(li);
+    if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+    trace.scrollTop = trace.scrollHeight;
+    return;
+  }
+
+  // Update the existing card.
+  card.li.classList.add('trace-pi-tool-exec-done');
+  if (card.statusEl) {
+    card.statusEl.classList.remove('trace-pending');
+    card.statusEl.textContent = formatTracePreview(result);
+  }
+  if (card.resultEl && result != null) {
+    card.resultEl.textContent = formatTracePayloadFull(result);
+    card.resultEl.style.display = '';
+  }
+  // Leave the details collapsed — the summary preview is enough at a glance;
+  // click to drill into args + full result. (Auto-opening on completion
+  // meant tool-using turns produced a wall of inline JSON.)
+
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * turn_end: section close. If cost is available from toolResults or message,
+ * it will already be in the bubble's dataset via message_end — finalizeTurn
+ * picks it up from there. No additional action needed beyond a scroll bump.
+ */
+function piHandleTurnEnd(trace, event, st) {
+  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
+  trace.scrollTop = trace.scrollHeight;
+}
+
+/**
+ * Pi-agent-core's internal lifecycle markers — fired at adapter-specific
+ * points (`save_point` after each tool exec, `settled` at end-of-turn,
+ * `after_provider_response`/`before_provider_payload` around each model
+ * call, etc.). Useful for debugging the harness itself; pure noise for
+ * an end-user reading a trace. Filter them out so the trace looks the
+ * same across anthropic / openai-codex / future providers.
+ *
+ * Real failures still get through because the synthetic `nanoclaw_error`
+ * event (emitted by poll-loop on provider error) is NOT in this set.
+ */
+const PI_INTERNAL_EVENT_TYPES = new Set([
+  'save_point',
+  'settled',
+  'after_provider_response',
+  'before_provider_payload',
+  'context',
+  'before_compact',
+  'after_compact',
+]);
+
+/** Fallback: render any unrecognised pi event as a compact generic line. */
+function piAppendGenericEvent(trace, event) {
+  if (event && PI_INTERNAL_EVENT_TYPES.has(event.type)) return;
+  const target = trace._currentTurnUl || trace;
+  const li = document.createElement('li');
+  // nanoclaw_error is the synthetic event the poll-loop emits when a
+  // provider error fires — gets the trace-error styling (red border,
+  // bold kind label) so the user sees the failure instead of a missing
+  // reply.
+  const isError = event.type === 'nanoclaw_error';
+  li.className = isError ? 'trace trace-error' : 'trace';
+
+  const kindEl = document.createElement('div');
+  kindEl.className = 'trace-kind';
+  kindEl.textContent = isError ? 'ERROR' : `pi: ${event.type || 'unknown'}`;
+  li.appendChild(kindEl);
+
+  // For errors, render the message + classification as a body so the user
+  // can read what went wrong without expanding anything.
+  if (isError && (event.message || event.classification)) {
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'trace-event-body';
+    bodyEl.style.cssText = 'color:#a40000;white-space:pre-wrap;font-size:11px;margin-top:2px;';
+    const parts = [];
+    if (event.message) parts.push(event.message);
+    if (event.classification) parts.push(`(${event.classification})`);
+    bodyEl.textContent = parts.join(' ');
+    li.appendChild(bodyEl);
+  }
+  target.appendChild(li);
   trace.scrollTop = trace.scrollHeight;
 }
 
@@ -790,93 +1348,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-/**
- * Direct-chat trace events. In agent mode the trace is populated by the
- * SSE stream (tool_use, system events, etc.); in direct mode there's
- * only one event per turn — the API call itself.
- */
-/**
- * Synthetic trace event for an agent-mode LLM call. Built from the same
- * provider/model/tokens/latency fields the chat bubble's footer uses, so
- * a tool-less turn still leaves a record in the trace pane. Cost is
- * computed client-side by looking up the catalog entry stashed at
- * window.__pg.catalog (populated by loadModelDropdowns).
- */
-/**
- * Renders a single LLM call mid-turn — emitted by the agent-runner each
- * time the underlying model responds (per thread/tokenUsage/updated.last
- * for codex). Sits between tool_use/tool_result entries, so a multi-tool
- * turn shows N model_call entries instead of one cumulative summary.
- * Provider/model isn't carried in the event payload (the agent-runner
- * doesn't include them per-call); we pull them from the chat tab's
- * current dropdown selection, which matches the running container.
- */
-function appendModelCallTrace(trace, data) {
-  if (!trace) return;
-  const li = document.createElement('li');
-  li.className = 'trace-event trace-model-call';
-  const provSel = document.getElementById('provider-sel');
-  const modelSel = document.getElementById('model-sel');
-  const provider = provSel ? provSel.value : '';
-  const model = modelSel ? modelSel.value : '';
-  const tokensIn = typeof data.tokensIn === 'number' ? data.tokensIn : 0;
-  const tokensOut = typeof data.tokensOut === 'number' ? data.tokensOut : 0;
-  const cached = typeof data.tokensCached === 'number' ? data.tokensCached : 0;
-  const reasoning = typeof data.tokensReasoning === 'number' ? data.tokensReasoning : 0;
-  const cachedNote = cached > 0 ? `, ${cached} cached` : '';
-  const outBreakdown = reasoning > 0 ? `${tokensOut} out (${reasoning} reasoning)` : `${tokensOut} out`;
-  // Cost: use the same client-side helper as appendAgentTraceCall, but
-  // bill cached input at the cheaper rate (mirrors direct-chat.ts:priceFor).
-  const cost = computeAgentCallCost(provider, model, tokensIn, tokensOut, cached);
-  const costText = cost != null ? (cost < 0.001 ? `$${cost.toFixed(5)}` : `$${cost.toFixed(4)}`) : '';
-  const summaryText = `${tokensIn} in${cachedNote} · ${outBreakdown}${costText ? ` · ${costText}` : ''}`;
-
-  const head = document.createElement('div');
-  head.className = 'trace-event-head';
-  const kindSpan = document.createElement('span');
-  kindSpan.className = 'trace-event-kind';
-  kindSpan.textContent = 'model call';
-  const codeEl = document.createElement('code');
-  codeEl.textContent = `${provider}/${model}`;
-  head.appendChild(kindSpan);
-  head.appendChild(codeEl);
-  li.appendChild(head);
-
-  const responseText = typeof data.responsePreview === 'string' ? data.responsePreview : null;
-  if (responseText) {
-    const details = document.createElement('details');
-    details.className = 'trace-details';
-    const summaryEl = document.createElement('summary');
-    summaryEl.className = 'trace-summary';
-    const bodySpan = document.createElement('span');
-    bodySpan.className = 'trace-event-body';
-    bodySpan.textContent = summaryText;
-    summaryEl.appendChild(bodySpan);
-    details.appendChild(summaryEl);
-    const bodyEl = document.createElement('pre');
-    bodyEl.className = 'trace-body';
-    bodyEl.textContent = responseText;
-    details.appendChild(bodyEl);
-    li.appendChild(details);
-  } else {
-    const bodyDiv = document.createElement('div');
-    bodyDiv.className = 'trace-event-body';
-    bodyDiv.textContent = summaryText;
-    li.appendChild(bodyDiv);
-  }
-
-  li.dataset.tokensIn = tokensIn;
-  li.dataset.tokensOut = tokensOut;
-  li.dataset.tokensCached = cached;
-  li.dataset.tokensReasoning = reasoning;
-  if (cost != null) li.dataset.cost = cost;
-  const target = trace._currentTurnUl || trace;
-  target.appendChild(li);
-  // Eager-finalize so the turn-total footer updates live as events arrive.
-  if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
-  trace.scrollTop = trace.scrollHeight;
-}
-
 function appendAgentTraceCall(trace, data) {
   if (!trace) return;
   const li = document.createElement('li');
@@ -971,7 +1442,7 @@ function computeAgentCallCost(
 ) {
   if (tokensIn == null || tokensOut == null) return null;
   const catalog = (window.__pg && window.__pg.catalog) || [];
-  const entry = catalog.find((e) => e.provider === provider && e.id === model);
+  const entry = catalog.find((e) => e.modelProvider === provider && e.id === model);
   if (!entry) return null;
   if (entry.costPer1kInUsd != null || entry.costPer1kOutUsd != null) {
     // Three cache treatments depending on provider:

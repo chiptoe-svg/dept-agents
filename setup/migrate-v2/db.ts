@@ -144,7 +144,6 @@ async function main(): Promise<void> {
           name: g.name || g.folder,
           folder: g.folder,
           agent_provider: null,
-          model: null,
           created_at: createdAt,
         });
         ag = getAgentGroupByFolder(g.folder)!;

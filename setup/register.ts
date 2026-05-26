@@ -135,7 +135,6 @@ export async function run(args: string[]): Promise<void> {
       name: parsed.assistantName,
       folder: parsed.folder,
       agent_provider: null,
-      model: null,
       created_at: new Date().toISOString(),
     });
     agentGroup = getAgentGroupByFolder(parsed.folder)!;

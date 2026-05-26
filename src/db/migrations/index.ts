@@ -13,6 +13,13 @@ import { migration013 } from './013-approval-render-metadata.js';
 import { migration014 } from './014-agent-model.js';
 import { migration015 } from './015-agent-group-metadata.js';
 import { migration016 } from './016-classroom-roster.js';
+import { migration017 } from './017-container-configs.js';
+import { migration018 } from './018-cli-scope.js';
+import { migration019 } from './019-container-configs-classroom-fields.js';
+import { migration020 } from './020-drop-agent-groups-model.js';
+import { migration021 } from './021-container-configs-model-provider.js';
+import { migration022 } from './022-allowed-models-rename-providers.js';
+import { migration023 } from './023-backfill-agent-provider-pi.js';
 import { moduleApprovalsPendingApprovals } from './module-approvals-pending-approvals.js';
 import { moduleApprovalsTitleOptions } from './module-approvals-title-options.js';
 import { moduleClassLoginTokens } from './module-class-login-tokens.js';
@@ -41,6 +48,13 @@ const migrations: Migration[] = [
   migration014,
   migration015,
   migration016,
+  migration017,
+  migration018,
+  migration019,
+  migration020,
+  migration021,
+  migration022,
+  migration023,
   moduleClassLoginTokens,
   moduleClassLoginPins,
   moduleClassTelegramPair,

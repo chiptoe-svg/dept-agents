@@ -11,6 +11,9 @@ import { enforceStartupBackoff, resetCircuitBreaker } from './circuit-breaker.js
 import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
 import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
+import { backfillContainerConfigs } from './backfill-container-configs.js';
+import { getActiveSessions } from './db/sessions.js';
+import { recoverStaleOutboundJournals } from './session-manager.js';
 import { ensureContainerRuntimeRunning, cleanupOrphans, PROXY_BIND_HOST } from './container-runtime.js';
 import { startCredentialProxy, setStudentCredsHook } from './credential-proxy.js';
 // ── classroom-provider-auth:hook-registration START ───────────────────────
@@ -72,7 +75,6 @@ import './class-pair-instructor.js';
 import './class-pair-ta.js';
 import './class-playground-gate.js';
 import './class-container-env.js';
-import './class-codex-auth.js';
 import './class-login-tokens.js';
 import './class-telegram-pair.js';
 
@@ -98,6 +100,11 @@ async function main(): Promise<void> {
   const db = initDb(dbPath);
   runMigrations(db);
   log.info('Central DB ready', { path: dbPath });
+
+  // 1a. One-time backfill: seed container_configs from existing on-disk
+  // container.json files. Idempotent — skips groups that already have a
+  // config row. See plans/classroom-upstream-catchup-2026-05-25.md Phase B½.
+  backfillContainerConfigs();
 
   // 1b. One-time filesystem cutover — idempotent, no-op after first run.
   migrateGroupsToClaudeLocal();
@@ -200,6 +207,17 @@ async function main(): Promise<void> {
     },
   };
   setDeliveryAdapter(deliveryAdapter);
+
+  // 4d. Recover any stale `-journal` files on session outbound DBs left by
+  // a prior crashed R/W writer. Must run BEFORE delivery polls, which open
+  // outbound.db readonly — readonly opens cannot rollback a stale journal
+  // and surface as SQLITE_READONLY_ROLLBACK ("attempt to write a readonly
+  // database"). A brief R/W open lets SQLite auto-recover and delete the
+  // journal cleanly.
+  const journalRecovery = recoverStaleOutboundJournals(getActiveSessions());
+  if (journalRecovery.recovered > 0 || journalRecovery.failed > 0) {
+    log.info('Outbound journal recovery', { ...journalRecovery });
+  }
 
   // 5. Start delivery polls
   startActiveDeliveryPoll();

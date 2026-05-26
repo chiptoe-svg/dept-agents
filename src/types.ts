@@ -5,10 +5,43 @@ export interface AgentGroup {
   name: string;
   folder: string;
   agent_provider: string | null;
-  model: string | null;
   created_at: string;
   /** Ad-hoc per-group structured metadata (JSON). See `getAgentGroupMetadata`. */
   metadata?: string | null;
+}
+
+/**
+ * Row shape of the container_configs table (DB source of truth for container config).
+ * Materialized to groups/<folder>/container.json on every spawn via
+ * materializeContainerJson() in src/container-config.ts.
+ */
+export interface ContainerConfigRow {
+  agent_group_id: string;
+  provider: string | null;
+  model: string | null;
+  effort: string | null;
+  image_tag: string | null;
+  assistant_name: string | null;
+  max_messages_per_prompt: number | null;
+  /** JSON-encoded string[] | "all". */
+  skills: string;
+  /** JSON-encoded Record<string, McpServerConfig>. */
+  mcp_servers: string;
+  /** JSON-encoded string[]. */
+  packages_apt: string;
+  /** JSON-encoded string[]. */
+  packages_npm: string;
+  /** JSON-encoded AdditionalMountConfig[]. */
+  additional_mounts: string;
+  /** 'group' (default) — reserved for future per-session configs. */
+  cli_scope: string;
+  /** JSON-encoded Record<string, string> — classroom-only per-group env vars. */
+  env: string;
+  /** JSON-encoded { provider: string; model: string }[] — classroom-only per-group model allowlist. */
+  allowed_models: string;
+  /** Pi-provider model provider (e.g. "anthropic", "openai"). Scalar TEXT, not JSON. */
+  model_provider: string | null;
+  updated_at: string;
 }
 
 export type UnknownSenderPolicy = 'strict' | 'request_approval' | 'public';

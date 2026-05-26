@@ -1,18 +1,22 @@
 /**
- * Per-group container config, stored as a plain JSON file at
- * `groups/<folder>/container.json`. Mounted read-only inside the container
- * at `/workspace/agent/container.json` — the runner reads it at startup but
- * cannot modify it. Config changes go through the self-mod approval flow.
+ * Container config types and materialization.
  *
- * All fields are optional — a missing file or a partial file both resolve
- * to sensible defaults. Writes are atomic-enough (write-then-rename is not
- * worth the ceremony here since there's only one writer in practice: the
- * host, from the delivery thread that processes approved system actions).
+ * Source of truth is the `container_configs` table in the central DB.
+ * This module provides:
+ *   - Type definitions for the file shape (read by the container runner)
+ *   - `materializeContainerJson()` — writes `groups/<folder>/container.json`
+ *     from the DB at spawn time
+ *   - `configFromDb()` — builds a `ContainerConfig` from a DB row + agent group
+ *   - `emptyConfig()` — classroom defaults (skills = [] not 'all')
+ *   - `containerConfigPath()` — back-compat helper for tooling that inspects the file
  */
 import fs from 'fs';
 import path from 'path';
 
 import { GROUPS_DIR } from './config.js';
+import { getContainerConfig } from './db/container-configs.js';
+import { getAgentGroup } from './db/agent-groups.js';
+import type { AgentGroup, ContainerConfigRow } from './types.js';
 
 export interface McpServerConfig {
   command: string;
@@ -30,17 +34,20 @@ export interface AdditionalMountConfig {
   readonly?: boolean;
 }
 
+/** Shape of the materialized `container.json` file read by the container runner. */
 export interface ContainerConfig {
   mcpServers: Record<string, McpServerConfig>;
   packages: { apt: string[]; npm: string[] };
   imageTag?: string;
   additionalMounts: AdditionalMountConfig[];
-  /** Which skills to enable — array of skill names or "all" (default). */
+  /** Which skills to enable — array of skill names or "all" (legacy). */
   skills: string[] | 'all';
   /** Agent provider name (e.g. "claude", "opencode"). Default: "claude". */
   provider?: string;
   /** Model override. Falls back to provider default if unset. */
   model?: string;
+  /** Reasoning effort knob ('low'|'medium'|'high'|'xhigh'|'max'). */
+  effort?: string;
   /** Agent group display name (used in transcript archiving). */
   groupName?: string;
   /** Assistant display name (used in system prompt / responses). */
@@ -50,103 +57,85 @@ export interface ContainerConfig {
   /** Max messages per prompt. Falls back to code default if unset. */
   maxMessagesPerPrompt?: number;
   /**
-   * Per-group environment variables passed to the container at spawn time.
-   * Use sparingly — most config belongs in container.json itself, read by
-   * the runner. This is for env vars consumed by code we don't own (e.g.
-   * `GOOGLE_APPLICATION_CREDENTIALS` for the Google Workspace CLI).
+   * Per-group environment variables passed to the container at spawn time
+   * (classroom-only). Use sparingly — most config belongs in container.json
+   * itself, read by the runner. This is for env vars consumed by code we
+   * don't own (e.g. `GOOGLE_APPLICATION_CREDENTIALS` for the Google Workspace CLI).
    */
   env?: Record<string, string>;
   /**
-   * Per-group allowlist of models the agent is permitted to route to.
-   * Optional — when undefined, all catalog models are usable. Set via
-   * the playground Models tab or `ncl` CRUD on container.json.
+   * Per-group allowlist of models the agent is permitted to route to
+   * (classroom-only). When undefined, all catalog models are usable. Set via
+   * the playground Models tab or `ncl groups config update`.
    */
   allowedModels?: { provider: string; model: string }[];
+  /**
+   * Pi-provider model provider (e.g. "anthropic", "openai"). Passed through
+   * to the pi runner's modelProvider option. When unset, pi falls back to
+   * the NANOCLAW_PI_MODEL_PROVIDER env var, then its own default.
+   */
+  modelProvider?: string;
 }
 
-function emptyConfig(): ContainerConfig {
+/** Classroom default: skills explicitly granted (empty, not "all"). */
+export function emptyConfig(): ContainerConfig {
   return {
     mcpServers: {},
     packages: { apt: [], npm: [] },
     additionalMounts: [],
-    // Barebones default — instructors explicitly grant skills via the
-    // Skills tab so students can compare agent behavior with and without
-    // any given skill. The legacy "all" sentinel is still accepted (older
-    // installs / hand-edited container.json) but no longer auto-applied.
     skills: [],
   };
 }
 
-function configPath(folder: string): string {
+/** Path the container.json gets materialized to. For tooling that inspects the file. */
+export function containerConfigPath(folder: string): string {
   return path.join(GROUPS_DIR, folder, 'container.json');
 }
 
-/**
- * Read the container config for a group, returning sensible defaults for
- * any missing fields (or an entirely empty config if the file is absent).
- * Never throws for missing / malformed files — corruption logs a warning
- * via console.error and falls back to empty.
- */
-export function readContainerConfig(folder: string): ContainerConfig {
-  const p = configPath(folder);
-  if (!fs.existsSync(p)) return emptyConfig();
-  try {
-    const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as Partial<ContainerConfig>;
-    return {
-      mcpServers: raw.mcpServers ?? {},
-      packages: {
-        apt: raw.packages?.apt ?? [],
-        npm: raw.packages?.npm ?? [],
-      },
-      imageTag: raw.imageTag,
-      additionalMounts: raw.additionalMounts ?? [],
-      skills: raw.skills ?? 'all',
-      provider: raw.provider,
-      model: raw.model,
-      groupName: raw.groupName,
-      assistantName: raw.assistantName,
-      agentGroupId: raw.agentGroupId,
-      maxMessagesPerPrompt: raw.maxMessagesPerPrompt,
-      env: raw.env,
-      allowedModels: raw.allowedModels,
-    };
-  } catch (err) {
-    console.error(`[container-config] failed to parse ${p}: ${String(err)}`);
-    return emptyConfig();
-  }
+/** Build a `ContainerConfig` from a DB row + agent group identity. */
+export function configFromDb(row: ContainerConfigRow, group: AgentGroup): ContainerConfig {
+  return {
+    mcpServers: JSON.parse(row.mcp_servers) as Record<string, McpServerConfig>,
+    packages: {
+      apt: JSON.parse(row.packages_apt) as string[],
+      npm: JSON.parse(row.packages_npm) as string[],
+    },
+    imageTag: row.image_tag ?? undefined,
+    additionalMounts: JSON.parse(row.additional_mounts) as AdditionalMountConfig[],
+    skills: JSON.parse(row.skills) as string[] | 'all',
+    provider: row.provider ?? undefined,
+    groupName: group.name,
+    assistantName: row.assistant_name ?? group.name,
+    agentGroupId: group.id,
+    maxMessagesPerPrompt: row.max_messages_per_prompt ?? undefined,
+    model: row.model ?? undefined,
+    effort: row.effort ?? undefined,
+    env: row.env ? (JSON.parse(row.env) as Record<string, string>) : undefined,
+    allowedModels: row.allowed_models
+      ? (JSON.parse(row.allowed_models) as { provider: string; model: string }[])
+      : undefined,
+    modelProvider: row.model_provider ?? undefined,
+  };
 }
 
 /**
- * Write the container config for a group, creating the groups/<folder>/
- * directory if necessary. Pretty-printed JSON so diffs in the activation
- * flow are reviewable.
+ * Materialize `container.json` from the DB. Called at spawn time so the
+ * container always sees fresh config. Returns the `ContainerConfig` for
+ * use by the caller (buildMounts, buildContainerArgs, etc.).
  */
-export function writeContainerConfig(folder: string, config: ContainerConfig): void {
-  const p = configPath(folder);
+export function materializeContainerJson(agentGroupId: string): ContainerConfig {
+  const group = getAgentGroup(agentGroupId);
+  if (!group) throw new Error(`Agent group not found: ${agentGroupId}`);
+
+  const row = getContainerConfig(agentGroupId);
+  if (!row) throw new Error(`Container config not found for agent group: ${agentGroupId}`);
+
+  const config = configFromDb(row, group);
+
+  const p = containerConfigPath(group.folder);
   const dir = path.dirname(p);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(p, JSON.stringify(config, null, 2) + '\n');
-}
 
-/**
- * Apply a mutator function to a group's container config and persist the
- * result. Convenient for append-style changes like `install_packages` and
- * `add_mcp_server` handlers.
- */
-export function updateContainerConfig(folder: string, mutate: (config: ContainerConfig) => void): ContainerConfig {
-  const config = readContainerConfig(folder);
-  mutate(config);
-  writeContainerConfig(folder, config);
   return config;
-}
-
-/**
- * Initialize an empty container.json for a group if one doesn't already
- * exist. Idempotent — used from `group-init.ts`.
- */
-export function initContainerConfig(folder: string): boolean {
-  const p = configPath(folder);
-  if (fs.existsSync(p)) return false;
-  writeContainerConfig(folder, emptyConfig());
-  return true;
 }

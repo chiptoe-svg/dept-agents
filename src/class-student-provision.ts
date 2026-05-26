@@ -22,7 +22,8 @@ import { removeRosterEntry, upsertRosterEntry } from './db/classroom-roster.js';
 import { getDb } from './db/connection.js';
 import { addMember, removeMember } from './modules/permissions/db/agent-group-members.js';
 import { deleteUser, upsertUser } from './modules/permissions/db/users.js';
-import { readContainerConfig, writeContainerConfig, type ContainerConfig } from './container-config.js';
+import { materializeContainerJson, type ContainerConfig } from './container-config.js';
+import { createContainerConfig } from './db/container-configs.js';
 import { collectSkeletonMounts } from './skeleton-mount-registry.js';
 import type { AgentGroup } from './types.js';
 
@@ -127,7 +128,7 @@ export function inheritedSkills(): ContainerConfig['skills'] {
         .get() as AgentGroup | undefined) ||
       null;
     if (instructor) {
-      const cfg = readContainerConfig(instructor.folder);
+      const cfg = materializeContainerJson(instructor.id);
       if (cfg.skills === 'all' || Array.isArray(cfg.skills)) return cfg.skills;
     }
   } catch (err) {
@@ -163,7 +164,12 @@ export function makeContainerConfig(opts: {
     packages: { apt: [], npm: [] },
     additionalMounts,
     skills: opts.isStudent ? inheritedSkills() : [],
-    provider: 'codex',
+    // Default provider for new student/class containers. Operator-overridable
+    // via NANOCLAW_STUDENT_PROVIDER so a classroom can default to claude / pi
+    // / etc. without editing source. Bug fix: pre-fix this was hardcoded to
+    // 'codex', so any classroom that wanted a different default had to patch
+    // the file. Backward-compatible default preserved.
+    provider: process.env.NANOCLAW_STUDENT_PROVIDER || 'codex',
     groupName: opts.folder,
     assistantName: opts.folder,
   };
@@ -253,12 +259,16 @@ export function provisionStudent(opts: {
   const folder = nextStudentFolder();
   const userId = `class:${folder}`;
   const now = new Date().toISOString();
+  // Defaults are operator-overridable via env so a classroom can spin up
+  // claude/pi/etc. students without editing source. Pre-fix these were hardcoded
+  // to 'codex' / 'gpt-5.4-mini' — every provisioned student came up as codex
+  // regardless of intent. Backward-compatible defaults preserved.
+  const studentModel = process.env.NANOCLAW_STUDENT_MODEL || 'gpt-5.4-mini';
   const group: AgentGroup = {
     id: `ag_${crypto.randomBytes(6).toString('hex')}`,
     name: opts.name,
     folder,
-    agent_provider: 'codex',
-    model: 'gpt-5.4-mini',
+    agent_provider: process.env.NANOCLAW_STUDENT_PROVIDER || 'pi',
     created_at: now,
   };
 
@@ -303,16 +313,33 @@ export function provisionStudent(opts: {
       classConfig,
       argv: [],
     });
-    writeContainerConfig(
+    const containerConfig = makeContainerConfig({
+      kb: (classConfig.kb as string | null) ?? null,
+      wiki: (classConfig.wiki as string | null) ?? null,
       folder,
-      makeContainerConfig({
-        kb: (classConfig.kb as string | null) ?? null,
-        wiki: (classConfig.wiki as string | null) ?? null,
-        folder,
-        extraMounts,
-        isStudent: true,
-      }),
-    );
+      extraMounts,
+      isStudent: true,
+    });
+    createContainerConfig({
+      agent_group_id: group.id,
+      provider: containerConfig.provider ?? null,
+      model: studentModel,
+      effort: null,
+      image_tag: null,
+      assistant_name: containerConfig.assistantName ?? null,
+      max_messages_per_prompt: null,
+      skills: JSON.stringify(containerConfig.skills),
+      mcp_servers: JSON.stringify(containerConfig.mcpServers),
+      packages_apt: JSON.stringify(containerConfig.packages.apt),
+      packages_npm: JSON.stringify(containerConfig.packages.npm),
+      additional_mounts: JSON.stringify(containerConfig.additionalMounts),
+      cli_scope: 'group',
+      env: JSON.stringify(containerConfig.env ?? {}),
+      allowed_models: JSON.stringify(containerConfig.allowedModels ?? []),
+      model_provider: 'openai-codex',
+      updated_at: new Date().toISOString(),
+    });
+    materializeContainerJson(group.id);
 
     // 5. keep class-config.json's roster in sync.
     appendStudentToClassConfig({ name: opts.name, folder });

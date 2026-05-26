@@ -185,7 +185,6 @@ function provisionAgentGroup(folder: string, name: string): AgentGroup {
       name: folder,
       folder,
       agent_provider: null,
-      model: null,
       created_at: nowIso(),
     } as AgentGroup;
     createAgentGroup(group);

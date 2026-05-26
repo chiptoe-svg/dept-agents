@@ -42,7 +42,6 @@ db.close();
 
 // Set env and run the poll loop
 process.env.SESSION_DB_PATH = DB_PATH;
-process.env.AGENT_PROVIDER = 'claude';
 
 const { getSessionDb, closeSessionDb } = await import('../container/agent-runner/src/db/connection.js');
 const { getUndeliveredMessages } = await import('../container/agent-runner/src/db/messages-out.js');
@@ -50,9 +49,9 @@ const { getPendingMessages } = await import('../container/agent-runner/src/db/me
 const { createProvider } = await import('../container/agent-runner/src/providers/factory.js');
 const { runPollLoop } = await import('../container/agent-runner/src/poll-loop.js');
 
-const provider = createProvider('claude');
+const provider = createProvider('pi');
 
-console.log('✓ Claude provider created');
+console.log('✓ Pi provider created');
 console.log('⏳ Starting poll loop (will timeout after 60s)...');
 
 // Run with timeout

@@ -31,10 +31,11 @@ import {
 } from '../../agent-builder/core.js';
 import { GROUPS_DIR } from '../../config.js';
 import { processImage } from '../../image.js';
-import { readContainerConfig, writeContainerConfig } from '../../container-config.js';
+import { materializeContainerJson } from '../../container-config.js';
+import { updateContainerConfigJson } from '../../db/container-configs.js';
 import { isContainerRunning, killContainer } from '../../container-runner.js';
-import { getAgentGroupByFolder, updateAgentGroup } from '../../db/agent-groups.js';
-import { getActiveSessions, updateSession } from '../../db/sessions.js';
+import { getAgentGroupByFolder } from '../../db/agent-groups.js';
+import { getActiveSessions } from '../../db/sessions.js';
 import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
 import { checkDraftMutation } from '../playground-gate-registry.js';
@@ -278,45 +279,6 @@ export async function route(
     return send(res, 200, { ok: true, messageId, attachmentErrors: fileErrors.length > 0 ? fileErrors : undefined });
   }
 
-  // PUT /api/drafts/:folder/provider — body: { provider: 'claude' | 'codex' }
-  // Updates the draft agent_group's provider for permanent change, AND sets
-  // the active session's agent_provider so the next container spawn picks
-  // it up. Kills any running container so the change applies on the next
-  // message immediately.
-  const providerMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/provider$/);
-  if (method === 'PUT' && providerMatch) {
-    const draftFolder = providerMatch[1]!;
-    {
-      const decision = checkDraftMutation(draftFolder, 'provider_put', session.userId);
-      if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
-    }
-    const body = await readJsonBody(req);
-    const provider = body.provider as string | undefined;
-    if (!provider) return send(res, 400, { error: 'provider required' });
-
-    const draft = getAgentGroupByFolder(draftFolder);
-    if (!draft) return send(res, 404, { error: 'draft not found' });
-
-    try {
-      updateAgentGroup(draft.id, { agent_provider: provider });
-      // Apply to any active session for this draft.
-      for (const s of getActiveSessions()) {
-        if (s.agent_group_id !== draft.id) continue;
-        updateSession(s.id, { agent_provider: provider });
-        if (isContainerRunning(s.id)) {
-          try {
-            killContainer(s.id, `provider switched to ${provider}`);
-          } catch {
-            /* best-effort */
-          }
-        }
-      }
-      return send(res, 200, { ok: true, provider });
-    } catch (err) {
-      return send(res, 500, { error: (err as Error).message });
-    }
-  }
-
   // GET /api/drafts/:folder/persona — read CLAUDE.local.md
   const personaGet = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/persona$/);
   if (method === 'GET' && personaGet) {
@@ -490,7 +452,9 @@ export async function route(
     const draftFolder = skillsMatch[1]!;
     if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     try {
-      const cfg = readContainerConfig(draftFolder);
+      const group = getAgentGroupByFolder(draftFolder);
+      if (!group) return send(res, 404, { error: `Agent group not found: ${draftFolder}` });
+      const cfg = materializeContainerJson(group.id);
       return send(res, 200, { skills: cfg.skills });
     } catch (err) {
       return send(res, 500, { error: (err as Error).message });
@@ -508,9 +472,10 @@ export async function route(
       return send(res, 400, { error: 'skills must be string[] or "all"' });
     }
     try {
-      const cfg = readContainerConfig(draftFolder);
-      cfg.skills = skills;
-      writeContainerConfig(draftFolder, cfg);
+      const group = getAgentGroupByFolder(draftFolder);
+      if (!group) return send(res, 404, { error: `Agent group not found: ${draftFolder}` });
+      updateContainerConfigJson(group.id, 'skills', skills);
+      materializeContainerJson(group.id);
       return send(res, 200, { ok: true, skills });
     } catch (err) {
       return send(res, 500, { error: (err as Error).message });
@@ -606,7 +571,7 @@ export async function route(
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
     const body = await readJsonBody(req);
-    const r = handlePutActiveModel(draftFolder, body);
+    const r = await handlePutActiveModel(draftFolder, body);
     return send(res, r.status, r.body);
   }
 

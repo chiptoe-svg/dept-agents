@@ -17,6 +17,12 @@ If you are a fresh install (you ran `git clone`, not `git pull`) and there are n
 
 Personal Claude assistant. See [README.md](README.md) for philosophy and setup. Architecture lives in `docs/`.
 
+## 🧭 Read [state.md](state.md) first
+
+**Before exploring the code, planning, or editing — read [state.md](state.md).** It's the project compass: current arc, invariants you must not break, codebase navigation (codegraph-based), and the decision log. CLAUDE.md (this file) is workflow rules; state.md is the situational layer. A SessionStart hook prints the stable head of state.md into context at the start of every session, but read the full file when going deep.
+
+When a commit changes goals, invariants, the file map, the codebase navigation entries, or warrants a decision-log entry — update state.md in the same commit. The volatile section (current branch + recent commits) auto-regenerates via `.husky/pre-commit`; don't edit it by hand.
+
 ## Workflow Rules
 
 ### 0. Plan Before Executing

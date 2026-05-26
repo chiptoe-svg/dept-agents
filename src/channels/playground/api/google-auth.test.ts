@@ -165,8 +165,8 @@ describe('processGoogleAuthCallback', () => {
     // Ensure the agent group exists so setAgentGroupMetadataKey has a row to update.
     const db = (await import('../../../db/connection.js')).getDb();
     db.prepare(
-      `INSERT OR IGNORE INTO agent_groups (id, name, folder, agent_provider, model, created_at, metadata)
-       VALUES ('ag_alice', 'Alice Agent', 'alice_folder', 'claude', 'claude-3-5-haiku-20241022', 0, NULL)`,
+      `INSERT OR IGNORE INTO agent_groups (id, name, folder, agent_provider, created_at, metadata)
+       VALUES ('ag_alice', 'Alice Agent', 'alice_folder', 'claude', 0, NULL)`,
     ).run();
 
     _seedStateForTest('happy-state', 'class:student_03');

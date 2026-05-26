@@ -18,6 +18,7 @@ import { CONTAINER_DIR, GROUPS_DIR } from '../../../config.js';
 import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
 import { canReadDraft } from '../draft-read-gate.js';
 import { listCustomSkills, listCustomSkillFiles, readCustomSkillFile } from '../custom-skills.js';
+import { getLaunchdLabel, getSystemdUnit } from '../../../install-slug.js';
 import { aggregateAgentUsage } from './usage.js';
 import { entryDir } from './agent-library.js';
 
@@ -428,8 +429,8 @@ function readmeOpenClaw(s: AgentSources): string {
     '```',
     `ncl messaging-groups create --name "${s.assistantName}"`,
     `ncl wirings create --agent-group ${s.folder} --messaging-group <id>`,
-    'launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS',
-    '# systemctl --user restart nanoclaw               # Linux',
+    `launchctl kickstart -k gui/$(id -u)/${getLaunchdLabel()}  # macOS`,
+    `# systemctl --user restart ${getSystemdUnit()}               # Linux`,
     '```',
     '',
     'Your agent will be reachable on whichever channel you wired.',
