@@ -111,6 +111,7 @@ export interface ModelsTabStateResponse {
     state: ProviderState;
     source: ProviderSource;
     actionLabel: string | null;
+    credentialFileShape: 'oauth-token' | 'api-key' | 'mixed' | 'none';
     catalogModels: ModelEntry[];
   }>;
 }
@@ -149,6 +150,7 @@ export async function handleGetModelsTabState(input: {
         state: derived.state,
         source: derived.source,
         actionLabel: derived.actionLabel,
+        credentialFileShape: spec.credentialFileShape,
         catalogModels: derived.state === 'HIDDEN' ? [] : (spec.catalogModels ?? []),
       };
     }),
