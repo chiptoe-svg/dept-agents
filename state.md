@@ -101,20 +101,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (2 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (3 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
+## main...origin/main
  M config/playground-seats.json
-M  state.md
+M  src/channels/playground/public/tabs/models.js
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+3f23d31 docs(state): log Clemson provider + pi-ai integration closeout
 cdbc213 feat(pi): end-to-end Clemson + OMLX invocation via synthesized openai-completions model
 9346fc0 feat(provider): Clemson RCD-hosted LLM (clemson-spec)
 0f43393 docs(state): log multi-provider Models tab milestone + .gitignore .superpowers/ (mptab-16)
@@ -129,9 +130,8 @@ a64c33d feat(playground): OMLX 'none' variant of cred dialog + reachability endp
 3dadbd7 fix(proxy): default OMLX_API_KEY to 'godfrey' (mptab-7)
 e55cede feat(provider): omlx-spec (local server with reachability probe) (mptab-6)
 7964d7c feat(provider): openai-platform-spec (API-key direct OpenAI API) (mptab-5)
-ed2ab99 refactor(catalog): assemble BUILTIN_ENTRIES from spec modules (mptab-4)
 ```
 
 ### Last refresh
 
-2026-05-26T22:07:53Z
+2026-05-26T22:18:07Z

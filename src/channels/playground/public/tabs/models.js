@@ -93,6 +93,10 @@ function renderProviderSection(provider, rootEl) {
   if (provider.actionLabel) {
     const actionLink = document.createElement('a');
     actionLink.className = 'provider-action';
+    // data-provider breadcrumb — handy for diagnostics (Playwright tests,
+    // post-hoc DOM inspection). Functionally the click handler closes over
+    // `provider` directly, so the attribute isn't load-bearing for routing.
+    actionLink.setAttribute('data-provider', provider.id);
     actionLink.style.cssText = 'color:var(--brand-blue);font-size:11px;cursor:pointer';
     actionLink.textContent = provider.actionLabel;
     actionLink.addEventListener('click', () => {
