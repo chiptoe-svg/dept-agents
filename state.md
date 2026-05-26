@@ -100,25 +100,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (0 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (1 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
  M config/playground-seats.json
-M  src/channels/playground/api/models-tab-state.ts
-M  src/credential-proxy.ts
-M  src/model-catalog.ts
-A  src/providers/clemson-spec.test.ts
-A  src/providers/clemson-spec.ts
-M  src/providers/index.ts
+M  container/agent-runner/src/providers/pi-auth.ts
+M  container/agent-runner/src/providers/pi-model.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+9346fc0 feat(provider): Clemson RCD-hosted LLM (clemson-spec)
 0f43393 docs(state): log multi-provider Models tab milestone + .gitignore .superpowers/ (mptab-16)
 ed3ce27 fix(omlx): probe sends bearer token + document OMLX smoke gap (mptab-15)
 2ee648b feat(class-controls): default openai-platform + omlx provider entries (mptab-14)
@@ -133,9 +130,8 @@ e55cede feat(provider): omlx-spec (local server with reachability probe) (mptab-
 7964d7c feat(provider): openai-platform-spec (API-key direct OpenAI API) (mptab-5)
 ed2ab99 refactor(catalog): assemble BUILTIN_ENTRIES from spec modules (mptab-4)
 a6270a2 refactor(provider): codex-spec owns OpenAI-codex catalog entries (mptab-3)
-ad9d28d refactor(provider): claude-spec owns Anthropic catalog entries (mptab-2)
 ```
 
 ### Last refresh
 
-2026-05-26T22:00:10Z
+2026-05-26T22:07:00Z
