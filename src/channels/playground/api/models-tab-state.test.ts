@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { deriveProviderState } from './models-tab-state.js';
 import type { SpecFacts } from './models-tab-state.js';
 
@@ -102,5 +105,106 @@ describe('deriveProviderState — truth table', () => {
     });
     expect(r.state).toBe('GREYED');
     expect(r.actionLabel).toBe('ask instructor');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration test — handleGetModelsTabState
+// ---------------------------------------------------------------------------
+
+let tmpRoot: string;
+let originalCwd: string;
+
+beforeEach(() => {
+  originalCwd = process.cwd();
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mts-test-'));
+  process.chdir(tmpRoot);
+  fs.mkdirSync(path.join(tmpRoot, 'config'), { recursive: true });
+  // Reset module cache so PROJECT_ROOT / CONFIG_PATH re-evaluate against tmpRoot.
+  vi.resetModules();
+});
+
+afterEach(() => {
+  process.chdir(originalCwd);
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+describe('handleGetModelsTabState — integration', () => {
+  it('returns one entry per registered provider with the documented shape', async () => {
+    // Seed two providers into the auth registry.
+    const { registerProvider, resetRegistryForTests } = await import('../../../providers/auth-registry.js');
+    resetRegistryForTests();
+    registerProvider({
+      id: 'claude',
+      displayName: 'Claude',
+      proxyRoutePrefix: '',
+      credentialFileShape: 'oauth-token',
+      apiKey: { placeholder: 'sk-ant-…' },
+    });
+    registerProvider({
+      id: 'openai-platform',
+      displayName: 'OpenAI',
+      proxyRoutePrefix: '/openai/',
+      credentialFileShape: 'api-key',
+      apiKey: { placeholder: 'sk-…' },
+    });
+
+    // Write class controls: claude is allowed+provideDefault; openai-platform allowByo only.
+    const { writeClassControls, DEFAULT_CLASS_ID } = await import('./class-controls.js');
+    writeClassControls({
+      classes: {
+        [DEFAULT_CLASS_ID]: {
+          tabsVisibleToStudents: ['models'],
+          authModesAvailable: ['api-key'],
+          providers: {
+            claude: { allow: true, provideDefault: true, allowByo: false },
+            'openai-platform': { allow: true, provideDefault: false, allowByo: true },
+          },
+        },
+      },
+    });
+
+    // Student has no personal creds (no cred files in tmpRoot/data/).
+    const { handleGetModelsTabState } = await import('./models-tab-state.js');
+    const res = await handleGetModelsTabState({
+      userId: 'user:test',
+      agentGroupId: 'ag-test',
+      classId: DEFAULT_CLASS_ID,
+    });
+
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      providers: Array<{
+        id: string;
+        state: string;
+        source: unknown;
+        actionLabel: unknown;
+        catalogModels: Array<unknown>;
+        displayName: string;
+      }>;
+    };
+    expect(Array.isArray(body.providers)).toBe(true);
+    expect(body.providers).toHaveLength(2);
+
+    // Confirm every provider object has the documented shape.
+    for (const p of body.providers) {
+      expect(p).toHaveProperty('id');
+      expect(p).toHaveProperty('displayName');
+      expect(p).toHaveProperty('state');
+      expect(p).toHaveProperty('source');
+      expect(p).toHaveProperty('actionLabel');
+      expect(p).toHaveProperty('catalogModels');
+      if (p.state === 'HIDDEN') expect(p.catalogModels).toHaveLength(0);
+    }
+
+    // claude: provideDefault → AVAILABLE source=class-pool
+    const claude = body.providers.find((p) => p.id === 'claude')!;
+    expect(claude.state).toBe('AVAILABLE');
+    expect(claude.source).toBe('class-pool');
+
+    // openai-platform: allowByo, no creds, apiKey method → GREYED + "add api key"
+    const openai = body.providers.find((p) => p.id === 'openai-platform')!;
+    expect(openai.state).toBe('GREYED');
+    expect(openai.actionLabel).toBe('add api key');
   });
 });

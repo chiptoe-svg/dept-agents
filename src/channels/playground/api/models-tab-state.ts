@@ -11,6 +11,10 @@
  *   5. has personal creds             -> AVAILABLE + source=personal-{oauth|key}
  *   6. policy.allowByo                -> GREYED + "add api key" or "connect"
  *   7. (else)                         -> GREYED + "ask instructor"
+ *
+ * handleGetModelsTabState composes the pure function with the live
+ * class-controls config, per-student credential store, and a 30-second
+ * reachability cache.
  */
 
 export type ProviderState = 'AVAILABLE' | 'GREYED' | 'HIDDEN';
@@ -75,4 +79,80 @@ export function deriveProviderState(input: {
   }
 
   return { state: 'GREYED', source: null, actionLabel: 'ask instructor' };
+}
+
+// ---------------------------------------------------------------------------
+// HTTP handler — composes deriveProviderState with live config + cred store
+// ---------------------------------------------------------------------------
+
+import { listProviderSpecs } from '../../../providers/auth-registry.js';
+import { DEFAULT_CLASS_ID, readClassControls } from './class-controls.js';
+import { loadStudentProviderCreds } from '../../../student-provider-auth.js';
+import type { ModelEntry } from '../../../model-catalog.js';
+
+const REACHABILITY_CACHE_MS = 30_000;
+
+/** Exported so tests / the future re-test button can bust the cache. */
+export const reachabilityCache = new Map<string, { value: boolean; expiresAt: number }>();
+
+async function probeWithCache(specId: string, probe: () => Promise<boolean>): Promise<boolean> {
+  const now = Date.now();
+  const cached = reachabilityCache.get(specId);
+  if (cached && cached.expiresAt > now) return cached.value;
+  const value = await probe();
+  reachabilityCache.set(specId, { value, expiresAt: now + REACHABILITY_CACHE_MS });
+  return value;
+}
+
+export interface ModelsTabStateResponse {
+  providers: Array<{
+    id: string;
+    displayName: string;
+    state: ProviderState;
+    source: ProviderSource;
+    actionLabel: string | null;
+    catalogModels: ModelEntry[];
+  }>;
+}
+
+export async function handleGetModelsTabState(input: {
+  userId: string;
+  agentGroupId: string;
+  classId: string;
+}): Promise<{ status: number; body: ModelsTabStateResponse }> {
+  const cc = readClassControls();
+  const policies = cc.classes[input.classId]?.providers ?? {};
+  const specs = listProviderSpecs();
+
+  const providers = await Promise.all(
+    specs.map(async (spec) => {
+      const policy = policies[spec.id] ?? { allow: false, provideDefault: false, allowByo: false };
+      const credsRaw = loadStudentProviderCreds(input.userId, spec.id);
+      const creds: CredState = credsRaw
+        ? { hasOAuth: !!credsRaw.oauth, hasApiKey: !!credsRaw.apiKey }
+        : { hasOAuth: false, hasApiKey: false };
+      const isLocalOnly = spec.credentialFileShape === 'none';
+      const reachable = spec.reachability ? await probeWithCache(spec.id, spec.reachability) : true;
+      const facts: SpecFacts = {
+        id: spec.id,
+        displayName: spec.displayName,
+        catalogModels: (spec.catalogModels ?? []).map((m) => ({ id: m.id, modelProvider: m.modelProvider })),
+        hasReachabilityProbe: !!spec.reachability,
+        isLocalOnly,
+        hasOauthMethod: !!spec.oauth,
+        hasApiKeyMethod: !!spec.apiKey,
+      };
+      const derived = deriveProviderState({ spec: facts, policy, creds, reachable });
+      return {
+        id: spec.id,
+        displayName: spec.displayName,
+        state: derived.state,
+        source: derived.source,
+        actionLabel: derived.actionLabel,
+        catalogModels: derived.state === 'HIDDEN' ? [] : (spec.catalogModels ?? []),
+      };
+    }),
+  );
+
+  return { status: 200, body: { providers } };
 }
