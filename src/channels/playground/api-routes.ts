@@ -96,6 +96,8 @@ import { handleAddStudent, handleGetTunnel, handleStopTunnel } from './api/stude
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
+import { canAccessAgentGroup } from '../../modules/permissions/access.js';
+import { handleGetSessionPayloads } from './api/payloads.js';
 import { handleGetEntry, handleListLibrary, handleSaveMyEntry } from './api/library.js';
 import {
   handleGetMyAgent,
@@ -391,6 +393,24 @@ export async function route(
   if (method === 'POST' && url.pathname === '/api/me/telegram/pair-code') {
     const { handleIssuePairCode } = await import('./api/telegram-pair.js');
     const r = handleIssuePairCode(session);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/sessions/:sessionId/payloads?agentGroupId=...&limit=N&after=seq
+  if (method === 'GET' && url.pathname.startsWith('/api/sessions/') && url.pathname.endsWith('/payloads')) {
+    const sessionId = url.pathname.slice('/api/sessions/'.length, -'/payloads'.length);
+    const agentGroupId = url.searchParams.get('agentGroupId') ?? '';
+    const limit = Number(url.searchParams.get('limit') ?? '20');
+    const afterSeq = Number(url.searchParams.get('after') ?? '0');
+    const userId = session.userId ?? '';
+    const r = await handleGetSessionPayloads({
+      baseDir: path.join(process.cwd(), 'data', 'proxy-payloads'),
+      agentGroupId,
+      sessionId,
+      limit,
+      afterSeq,
+      canAccess: (ag) => canAccessAgentGroup(userId, ag).allowed,
+    });
     return send(res, r.status, r.body);
   }
 
