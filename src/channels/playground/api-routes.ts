@@ -400,8 +400,10 @@ export async function route(
   if (method === 'GET' && url.pathname.startsWith('/api/sessions/') && url.pathname.endsWith('/payloads')) {
     const sessionId = url.pathname.slice('/api/sessions/'.length, -'/payloads'.length);
     const agentGroupId = url.searchParams.get('agentGroupId') ?? '';
-    const limit = Number(url.searchParams.get('limit') ?? '20');
-    const afterSeq = Number(url.searchParams.get('after') ?? '0');
+    const rawLimit = Number(url.searchParams.get('limit') ?? '20');
+    const rawAfter = Number(url.searchParams.get('after') ?? '0');
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 20;
+    const afterSeq = Number.isFinite(rawAfter) && rawAfter >= 0 ? rawAfter : 0;
     const userId = session.userId ?? '';
     const r = await handleGetSessionPayloads({
       baseDir: path.join(process.cwd(), 'data', 'proxy-payloads'),

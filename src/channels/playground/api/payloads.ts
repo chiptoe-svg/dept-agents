@@ -28,7 +28,19 @@ export interface HandleInput {
   canAccess: (agentGroupId: string) => boolean;
 }
 
-export async function handleGetSessionPayloads(input: HandleInput): Promise<ApiResult<PayloadListBody>> {
+export async function handleGetSessionPayloads(
+  input: HandleInput,
+): Promise<ApiResult<PayloadListBody | { error: string }>> {
+  // agentGroupId and sessionId are joined into filesystem paths below.
+  // Reject anything containing path-traversal characters before any
+  // path operation runs. Owner/global-admin users bypass the standard
+  // agent-group access check, so this is the only place this validation
+  // can happen.
+  const safe = /^[A-Za-z0-9_-]+$/;
+  if (!safe.test(input.agentGroupId) || !safe.test(input.sessionId)) {
+    return { status: 400, body: { error: 'invalid id' } };
+  }
+
   if (!input.canAccess(input.agentGroupId)) {
     return { status: 401, body: { error: 'unauthorized' } };
   }

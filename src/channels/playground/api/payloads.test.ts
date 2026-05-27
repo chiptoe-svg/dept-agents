@@ -89,4 +89,28 @@ describe('handleGetSessionPayloads', () => {
     expect(row.sections_json).not.toBeNull();
     expect(JSON.parse(row.sections_json as string)).toHaveProperty('totalBytes');
   });
+
+  it('returns 400 for an agentGroupId containing path-traversal', async () => {
+    const res = await handleGetSessionPayloads({
+      baseDir: tmpDir,
+      agentGroupId: '../../etc',
+      sessionId: 'sess1',
+      limit: 10,
+      afterSeq: 0,
+      canAccess: () => true, // owner-like — even with access, should still 400
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for a sessionId containing path-traversal', async () => {
+    const res = await handleGetSessionPayloads({
+      baseDir: tmpDir,
+      agentGroupId: 'ag1',
+      sessionId: '../passwd',
+      limit: 10,
+      afterSeq: 0,
+      canAccess: () => true,
+    });
+    expect(res.status).toBe(400);
+  });
 });
