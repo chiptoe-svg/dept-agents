@@ -44,7 +44,12 @@ export interface ClassControls {
 const DEFAULT_CLASS_CONTROL: ClassControl = {
   tabsVisibleToStudents: ['home', 'chat', 'persona', 'skills', 'models', 'agents'],
   authModesAvailable: ['api-key', 'oauth', 'claude-code-oauth'],
-  providers: {},
+  providers: {
+    claude: { allow: false, provideDefault: false, allowByo: false },
+    codex: { allow: false, provideDefault: false, allowByo: false },
+    'openai-platform': { allow: false, provideDefault: false, allowByo: false },
+    omlx: { allow: true, provideDefault: true, allowByo: false },
+  },
 };
 
 function defaultsRoot(): ClassControls {

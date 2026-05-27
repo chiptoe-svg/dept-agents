@@ -1,4 +1,5 @@
 import { registerProvider } from './auth-registry.js';
+import type { ModelEntry } from '../model-catalog.js';
 
 // Values sourced from docs/providers/oauth-endpoints.md (Claude Code v2.1.116).
 // Re-verify after major @anthropic-ai/claude-code version bumps.
@@ -34,4 +35,37 @@ registerProvider({
     placeholder: 'sk-ant-api03-…',
     validatePrefix: 'sk-ant-',
   },
+  catalogModels: [
+    {
+      id: 'claude-haiku-4-5',
+      modelProvider: 'anthropic',
+      displayName: 'claude-haiku-4-5',
+      origin: 'cloud',
+      costPer1kInUsd: 0.001,
+      costPer1kOutUsd: 0.005,
+      costPer1kCachedInUsd: 0.0001,
+      costPer1kTokensUsd: 0.0008,
+      avgLatencySec: 0.9,
+      paramCount: 'not disclosed',
+      modalities: ['text', 'image'],
+      chips: ['⚡ fast', '$ cheap', '☁ Anthropic'],
+      bestFor: 'Short answers, classification, structured output.',
+    },
+    {
+      id: 'claude-sonnet-4-6',
+      modelProvider: 'anthropic',
+      displayName: 'claude-sonnet-4-6',
+      origin: 'cloud',
+      costPer1kInUsd: 0.003,
+      costPer1kOutUsd: 0.015,
+      costPer1kCachedInUsd: 0.0003,
+      costPer1kTokensUsd: 0.012,
+      avgLatencySec: 2.1,
+      paramCount: 'not disclosed',
+      modalities: ['text', 'image'],
+      chips: ['🐢 slower', '$$ pricier', '☁ Anthropic'],
+      bestFor: 'Reasoning, long outputs.',
+      default: true,
+    },
+  ] satisfies ModelEntry[],
 });

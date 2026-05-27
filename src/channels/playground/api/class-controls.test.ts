@@ -24,10 +24,15 @@ afterEach(() => {
 });
 
 describe('class-controls — new wrapped shape', () => {
-  it('returns empty providers map when no file exists (fresh class)', async () => {
+  it('returns default providers map when no file exists (fresh class)', async () => {
     const { readClassControls, DEFAULT_CLASS_ID } = await import('./class-controls.js');
     const cc = readClassControls();
-    expect(cc.classes[DEFAULT_CLASS_ID]!.providers).toEqual({});
+    const providers = cc.classes[DEFAULT_CLASS_ID]!.providers;
+    expect(providers).toHaveProperty('claude');
+    expect(providers).toHaveProperty('codex');
+    expect(providers).toHaveProperty('openai-platform');
+    expect(providers).toHaveProperty('omlx');
+    expect(providers['omlx']).toEqual({ allow: true, provideDefault: true, allowByo: false });
   });
 
   it('migrates v1 flat shape — only listed providers appear in map', async () => {
@@ -86,5 +91,48 @@ describe('class-controls — new wrapped shape', () => {
       classes: { 'fake-class': { tabsVisibleToStudents: [], authModesAvailable: [], providers: {} } },
     } as never);
     expect(result.status).toBe(400);
+  });
+});
+
+describe('Class Controls — new provider defaults (mptab-14)', () => {
+  it('DEFAULT_CLASS_CONTROL includes openai-platform and omlx', async () => {
+    const { readClassControls, DEFAULT_CLASS_ID } = await import('./class-controls.js');
+    const cc = readClassControls();
+    const providers = cc.classes[DEFAULT_CLASS_ID]!.providers;
+    expect(providers).toHaveProperty('openai-platform');
+    expect(providers).toHaveProperty('omlx');
+    expect(providers['openai-platform']).toEqual({ allow: false, provideDefault: false, allowByo: false });
+    expect(providers['omlx']).toEqual({ allow: true, provideDefault: true, allowByo: false });
+  });
+
+  it('reading a pre-existing config with only claude+codex preserves those policies', async () => {
+    // Write a config that only has the old 2 providers
+    fs.writeFileSync(
+      path.join(tmpRoot, 'config', 'class-controls.json'),
+      JSON.stringify({
+        classes: {
+          default: {
+            tabsVisibleToStudents: ['chat'],
+            authModesAvailable: ['api-key'],
+            providers: {
+              claude: { allow: true, provideDefault: true, allowByo: true },
+              codex: { allow: true, provideDefault: false, allowByo: true },
+            },
+          },
+        },
+      }),
+    );
+
+    const { readClassControls, DEFAULT_CLASS_ID } = await import('./class-controls.js');
+    const cc = readClassControls();
+    const providers = cc.classes[DEFAULT_CLASS_ID]!.providers;
+    // Existing providers preserved verbatim
+    expect(providers.claude).toEqual({ allow: true, provideDefault: true, allowByo: true });
+    expect(providers.codex).toEqual({ allow: true, provideDefault: false, allowByo: true });
+    // New providers are NOT auto-filled on read (they stay absent from the old config).
+    // The greying rule in handleGetModelsTabState already defaults missing policies
+    // to {allow:false, provideDefault:false, allowByo:false} so this is safe.
+    expect(providers['openai-platform']).toBeUndefined();
+    expect(providers['omlx']).toBeUndefined();
   });
 });

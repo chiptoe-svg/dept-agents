@@ -6,3 +6,6 @@
 // Skills add a new provider by appending one import line below.
 
 import './pi.js';
+import './openai-platform-spec.js';
+import './omlx-spec.js';
+import './clemson-spec.js';

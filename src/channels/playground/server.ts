@@ -58,6 +58,7 @@ import {
   handleSetActive,
   handleDisconnect,
 } from './api/provider-auth.js';
+import { handleOmlxReachability } from './api/omlx-reachability.js';
 // ── classroom-provider-auth:imports END ────────────────────────────────────
 
 let server: http.Server | null = null;
@@ -572,12 +573,24 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     }
   }
   if (url.pathname.startsWith('/api/me/providers/')) {
-    const m = url.pathname.match(/^\/api\/me\/providers\/([^/]+)(?:\/(api-key|active))?$/);
+    const m = url.pathname.match(/^\/api\/me\/providers\/([^/]+)(?:\/(api-key|active|reachability))?$/);
     if (m) {
       const [, providerId, action] = m;
       const userId = session.userId;
       if (!userId) {
         send(res, 401, { error: 'not signed in' });
+        return;
+      }
+      if (method === 'POST' && action === 'reachability') {
+        void (async () => {
+          try {
+            const result = await handleOmlxReachability();
+            send(res, result.status, result.body);
+          } catch (err) {
+            log.error('omlx reachability check error', { err });
+            if (!res.headersSent) send(res, 500, { error: String(err) });
+          }
+        })();
         return;
       }
       if (method === 'GET' && !action) {

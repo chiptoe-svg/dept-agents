@@ -4,12 +4,13 @@
  * The proxy injects real credentials so containers never see them.
  *
  * Routes by URL path prefix:
- *   /openai/*      → OpenAI API (strip prefix, inject Authorization)
- *   /omlx/*        → Local OpenAI-compatible server (mlx-omni, Ollama, etc.)
- *                    (strip prefix, inject Bearer OMLX_API_KEY)
- *   /googleapis/*  → Google APIs (strip prefix, inject OAuth Bearer
- *                    refreshed from ~/.config/gws/credentials.json)
- *   everything else → Anthropic API (default)
+ *   /openai/*           → OpenAI API via ChatGPT/Codex OAuth (strip prefix, inject Authorization)
+ *   /openai-platform/*  → OpenAI API via direct Platform API key (strip prefix, inject Authorization)
+ *   /omlx/*             → Local OpenAI-compatible server (mlx-omni, Ollama, etc.)
+ *                         (strip prefix, inject Bearer OMLX_API_KEY)
+ *   /googleapis/*       → Google APIs (strip prefix, inject OAuth Bearer
+ *                         refreshed from ~/.config/gws/credentials.json)
+ *   everything else     → Anthropic API (default)
  *
  * Anthropic auth modes:
  *   API key:  Proxy injects x-api-key on every request.
@@ -76,6 +77,13 @@ export let studentCredsHook: StudentCredsHook = async () => null;
 
 export function setStudentCredsHook(fn: StudentCredsHook): void {
   studentCredsHook = fn;
+}
+
+/** Resolve the OMLX upstream auth token. Defaults to literal "godfrey"
+ *  so the auth-substitution path is always exercised even on installs
+ *  that haven't configured a real key. Override by setting OMLX_API_KEY. */
+export function resolveOmlxKey(): string {
+  return process.env.OMLX_API_KEY ?? 'godfrey';
 }
 
 export function serializeResolvedCredsError(
@@ -341,8 +349,11 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
     'ANTHROPIC_BASE_URL',
     'OPENAI_API_KEY',
     'OPENAI_BASE_URL',
+    'OPENAI_PLATFORM_API_KEY',
     'OMLX_API_KEY',
     'OMLX_BASE_URL',
+    'CAMPUS_LLM_API_KEY',
+    'CAMPUS_LLM_BASE_URL',
   ]);
 
   const authMode: AuthMode = secrets.ANTHROPIC_API_KEY ? 'api-key' : 'oauth';
@@ -355,6 +366,11 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
   // Routed via the /omlx/* prefix so agents on the `local` provider send
   // codex traffic here while `codex` agents still hit cloud OpenAI.
   const omlxUpstream = new URL(secrets.OMLX_BASE_URL || 'http://localhost:8000');
+  // Clemson RCD-hosted LLM endpoint (OpenAI-compatible). Routed via the
+  // /clemson/* prefix. Institution-paid, shared across the class pool —
+  // no per-student credentials. CAMPUS_LLM_API_KEY substituted on every
+  // request that lands on this route.
+  const clemsonUpstream = new URL(secrets.CAMPUS_LLM_BASE_URL || 'https://llm.rcd.clemson.edu');
 
   const requestFor = (isHttps: boolean) => (isHttps ? httpsRequest : httpRequest);
 
@@ -370,8 +386,10 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
         //   /googleapis/*   → Google APIs (strip prefix, inject OAuth Bearer)
         //   everything else → Anthropic (existing behaviour)
         const rawUrl = req.url || '/';
-        const isOpenAI = rawUrl.startsWith('/openai/') || rawUrl === '/openai';
+        const isOpenAIPlatform = rawUrl.startsWith('/openai-platform/') || rawUrl === '/openai-platform';
+        const isOpenAI = !isOpenAIPlatform && (rawUrl.startsWith('/openai/') || rawUrl === '/openai');
         const isOmlx = rawUrl.startsWith('/omlx/') || rawUrl === '/omlx';
+        const isClemson = rawUrl.startsWith('/clemson/') || rawUrl === '/clemson';
         const isGoogle = rawUrl.startsWith('/googleapis/') || rawUrl === '/googleapis';
 
         // Per-call attribution: which agent group is calling? Used by the
@@ -384,18 +402,24 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
 
         const upstreamUrl = isGoogle
           ? googleUpstream
-          : isOpenAI
+          : isOpenAI || isOpenAIPlatform
             ? openaiUpstream
             : isOmlx
               ? omlxUpstream
-              : anthropicUpstream;
+              : isClemson
+                ? clemsonUpstream
+                : anthropicUpstream;
         const upstreamPath = isGoogle
           ? rawUrl.replace(/^\/googleapis/, '') || '/'
-          : isOpenAI
-            ? rawUrl.replace(/^\/openai/, '') || '/'
-            : isOmlx
-              ? rawUrl.replace(/^\/omlx/, '') || '/'
-              : rawUrl;
+          : isOpenAIPlatform
+            ? rawUrl.replace(/^\/openai-platform/, '') || '/'
+            : isOpenAI
+              ? rawUrl.replace(/^\/openai/, '') || '/'
+              : isOmlx
+                ? rawUrl.replace(/^\/omlx/, '') || '/'
+                : isClemson
+                  ? rawUrl.replace(/^\/clemson/, '') || '/'
+                  : rawUrl;
         const isHttps = upstreamUrl.protocol === 'https:';
         const makeRequest = requestFor(isHttps);
 
@@ -414,12 +438,13 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
 
         // ── per-student-provider-auth:proxy-invocation START ──────────────────────
         let studentCredsApplied = false;
-        if (agentGroupId && (isOpenAI || (!isGoogle && !isOmlx))) {
-          // NOTE: 'codex'/'claude' here are AUTH provider IDs (matching what
-          // codex-spec.ts / claude-spec.ts register in auth-registry.ts), NOT the
-          // agent harness provider (agent_groups.agent_provider, now always 'pi').
+        if (agentGroupId && (isOpenAI || isOpenAIPlatform || (!isGoogle && !isOmlx && !isClemson))) {
+          // NOTE: 'codex'/'openai-platform'/'claude' here are AUTH provider IDs
+          // (matching what codex-spec.ts / openai-platform-spec.ts / claude-spec.ts
+          // register in auth-registry.ts), NOT the agent harness provider
+          // (agent_groups.agent_provider, now always 'pi').
           // These two namespaces share strings but are independent — do not merge.
-          const providerId = isOpenAI ? 'codex' : 'claude';
+          const providerId = isOpenAI ? 'codex' : isOpenAIPlatform ? 'openai-platform' : 'claude';
           const resolved = await studentCredsHook(agentGroupId, providerId);
           if (resolved) {
             if (resolved.kind === 'connect_required' || resolved.kind === 'forbidden') {
@@ -464,8 +489,8 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           delete headers['x-goog-api-key'];
           headers['authorization'] = `Bearer ${resolved.token}`;
         } else if (isOpenAI && !studentCredsApplied) {
-          // OpenAI mode: replace any placeholder Authorization with the
-          // real key. If OPENAI_API_KEY isn't set on the host, 502 with
+          // OpenAI (ChatGPT/Codex OAuth) mode: replace any placeholder Authorization
+          // with the real key. If OPENAI_API_KEY isn't set on the host, 502 with
           // a clear message so the container-side error is actionable.
           if (!secrets.OPENAI_API_KEY) {
             res.writeHead(502, { 'content-type': 'application/json' });
@@ -482,14 +507,53 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           delete headers['authorization'];
           delete headers['x-api-key'];
           headers['authorization'] = `Bearer ${secrets.OPENAI_API_KEY}`;
+        } else if (isOpenAIPlatform && !studentCredsApplied) {
+          // OpenAI Platform direct-API mode: inject OPENAI_PLATFORM_API_KEY.
+          // Distinct from the /openai/ (Codex/ChatGPT OAuth) route — different
+          // key shape and separate cred lookup so they don't conflict.
+          if (!secrets.OPENAI_PLATFORM_API_KEY) {
+            res.writeHead(502, { 'content-type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                error: {
+                  message: 'OPENAI_PLATFORM_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
+                  type: 'proxy_misconfiguration',
+                },
+              }),
+            );
+            return;
+          }
+          delete headers['authorization'];
+          delete headers['x-api-key'];
+          headers['authorization'] = `Bearer ${secrets.OPENAI_PLATFORM_API_KEY}`;
+          log.info('Credential proxy: injected OPENAI_PLATFORM_API_KEY', { agentGroupId });
         } else if (isOmlx) {
           // Local OpenAI-compatible server. Container sends OPENAI_API_KEY=placeholder
           // or OMLX_API_KEY=placeholder; we replace with OMLX_API_KEY here. Defaults
-          // to literal "local" if unset, since many local servers ignore auth entirely
-          // but the SDK still sends a header.
+          // to literal "godfrey" if unset, which keeps the auth-substitution path
+          // always exercised even on installs that haven't configured a real key.
           delete headers['authorization'];
           delete headers['x-api-key'];
-          headers['authorization'] = `Bearer ${secrets.OMLX_API_KEY || 'local'}`;
+          headers['authorization'] = `Bearer ${secrets.OMLX_API_KEY || resolveOmlxKey()}`;
+        } else if (isClemson) {
+          // Clemson RCD-hosted LLM endpoint (OpenAI-compatible). Institution-paid,
+          // class-pool only — no per-student creds. Returns 502 if CAMPUS_LLM_API_KEY
+          // is not set on the host, so misconfiguration is visible rather than silent.
+          if (!secrets.CAMPUS_LLM_API_KEY) {
+            res.writeHead(502, { 'content-type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                error: {
+                  message: 'CAMPUS_LLM_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
+                  type: 'proxy_misconfiguration',
+                },
+              }),
+            );
+            return;
+          }
+          delete headers['authorization'];
+          delete headers['x-api-key'];
+          headers['authorization'] = `Bearer ${secrets.CAMPUS_LLM_API_KEY}`;
         } else if (authMode === 'api-key' && !studentCredsApplied) {
           // Anthropic API key mode: inject x-api-key on every request
           delete headers['x-api-key'];
@@ -553,7 +617,17 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           log.error('Credential proxy upstream error', {
             err,
             url: req.url,
-            route: isGoogle ? 'google' : isOpenAI ? 'openai' : isOmlx ? 'omlx' : 'anthropic',
+            route: isGoogle
+              ? 'google'
+              : isOpenAIPlatform
+                ? 'openai-platform'
+                : isOpenAI
+                  ? 'openai'
+                  : isOmlx
+                    ? 'omlx'
+                    : isClemson
+                      ? 'clemson'
+                      : 'anthropic',
           });
           if (!res.headersSent) {
             res.writeHead(502);

@@ -89,7 +89,8 @@ import {
   handlePutModels,
   handleToggleDefaultModel,
 } from './api/models.js';
-import { handleGetClassControls, handlePutClassControls } from './api/class-controls.js';
+import { handleGetClassControls, handlePutClassControls, DEFAULT_CLASS_ID } from './api/class-controls.js';
+import { handleGetModelsTabState } from './api/models-tab-state.js';
 import { handleGetClassBase, handlePutClassBase } from './api/class-base.js';
 import { handleAddStudent, handleGetTunnel, handleStopTunnel } from './api/students-admin.js';
 import { handleDirectChat } from './api/direct-chat.js';
@@ -341,6 +342,18 @@ export async function route(
   // GET /api/me/agent — agent group assigned to this user (with fallback)
   if (method === 'GET' && url.pathname === '/api/me/agent') {
     const r = handleGetMyAgent(session, url.searchParams.get('seat'));
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/me/models-tab-state — per-student greying state for every
+  // registered provider (class policy + personal creds + reachability).
+  if (method === 'GET' && url.pathname === '/api/me/models-tab-state') {
+    const agentGroupId = url.searchParams.get('agentGroupId') ?? '';
+    const r = await handleGetModelsTabState({
+      userId: session.userId ?? '',
+      agentGroupId,
+      classId: DEFAULT_CLASS_ID,
+    });
     return send(res, r.status, r.body);
   }
 

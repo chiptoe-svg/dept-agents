@@ -275,8 +275,11 @@ function buildModalShell(title, bodyFn, onOk) {
   h.textContent = title;
   modal.appendChild(h);
 
-  bodyFn(modal);
-
+  // Build the actions skeleton BEFORE calling bodyFn so the body callbacks
+  // can do `modal.querySelector('#modal-ok')` to customize button text/class,
+  // and `modal.insertBefore(node, modal.querySelector('.modal-actions'))` to
+  // splice their content above the buttons. Without this, bodyFn ran first
+  // and #modal-ok was null → crash on .className.
   const actions = document.createElement('div');
   actions.className = 'modal-actions';
   const cancelBtn = document.createElement('button');
@@ -289,6 +292,9 @@ function buildModalShell(title, bodyFn, onOk) {
   actions.appendChild(cancelBtn);
   actions.appendChild(okBtn);
   modal.appendChild(actions);
+
+  bodyFn(modal);
+
   backdrop.appendChild(modal);
   root.appendChild(backdrop);
 
