@@ -101,7 +101,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (10 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (11 commits ahead)
 
 ### Working tree
 
@@ -109,14 +109,14 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ## main...origin/main
  M config/playground-seats.json
 M  docs/vision/index.html
-A  plans/remaining-work-2026-05-26.md
-M  src/providers/openai-platform-spec.test.ts
+M  plans/remaining-work-2026-05-26.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+bb4874d docs(vision): reconcile roadmap with shipped state — 2026-05-26 audit
 96b09cf fix(agents): buildModalShell builds actions skeleton before calling bodyFn
 d413236 feat(provider): mirror codex's 5-model lineup on openai-platform
 87f0e18 feat(provider): rename OpenAI providers to subscription / API split
@@ -131,9 +131,8 @@ cdbc213 feat(pi): end-to-end Clemson + OMLX invocation via synthesized openai-co
 ed3ce27 fix(omlx): probe sends bearer token + document OMLX smoke gap (mptab-15)
 2ee648b feat(class-controls): default openai-platform + omlx provider entries (mptab-14)
 81f1030 test(playground): cred-dialog variant tests via happy-dom (mptab-13)
-ec89a93 feat(playground): Models tab v2 layout — per-provider sections, greyed/hidden states (mptab-12)
 ```
 
 ### Last refresh
 
-2026-05-27T03:23:13Z
+2026-05-27T11:39:05Z
