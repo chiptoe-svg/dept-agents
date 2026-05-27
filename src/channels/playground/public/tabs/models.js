@@ -1,329 +1,233 @@
 import { showDraftBanner } from '../draft-banner.js';
+import { openCredDialog } from '../components/cred-dialog.js';
 
-let catalogCache = [];
-let discoveredCache = [];
+// Allowlist state — what the instructor has whitelisted for this agent group.
+// Kept as module state so toggleModel / re-renders stay in sync.
 let allowedModelsCache = [];
 let originalAllowed = [];
-let activeModel = null;
 
 export function mountModels(el) {
-  const folder = window.__pg.agent.folder;
-
-  el.innerHTML = `
-    <div class="models-layout">
-      <header class="models-header">
-        <h3>Lock in which models your agent can use</h3>
-        <p class="hint">💡 Local models cost $0 per token but spend your hardware. Cloud models cost real money but are faster on commodity laptops.</p>
-      </header>
-
-      <section class="model-section" data-provider="anthropic">
-        <header class="model-section-header">
-          <h4 class="models-section-title">Claude (Anthropic)</h4>
-        </header>
-        <div class="model-grid" data-grid="anthropic"></div>
-      </section>
-
-      <section class="model-section" data-provider="openai-codex">
-        <header class="model-section-header">
-          <h4 class="models-section-title">Codex (OpenAI)</h4>
-        </header>
-        <div class="model-grid" data-grid="openai-codex"></div>
-      </section>
-
-      <section class="model-section" data-provider="local">
-        <header class="model-section-header">
-          <h4 class="models-section-title">Local (your hardware)</h4>
-          <span class="model-section-status" id="local-server-status">checking…</span>
-        </header>
-        <div class="model-grid" data-grid="local"></div>
-      </section>
-    </div>
-  `;
-
-  loadModels(el, folder);
+  loadModels(el);
 }
 
-function loadModels(el, folder) {
-  fetch(`/api/drafts/${folder}/models`, { credentials: 'same-origin' })
-    .then((r) =>
-      r.ok
-        ? r.json()
-        : { catalog: [], discovered: [], allowedModels: [], activeModel: null, localServerOnline: null },
-    )
-    .then(async (data) => {
-      catalogCache = data.catalog || [];
-      discoveredCache = data.discovered || [];
-      // Server returns { provider, model }; normalize to { modelProvider, model }
-      // for internal consistency with the rest of the UI (modelProvider is the
-      // field name used everywhere else in this file).
-      allowedModelsCache = (data.allowedModels || []).map((a) => ({
+async function loadModels(el) {
+  const folder = window.__pg.agent.folder;
+  const res = await fetch(
+    `/api/me/models-tab-state?agentGroupId=${encodeURIComponent(folder)}`,
+    { credentials: 'same-origin' },
+  );
+  if (!res.ok) {
+    el.textContent = `Failed to load models (${res.status})`;
+    return;
+  }
+  const data = await res.json();
+
+  // Also load the current allowedModels whitelist so cards can show selection.
+  try {
+    const wr = await fetch(`/api/drafts/${folder}/models`, { credentials: 'same-origin' });
+    if (wr.ok) {
+      const wdata = await wr.json();
+      allowedModelsCache = (wdata.allowedModels || []).map((a) => ({
         modelProvider: a.provider ?? a.modelProvider,
         model: a.model,
       }));
-      activeModel = data.activeModel || null;
       originalAllowed = JSON.parse(JSON.stringify(allowedModelsCache));
-      await renderSections(el);
-      renderLocalServerStatus(el, data.localServerOnline);
-    });
-}
-
-async function renderSections(el) {
-  // Class-controls gates which provider sections render for non-owners.
-  // Owner always sees every section so they can curate.
-  const ac = window.__pg && window.__pg.activeClass;
-  const isOwner = window.__pg && window.__pg.user && (window.__pg.user.role === 'owner' || window.__pg.user.role === 'ta');
-  // v2 shape: providers is a map of { allow, provideDefault, allowByo }.
-  // A provider is allowed if its `allow` flag is true. Null = no gating.
-  const providerAllowed = isOwner || !ac
-    ? null
-    : (p) => !!(ac.providers && ac.providers[p] && ac.providers[p].allow);
-
-  // ── classroom-provider-auth:models-status-pill START ──────────────────────
-
-  let ccPolicies = {};
-  try {
-    const ccRes = await fetch('/api/class-controls', { credentials: 'same-origin' });
-    const cc = await ccRes.json();
-    ccPolicies = cc.classes?.default?.providers || {};
-  } catch (err) {
-    console.warn('[models] class-controls fetch failed', err);
+    }
+  } catch {
+    /* non-fatal — whitelist state just shows no selections */
   }
 
-  async function providerStatusPill(providerId, policy) {
-    try {
-      const statusRes = await fetch(`/api/me/providers/${providerId}`, { credentials: 'same-origin' });
-      const status = await statusRes.json();
+  const container = el;
+  container.innerHTML = '';
 
-      if (status.active === 'oauth') return { label: 'Your subscription', tone: 'good' };
-      if (status.active === 'apiKey') return { label: 'Your API key', tone: 'good' };
-      if (policy.provideDefault) return { label: 'Provided by instructor', tone: 'subtle' };
-      if (policy.allowByo) return { label: 'Connect to use', tone: 'warn', action: 'goto:home' };
-      return { label: 'Unavailable', tone: 'forbidden' };
-    } catch (err) {
-      console.warn('[models] providerStatusPill fetch failed', err);
-      return { label: 'Unknown', tone: 'subtle' };
-    }
-  }
+  // Wrap in a models-layout div so existing CSS applies.
+  const layout = document.createElement('div');
+  layout.className = 'models-layout';
+  container.appendChild(layout);
 
-  function renderPill(pill) {
-    const cls = `pill pill-${pill.tone}`;
-    if (pill.action === 'goto:home') {
-      return `<button type="button" class="${cls} pill-link" data-pg-goto-tab="home">${escapeHtml(pill.label)} →</button>`;
-    }
-    return `<span class="${cls}">${escapeHtml(pill.label)}</span>`;
-  }
-
-  const [claudePill, codexPill] = await Promise.all([
-    ccPolicies.claude !== undefined ? providerStatusPill('claude', ccPolicies.claude) : Promise.resolve(null),
-    ccPolicies.codex  !== undefined ? providerStatusPill('codex',  ccPolicies.codex)  : Promise.resolve(null),
-  ]);
-
-  const pillByProvider = { anthropic: claudePill, 'openai-codex': codexPill };
-
-  // ── classroom-provider-auth:models-status-pill END ────────────────────────
-
-  for (const provider of ['anthropic', 'openai-codex', 'local']) {
-    const grid = el.querySelector(`[data-grid="${provider}"]`);
-    if (!grid) continue;
-    const section = grid.closest('.model-section');
-
-    // Forbidden provider sections are hidden entirely.
-    const pill = pillByProvider[provider];
-    const isForbidden = pill && pill.tone === 'forbidden';
-    if (section) section.hidden = isForbidden || !!(providerAllowed && !providerAllowed(provider));
-    if (isForbidden) continue;
-
-    // Inject status pill into the section title for cloud providers.
-    if (pill && section) {
-      const titleEl = section.querySelector('.models-section-title');
-      if (titleEl) {
-        titleEl.querySelectorAll('.pill').forEach((p) => p.remove());
-        titleEl.insertAdjacentHTML('beforeend', renderPill(pill));
-        const pillBtn = titleEl.querySelector('button[data-pg-goto-tab]');
-        if (pillBtn && !pillBtn.dataset.bound) {
-          pillBtn.dataset.bound = '1';
-          pillBtn.addEventListener('click', () => {
-            const dest = pillBtn.dataset.pgGotoTab;
-            document.querySelector(`[data-tab="${dest}"]`)?.click();
-          });
-        }
-      }
-    }
-
-    grid.innerHTML = '';
-
-    const curated = catalogCache.filter((m) => m.modelProvider === provider);
-    const discovered = discoveredCache.filter((d) => d.modelProvider === provider);
-
-    if (curated.length === 0 && discovered.length === 0) {
-      grid.innerHTML = `<div class="muted" style="grid-column: 1 / -1; padding: 12px;">No ${provider} models available. ${
-        provider === 'local'
-          ? 'Start mlx-omni-server on localhost:8000.'
-          : `Add a provider key (${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}) to .env.`
-      }</div>`;
+  let hiddenCount = 0;
+  const hiddenNames = [];
+  for (const provider of data.providers) {
+    if (provider.state === 'HIDDEN') {
+      hiddenCount++;
+      hiddenNames.push(provider.displayName);
       continue;
     }
-
-    for (const m of curated) {
-      grid.appendChild(buildCard(m));
-    }
-    for (const d of discovered) {
-      grid.appendChild(buildDiscoveredCard(d));
-    }
+    layout.appendChild(renderProviderSection(provider, el));
   }
+  if (hiddenCount > 0) layout.appendChild(renderHiddenFooter(hiddenCount, hiddenNames));
 }
 
-function isActive(model) {
-  return activeModel && activeModel.modelProvider === model.modelProvider && activeModel.model === (model.id || model.model);
+function renderProviderSection(provider, rootEl) {
+  const section = document.createElement('div');
+  section.className = `model-section provider-section provider-section--${provider.state.toLowerCase()}`;
+  if (provider.state === 'GREYED') section.style.opacity = '0.55';
+
+  // Header row
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'model-section-header';
+  headerDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:10px';
+
+  const titleGroup = document.createElement('div');
+  titleGroup.style.fontSize = '14px';
+  const titleB = document.createElement('b');
+  titleB.textContent = provider.displayName;
+  titleGroup.appendChild(titleB);
+
+  if (provider.source) {
+    const dot = document.createElement('span');
+    dot.className = `status-dot status-dot--${provider.source}`;
+    dot.style.cssText = 'margin-left:8px;font-size:11px';
+    dot.textContent = statusPhrase(provider);
+    titleGroup.appendChild(dot);
+  } else if (provider.state === 'GREYED') {
+    const dot = document.createElement('span');
+    dot.className = 'status-dot status-dot--none';
+    dot.style.cssText = 'margin-left:8px;font-size:11px';
+    dot.textContent = statusPhrase(provider);
+    titleGroup.appendChild(dot);
+  }
+
+  headerDiv.appendChild(titleGroup);
+
+  if (provider.actionLabel) {
+    const actionLink = document.createElement('a');
+    actionLink.className = 'provider-action';
+    // data-provider breadcrumb — handy for diagnostics (Playwright tests,
+    // post-hoc DOM inspection). Functionally the click handler closes over
+    // `provider` directly, so the attribute isn't load-bearing for routing.
+    actionLink.setAttribute('data-provider', provider.id);
+    actionLink.style.cssText = 'color:var(--brand-blue);font-size:11px;cursor:pointer';
+    actionLink.textContent = provider.actionLabel;
+    actionLink.addEventListener('click', () => {
+      openCredDialog({
+        providerId: provider.id,
+        providerSpec: {
+          id: provider.id,
+          displayName: provider.displayName,
+          credentialFileShape: provider.credentialFileShape ?? 'none',
+        },
+        currentCredState: {
+          hasOAuth: provider.source === 'personal-oauth',
+          hasApiKey: provider.source === 'personal-key',
+        },
+        onSaved: () => {
+          const outerEl = document.querySelector('.models-layout')?.parentElement ?? document.getElementById('tab-models');
+          if (outerEl) loadModels(outerEl);
+        },
+      });
+    });
+    headerDiv.appendChild(actionLink);
+  }
+
+  section.appendChild(headerDiv);
+
+  // Model grid
+  const grid = document.createElement('div');
+  grid.className = 'model-grid';
+  for (const model of provider.catalogModels) {
+    grid.appendChild(renderModelCard(model, provider, rootEl));
+  }
+  if (provider.catalogModels.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.cssText = 'grid-column:1/-1;padding:12px';
+    empty.textContent =
+      provider.state === 'GREYED'
+        ? `${provider.displayName} is not yet connected.`
+        : `No models available for ${provider.displayName}.`;
+    grid.appendChild(empty);
+  }
+  section.appendChild(grid);
+
+  return section;
 }
 
-function buildCard(m) {
+function renderModelCard(model, provider, rootEl) {
   const card = document.createElement('div');
-  card.className = `model-card origin-${m.origin || 'cloud'}`;
-  const isAllowed = allowedModelsCache.some((a) => a.modelProvider === m.modelProvider && a.model === m.id);
-  if (isAllowed) card.classList.add('selected');
-  if (isActive({ modelProvider: m.modelProvider, model: m.id })) card.classList.add('active');
+  card.className = `model-card origin-${model.origin || 'cloud'}`;
 
-  const chipsHtml = (m.chips || []).map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join('');
-  // Prefer split rates when available (codex catalog uses these now); fall
-  // back to the legacy single-rate field; only call it "$0 (local)" when
-  // truly no pricing is set on the entry.
-  let costLine;
+  const isAllowed = allowedModelsCache.some(
+    (a) => a.modelProvider === provider.id && a.model === model.id,
+  );
+  if (isAllowed) card.classList.add('selected');
+
+  const chipsHtml = (model.chips ?? []).map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join(' ');
+
+  card.innerHTML = `
+    <div class="model-head" style="display:flex;align-items:baseline;gap:6px">
+      <strong>${escapeHtml(model.displayName || model.id)}</strong>
+    </div>
+    <div class="chips">${chipsHtml}</div>
+    <div class="cost-line">${escapeHtml(formatCostLatency(model))}</div>
+  `;
+
+  if (provider.state === 'AVAILABLE') {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => selectModel(provider.id, model.id, card, rootEl));
+  }
+
+  return card;
+}
+
+function renderHiddenFooter(count, names) {
+  const div = document.createElement('div');
+  div.style.cssText =
+    'font-size:11px;color:var(--text-muted);text-align:center;font-style:italic;' +
+    'padding-top:8px;border-top:1px dashed var(--border);margin-top:16px';
+  div.textContent = `${count} provider${count === 1 ? '' : 's'} hidden — ${names.join(', ')} not enabled by instructor.`;
+  return div;
+}
+
+function statusPhrase(provider) {
+  if (provider.source === 'personal-oauth') return '● your subscription';
+  if (provider.source === 'personal-key')   return '● your API key';
+  if (provider.source === 'class-pool')     return '● class pool';
+  if (provider.source === 'local')          return '● reachable';
+  return '○ not connected';
+}
+
+function formatCostLatency(m) {
+  if (m.origin === 'local') {
+    const lat = m.avgLatencySec ? ` · ${m.avgLatencySec}s` : '';
+    const params = m.paramCount ? ` · ${m.paramCount}` : '';
+    return `free${lat}${params}`;
+  }
   if (m.costPer1kInUsd != null || m.costPer1kOutUsd != null) {
     const parts = [];
     if (m.costPer1kInUsd != null) parts.push(`$${m.costPer1kInUsd} in`);
     if (m.costPer1kCachedInUsd != null) parts.push(`$${m.costPer1kCachedInUsd} cached`);
     if (m.costPer1kOutUsd != null) parts.push(`$${m.costPer1kOutUsd} out`);
-    costLine = `${parts.join(' · ')} / 1k tokens`;
-  } else if (m.costPer1kTokensUsd != null) {
-    costLine = `$${m.costPer1kTokensUsd} / 1k tokens`;
-  } else {
-    costLine = m.origin === 'local' ? '$0 (local)' : '(pricing not set)';
+    const cost = `${parts.join(' · ')} / 1k`;
+    const lat = m.avgLatencySec ? ` · ${m.avgLatencySec}s` : '';
+    return `${cost}${lat}`;
   }
-  const latencyLine = m.avgLatencySec != null ? `${m.avgLatencySec}s avg` : '? s';
-  const paramsLine = `params: ${escapeHtml(m.paramCount || '?')}`;
-  const modalitiesLine = `modalities: ${(m.modalities || ['?']).join(' + ')}`;
-  const notes = m.notes ? `<div class="notes">📝 ${escapeHtml(m.notes)}</div>` : '';
-
-  let localExtras = '';
-  if (m.origin === 'local') {
-    localExtras = `
-      <div class="local-extras">
-        ${m.host ? `host: <code>${escapeHtml(m.host)}</code><br>` : ''}
-        ${m.contextSize ? `context: ${m.contextSize} · ` : ''}${
-          m.quantization ? `quantization: ${escapeHtml(m.quantization)}` : ''
-        }
-      </div>`;
+  if (m.costPer1kTokensUsd != null) {
+    return `$${m.costPer1kTokensUsd} / 1k tokens`;
   }
-
-  const activeBadge = isActive({ modelProvider: m.modelProvider, model: m.id })
-    ? `<span class="active-badge">● Active</span>`
-    : '';
-  const star = m.default ? '★' : '☆';
-  const starTitle = m.default
-    ? `Default for ${m.modelProvider} — click to unset`
-    : `Set as default for ${m.modelProvider}`;
-  const starClass = m.default ? 'default-star is-default' : 'default-star';
-
-  card.innerHTML = `
-    <label class="model-head">
-      <input type="checkbox" ${isAllowed ? 'checked' : ''}>
-      <strong>${escapeHtml(m.displayName || m.id)}</strong>
-      ${activeBadge}
-      <button type="button" class="${starClass}" title="${starTitle}">${star}</button>
-      <button type="button" class="edit-metadata-btn" title="Edit metadata">✏</button>
-    </label>
-    <div class="chips">${chipsHtml}</div>
-    <div class="cost-line">${costLine} · ${latencyLine}</div>
-    <div class="meta-line">${paramsLine} · ${modalitiesLine}</div>
-    ${localExtras}
-    ${notes}
-  `;
-
-  card.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-    toggleModel({ modelProvider: m.modelProvider, id: m.id }, e.target.checked, card);
-  });
-  card.querySelector('.edit-metadata-btn').addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openAddMetadataModal({ modelProvider: m.modelProvider, id: m.id }, m);
-  });
-  card.querySelector('.default-star').addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleDefault({ modelProvider: m.modelProvider, id: m.id });
-  });
-  return card;
+  return '(pricing not set)';
 }
 
-function buildDiscoveredCard(d) {
-  const card = document.createElement('div');
-  card.className = `model-card origin-${d.modelProvider === 'local' ? 'local' : 'cloud'} model-card-discovered`;
-  const isAllowed = allowedModelsCache.some((a) => a.modelProvider === d.modelProvider && a.model === d.id);
-  if (isAllowed) card.classList.add('selected');
-  if (isActive({ modelProvider: d.modelProvider, model: d.id })) card.classList.add('active');
-
-  const providerChip =
-    d.modelProvider === 'anthropic' ? '☁ Anthropic' : d.modelProvider === 'openai-codex' ? '☁ OpenAI' : '💻 local';
-  const activeBadge = isActive({ modelProvider: d.modelProvider, model: d.id })
-    ? `<span class="active-badge">● Active</span>`
-    : '';
-
-  card.innerHTML = `
-    <label class="model-head">
-      <input type="checkbox" ${isAllowed ? 'checked' : ''}>
-      <strong>${escapeHtml(d.id)}</strong>
-      ${activeBadge}
-    </label>
-    <div class="chips"><span class="chip">${escapeHtml(providerChip)}</span></div>
-    <div class="meta-line muted">No curated metadata — bare model id from the provider's /v1/models.</div>
-    <button class="add-metadata-btn" type="button">＋ Add metadata</button>
-  `;
-
-  card.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-    toggleModel({ modelProvider: d.modelProvider, id: d.id }, e.target.checked, card);
-  });
-  card.querySelector('.add-metadata-btn').addEventListener('click', () => openAddMetadataModal(d));
-  return card;
-}
-
-async function toggleDefault({ modelProvider, id }) {
-  try {
-    const r = await fetch('/api/catalog/toggle-default', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ modelProvider, id }),
-    });
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      alert(`Set default failed: ${err.error || r.status}`);
-      return;
-    }
-    // Reload — catalog merge order may shift now that local file gained an override.
-    const el = document.querySelector('.models-layout').parentElement;
-    const folder = window.__pg.agent.folder;
-    loadModels(el, folder);
-  } catch (err) {
-    alert(`Set default failed: ${String(err)}`);
-  }
-}
-
-async function toggleModel(model, checked, card) {
-  // Update local cache (stored using modelProvider for internal consistency).
-  allowedModelsCache = allowedModelsCache.filter(
-    (a) => !(a.modelProvider === model.modelProvider && a.model === model.id),
+async function selectModel(providerId, modelId, card, rootEl) {
+  const isAllowed = allowedModelsCache.some(
+    (a) => a.modelProvider === providerId && a.model === modelId,
   );
-  if (checked) {
-    allowedModelsCache.push({ modelProvider: model.modelProvider, model: model.id });
+  const nowAllowed = !isAllowed;
+
+  // Optimistic local update.
+  allowedModelsCache = allowedModelsCache.filter(
+    (a) => !(a.modelProvider === providerId && a.model === modelId),
+  );
+  if (nowAllowed) {
+    allowedModelsCache.push({ modelProvider: providerId, model: modelId });
     card.classList.add('selected');
   } else {
     card.classList.remove('selected');
   }
 
-  // PUT to backend. Server expects { provider, model } on the wire.
-  const wireModels = allowedModelsCache.map((a) => ({ provider: a.modelProvider, model: a.model }));
+  // PUT to backend — same endpoint and wire format as the old toggleModel.
   const folder = window.__pg.agent.folder;
+  const wireModels = allowedModelsCache.map((a) => ({ provider: a.modelProvider, model: a.model }));
   try {
     const r = await fetch(`/api/drafts/${folder}/models`, {
       method: 'PUT',
@@ -335,198 +239,19 @@ async function toggleModel(model, checked, card) {
     if (JSON.stringify(allowedModelsCache) !== JSON.stringify(originalAllowed)) {
       showDraftBanner('Model whitelist changed.');
     }
-    // Re-render so selection styling stays in sync.
-    const el = document.querySelector('.models-layout').parentElement;
-    renderSections(el);
   } catch {
-    // Revert visual state on failure.
-    if (checked) {
-      allowedModelsCache = allowedModelsCache.filter(
-        (a) => !(a.modelProvider === model.modelProvider && a.model === model.id),
-      );
+    // Revert on failure.
+    allowedModelsCache = allowedModelsCache.filter(
+      (a) => !(a.modelProvider === providerId && a.model === modelId),
+    );
+    if (nowAllowed) {
       card.classList.remove('selected');
-      card.querySelector('input[type="checkbox"]').checked = false;
+    } else {
+      card.classList.add('selected');
     }
-  }
-}
-
-function renderLocalServerStatus(el, online) {
-  const statusEl = el.querySelector('#local-server-status');
-  if (!statusEl) return;
-  // Server-side probe result. Browser-side fetches would see a different
-  // "localhost" when the user accesses the playground from a different
-  // machine (e.g. their phone over the LAN) and incorrectly report offline.
-  if (online === true) {
-    statusEl.textContent = '● online';
-    statusEl.className = 'model-section-status status-online';
-  } else if (online === false) {
-    statusEl.textContent = '○ offline — start mlx-omni-server on :8000';
-    statusEl.className = 'model-section-status status-offline';
-  } else {
-    statusEl.textContent = '';
-    statusEl.className = 'model-section-status';
   }
 }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-// "Add metadata" / "Edit metadata" modal. Discovered-card flow passes
-// only the bare { provider, id } and the form starts blank (with the id
-// pre-filled into displayName). Curated-card edit flow passes the full
-// ModelEntry as a second arg; the form is pre-populated and modalities/
-// modalities checkboxes reflect existing values. Save path is identical
-// either way — PUT /api/catalog/local-entries handles dedupe by
-// provider:id (replace-not-append).
-function openAddMetadataModal(discovered, existing) {
-  const editing = Boolean(existing);
-  const title = editing ? `Edit metadata for <code>${escapeHtml(discovered.id)}</code>` : `Add metadata for <code>${escapeHtml(discovered.id)}</code>`;
-  const subtitle = editing
-    ? 'Updates the curated entry in <code>config/model-catalog-local.json</code>. Save replaces the existing entry by <code>provider:id</code>.'
-    : 'Promotes this discovered model into a curated catalog entry. Saved to <code>config/model-catalog-local.json</code>. Only fill in what you know — required fields are marked.';
-
-  const defaults = existing || {};
-  const initialDisplayName = defaults.displayName || discovered.id;
-  const initialParam = defaults.paramCount || '';
-  const initialContext = defaults.contextSize || '';
-  const initialQuant = defaults.quantization || '';
-  const initialLatency = defaults.avgLatencySec || '';
-  const initialNotes = defaults.notes || '';
-  const initialBestFor = defaults.bestFor || '';
-  const mods = Array.isArray(defaults.modalities) ? defaults.modalities : ['text'];
-
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
-  overlay.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true">
-      <h3>${title}</h3>
-      <p class="muted">${subtitle}</p>
-      <button type="button" class="btn auto-fill-btn">✨ Auto-fill from ${escapeHtml(discovered.modelProvider === 'local' ? 'HuggingFace' : 'built-in table')}</button>
-      <div class="auto-fill-status muted"></div>
-      <form id="add-metadata-form" class="add-metadata-form">
-        <label>Display name <span class="required">*</span><br>
-          <input name="displayName" required value="${escapeHtml(initialDisplayName)}" type="text"></label>
-        <label>Parameter count<br>
-          <input name="paramCount" type="text" placeholder="e.g. 27B" value="${escapeHtml(initialParam)}"></label>
-        <fieldset>
-          <legend>Modalities</legend>
-          <label><input type="checkbox" name="modalities" value="text" ${mods.includes('text') ? 'checked' : ''}> text</label>
-          <label><input type="checkbox" name="modalities" value="image" ${mods.includes('image') ? 'checked' : ''}> image</label>
-          <label><input type="checkbox" name="modalities" value="audio" ${mods.includes('audio') ? 'checked' : ''}> audio</label>
-        </fieldset>
-        <label>Context size (tokens)<br>
-          <input name="contextSize" type="number" placeholder="e.g. 32768" value="${escapeHtml(String(initialContext))}"></label>
-        <label>Quantization<br>
-          <input name="quantization" type="text" placeholder="e.g. MLX 4-bit" value="${escapeHtml(initialQuant)}"></label>
-        <label>Average latency (seconds)<br>
-          <input name="avgLatencySec" type="number" step="0.1" placeholder="e.g. 6" value="${escapeHtml(String(initialLatency))}"></label>
-        <label>Notes<br>
-          <textarea name="notes" rows="3" placeholder="Short user-facing description.">${escapeHtml(initialNotes)}</textarea></label>
-        <label>Best for<br>
-          <input name="bestFor" type="text" placeholder="When should someone pick this?" value="${escapeHtml(initialBestFor)}"></label>
-        <div class="modal-actions">
-          <button type="button" class="btn cancel-btn">Cancel</button>
-          <button type="submit" class="btn primary">${editing ? 'Save changes' : 'Save'}</button>
-        </div>
-      </form>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  const close = () => overlay.remove();
-  overlay.querySelector('.cancel-btn').addEventListener('click', close);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
-
-  const status = overlay.querySelector('.auto-fill-status');
-  overlay.querySelector('.auto-fill-btn').addEventListener('click', async () => {
-    status.textContent = 'Looking up…';
-    try {
-      const r = await fetch('/api/catalog/auto-fill', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ provider: discovered.modelProvider, id: discovered.id }),
-      });
-      if (!r.ok) {
-        status.textContent = `Lookup failed (${r.status}).`;
-        return;
-      }
-      const data = await r.json();
-      if (!data.suggestion) {
-        status.textContent = `No metadata found in ${data.source}. Fill manually below.`;
-        return;
-      }
-      // Populate form fields from suggestion.
-      const form = overlay.querySelector('#add-metadata-form');
-      const s = data.suggestion;
-      if (s.displayName) form.elements.displayName.value = s.displayName;
-      if (s.paramCount) form.elements.paramCount.value = s.paramCount;
-      if (s.contextSize) form.elements.contextSize.value = s.contextSize;
-      if (s.quantization) form.elements.quantization.value = s.quantization;
-      if (s.avgLatencySec) form.elements.avgLatencySec.value = s.avgLatencySec;
-      if (s.notes) form.elements.notes.value = s.notes;
-      if (s.bestFor) form.elements.bestFor.value = s.bestFor;
-      if (Array.isArray(s.modalities)) {
-        for (const cb of form.querySelectorAll('input[name="modalities"]')) {
-          cb.checked = s.modalities.includes(cb.value);
-        }
-      }
-      status.textContent = `Populated from ${data.source}. Edit anything before saving.`;
-    } catch (err) {
-      status.textContent = `Lookup failed: ${String(err)}`;
-    }
-  });
-
-  overlay.querySelector('#add-metadata-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const fd = new FormData(form);
-    const modalities = fd.getAll('modalities');
-    const entry = {
-      id: discovered.id,
-      modelProvider: discovered.modelProvider,
-      displayName: String(fd.get('displayName') || discovered.id),
-      origin: discovered.modelProvider === 'local' ? 'local' : 'cloud',
-    };
-    const paramCount = String(fd.get('paramCount') || '').trim();
-    if (paramCount) entry.paramCount = paramCount;
-    if (modalities.length > 0) entry.modalities = modalities.map(String);
-    const contextSize = Number(fd.get('contextSize'));
-    if (contextSize > 0) entry.contextSize = contextSize;
-    const quantization = String(fd.get('quantization') || '').trim();
-    if (quantization) entry.quantization = quantization;
-    const avgLatencySec = Number(fd.get('avgLatencySec'));
-    if (avgLatencySec > 0) entry.avgLatencySec = avgLatencySec;
-    const notes = String(fd.get('notes') || '').trim();
-    if (notes) entry.notes = notes;
-    const bestFor = String(fd.get('bestFor') || '').trim();
-    if (bestFor) entry.bestFor = bestFor;
-    // Local-only nicety: stamp host from the omlx convention so the card's
-    // local-extras block populates the same way builtin entries do.
-    if (discovered.modelProvider === 'local') entry.host = 'http://localhost:8000';
-
-    try {
-      const r = await fetch('/api/catalog/local-entries', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ entry }),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        alert(`Save failed: ${err.error || r.status}`);
-        return;
-      }
-      close();
-      // Reload models so the freshly-curated card replaces the discovered one.
-      const el = document.querySelector('.models-layout').parentElement;
-      const folder = window.__pg.agent.folder;
-      loadModels(el, folder);
-    } catch (err) {
-      alert(`Save failed: ${String(err)}`);
-    }
-  });
 }

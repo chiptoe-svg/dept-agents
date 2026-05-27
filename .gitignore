@@ -65,3 +65,4 @@ scripts/switch-provider.ts
 # class-skeleton.ts on each run, and the controls config is locally-tuned.
 class-roster.csv
 config/class-controls.json
+.superpowers/

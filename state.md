@@ -81,6 +81,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-05-26** — Clemson RCD-hosted LLM provider added + pi-ai integration gap closed for OMLX and Clemson. Why: institution-paid endpoint (FERPA-friendly, no per-student billing) becomes the preferred class-pool default; the "pi-ai doesn't know about local/clemson" gap from mptab-15 closed by synthesizing a `Model<'openai-completions'>` directly in `pi-model.ts` (pi-ai's `Provider`/`Api` types are open-ended strings, so a hand-rolled Model works without upstream PR). Load-bearing detail: baseUrl must include `/v1` because the OpenAI Node SDK appends `/chat/completions` directly. Live-verified: pi-test agent invokes both `clemson/gptoss-20b` and `local/Qwen3.6-35B-A3B` end-to-end with real token accounting. Commits: `9346fc0` (Clemson provider surface), `cdbc213` (pi-ai integration).
+- **2026-05-26** — Multi-Provider Models Tab shipped. Why: extend per-student auth + Models tab UI to cover Anthropic + OpenAI-codex + OpenAI Platform (new) + OMLX (local), with each upstream provider as one TypeScript module (Approach A) so future Google/OpenRouter additions are one-file changes. New `GET /api/me/models-tab-state` endpoint runs the greying rule server-side. Cred-dialog extracted from home.js into a shared component reused by Home + (future) Models tab inline manage links. Extensibility verified live via Google POC in AC8: one new file + one barrel-import + one policy entry → new section appears in Models tab. Plan: `docs/superpowers/plans/2026-05-26-multi-provider-models-tab.md`. Tag: `multi-provider-models-tab-complete-2026-05-26`.
 - **2026-05-26** — Phase D shipped: pi sole agent harness. Why: collapse three harness adapters (claude.ts, codex.ts, pi.ts) to one; pi-ai handles all upstream routing internally. Plan: `docs/superpowers/plans/2026-05-25-phase-d-pi-sole-harness.md`. Tag: `phase-d-complete-2026-05-26`.
 - **2026-05-26** — `messages_out` usage backfill matches on seq, not in_reply_to. Why: MCP tool handlers run in a separate process and can't see poll-loop's `current-batch.ts` module state, so `send_message`-written rows have NULL in_reply_to. Commit: `b204567`.
 - **2026-05-26** — Stale outbound `-journal` recovery added at host startup. Why: SIGKILL during host-sweep's R/W transaction leaves journal; next readonly poll trips SQLITE_READONLY_ROLLBACK. Commit: `ef309cc`.
@@ -99,44 +101,39 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-d-complete-2026-05-26` (6 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (10 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-M  .claude/settings.json
-M  .husky/pre-commit
-M  CLAUDE.md
-M  README.md
+## main...origin/main
  M config/playground-seats.json
-M  package.json
-A  scripts/refresh-state.sh
-A  scripts/session-start-compass.sh
-A  state.md
+M  docs/vision/index.html
+A  plans/remaining-work-2026-05-26.md
+M  src/providers/openai-platform-spec.test.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
-456c389 chore(format): prettier-format Phase D and persistence-fix files
-ef309cc fix(host): writeOutboundDirect uses RW opener + recover stale outbound -journal at startup
-b204567 fix(persistence): backfill messages_out usage via seq bound (cross-process)
-d4a8147 Merge planning docs from plans/pi-prep-2026-05-25
-d2b7256 fix(persistence): backfill messages_out usage on tool-call-only turns
-4cec55a refactor(playground): remove dead trace paths (d-5)
-59dc17c fix(d-4): delete dead sdk-probe script + surface missing-provider error
-c6c0284 refactor(container): delete claude.ts + codex.ts adapters (d-4)
-8504cae refactor(provider): delete host-side claude.ts + codex.ts (d-3)
-7626779 fix(d-2): allowed_models migration + usage remap + models.js naming
-f233af3 feat(playground): model-provider dropdown replaces provider selector (d-2)
-b175e7e fix(d-1): match adjacent flag-parsing style + cover malformed-env migration path
-49da6fb feat(db): container_configs.model_provider column (d-1)
-7f23a64 feat(phase-d-prep): migration script + execution plan for pi as sole harness
-c0b605b feat(playground): filter pi-agent-core internal lifecycle events from trace
+96b09cf fix(agents): buildModalShell builds actions skeleton before calling bodyFn
+d413236 feat(provider): mirror codex's 5-model lineup on openai-platform
+87f0e18 feat(provider): rename OpenAI providers to subscription / API split
+21d2c71 refactor(playground): Home Providers card sources from /api/me/models-tab-state
+e598e0a feat(playground): polish Home Providers card for new providers
+c95b9d9 feat(playground): per-student OpenAI Platform key + OMLX prompt-cache bucket
+153a380 chore(playground): add data-provider breadcrumb to Models tab action links
+3f23d31 docs(state): log Clemson provider + pi-ai integration closeout
+cdbc213 feat(pi): end-to-end Clemson + OMLX invocation via synthesized openai-completions model
+9346fc0 feat(provider): Clemson RCD-hosted LLM (clemson-spec)
+0f43393 docs(state): log multi-provider Models tab milestone + .gitignore .superpowers/ (mptab-16)
+ed3ce27 fix(omlx): probe sends bearer token + document OMLX smoke gap (mptab-15)
+2ee648b feat(class-controls): default openai-platform + omlx provider entries (mptab-14)
+81f1030 test(playground): cred-dialog variant tests via happy-dom (mptab-13)
+ec89a93 feat(playground): Models tab v2 layout — per-provider sections, greyed/hidden states (mptab-12)
 ```
 
 ### Last refresh
 
-2026-05-26T14:17:02Z
+2026-05-27T03:23:13Z

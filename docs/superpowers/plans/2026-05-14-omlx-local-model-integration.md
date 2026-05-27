@@ -1261,9 +1261,28 @@ If the reply doesn't come:
 - `cat ~/.codex/config.toml` is **inside the container** — to inspect what the runner wrote, exec into a still-running container with `container exec <name> cat /home/node/.codex/config.toml` (Apple Container), confirming `[model_providers.omlx]` and `model_provider = "omlx"` are present.
 - Container exited too fast? Run `container logs <name>` immediately after spawn (logs are lost on `--rm` exit, so capture quickly or temporarily drop `--rm` in `container-runner.ts:479`).
 
-- [ ] **Step 7: Document the smoke test**
+- [x] **Step 7: Document the smoke test — partial closeout via mptab-15 (2026-05-26)**
 
-Update task #12 (`Smoke test 2 students end-to-end`) in the task list — either close it as complete or note that the local-provider variant works. No commit needed; this is a TaskUpdate.
+Closed by `multi-provider-models-tab` branch's mptab-15 task with the following status:
+
+**What works:**
+- OMLX provider registered via `omlx-spec.ts` (id='omlx', credentialFileShape='none')
+- Catalog entry for Qwen3.6-35B-A3B surfaces in the new `/api/me/models-tab-state` endpoint
+- Reachability probe correctly authenticates with bearer token (`OMLX_API_KEY` env or 'godfrey' default) and reports AVAILABLE when the local mlx-omni-server is up
+- Models tab v2 layout renders the OMLX section with `● reachable` badge
+- Cred dialog 'none' variant shows the URL + reachability state with a Check button
+- Credential-proxy `/omlx/*` route substitutes the bearer token on outbound requests
+- Setting `container_configs.{model_provider:'local', model:'Qwen3.6-...'}` via the active-model endpoint correctly writes the DB
+
+**What still doesn't work end-to-end (pre-existing gap, NOT introduced by this branch):**
+- `pi-ai@0.75.4`'s built-in model catalog (`models.generated.js`) has provider keys for `amazon-bedrock`, `openai`, `opencode`, etc. but **does not include `'local'`**. So `getModel('local', 'Qwen3.6-...')` in `pi-model.ts` returns undefined, and pi-agent-core crashes when accessing `model.contextWindow`. Container exits with nanoclaw_error: `"undefined is not an object (evaluating 'model.contextWindow')"`.
+- This was the same gap that prevented the 2026-05-14 plan's smoke test from completing originally.
+
+**Path forward (a future task, NOT part of this branch's scope):**
+- Cleanest fix: route local models through pi-ai's `'openai'` provider with a per-model `baseUrl` override (similar to how `pi.ts` overrides `baseUrl` for the Anthropic OAuth path through the credential-proxy). The mlx-omni-server speaks OpenAI-compatible API, so it should work the same way once the model spec carries the right baseUrl.
+- Or: upstream PR to pi-ai adding a `'local'` provider entry pattern.
+
+**Decision:** The frontend + backend infrastructure for local-model SELECTION (catalog, UI, cred dialog, reachability, credential-proxy routing) is complete and working. The actual upstream model invocation is blocked on the pi-ai gap. mptab-15 closes the "smoke test" task as **partially closed with documented upstream gap**.
 
 ---
 

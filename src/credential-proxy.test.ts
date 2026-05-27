@@ -22,6 +22,7 @@ import {
   setStudentCredsHook,
   studentCredsHook,
   serializeResolvedCredsError,
+  resolveOmlxKey,
 } from './credential-proxy.js';
 
 function makeRequest(
@@ -311,5 +312,28 @@ describe('studentCredsHook', () => {
     });
     expect(status).toBe(403);
     expect(body).toEqual({ type: 'forbidden', provider: 'claude' });
+  });
+});
+
+describe('credential-proxy OMLX_API_KEY default', () => {
+  let originalKey: string | undefined;
+
+  beforeEach(() => {
+    originalKey = process.env.OMLX_API_KEY;
+    delete process.env.OMLX_API_KEY;
+  });
+
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.OMLX_API_KEY;
+    else process.env.OMLX_API_KEY = originalKey;
+  });
+
+  it('defaults to "godfrey" when OMLX_API_KEY is unset', () => {
+    expect(resolveOmlxKey()).toBe('godfrey');
+  });
+
+  it('uses OMLX_API_KEY env when set', () => {
+    process.env.OMLX_API_KEY = 'classroom-shared-key';
+    expect(resolveOmlxKey()).toBe('classroom-shared-key');
   });
 });

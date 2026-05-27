@@ -146,6 +146,16 @@ export async function getPiAuthApiKey(providerId: string, authPath = PI_AUTH_FIL
     return null;
   }
 
+  // Clemson RCD + local OMLX: the credential proxy substitutes the real
+  // bearer (CAMPUS_LLM_API_KEY or OMLX_API_KEY) at the wire level on the
+  // /clemson/* and /omlx/* routes respectively. Pi-ai's openai-completions
+  // client requires a non-null apiKey, so return a placeholder. The proxy
+  // replaces the Authorization header before forwarding upstream — what
+  // we return here never leaves the host.
+  if (providerId === 'clemson' || providerId === 'local') {
+    return { apiKey: 'placeholder' };
+  }
+
   // openai-codex: OAuth via auth.json (chatgpt.com — proxy does not handle this).
   if (providerId === 'openai-codex') {
     const credentials = readPiAuthCredentials(providerId, authPath);

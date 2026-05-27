@@ -2,6 +2,15 @@ import fs from 'fs';
 
 import { MODEL_CATALOG_LOCAL_PATH } from './config.js';
 import { readCachedCodexModels, refreshCodexCatalog } from './model-catalog-refresh.js';
+import { listProviderSpecs } from './providers/auth-registry.js';
+
+// Side-effect imports so registrations happen before any catalog read.
+import './providers/claude-spec.js';
+import './providers/codex-spec.js';
+import './providers/openai-platform-spec.js';
+import './providers/omlx-spec.js';
+import './providers/clemson-spec.js';
+// Future provider modules add their own import line here.
 
 export interface ModelEntry {
   /** Stable id, used in container.json allowedModels and chat-tab dropdowns. */
@@ -57,130 +66,11 @@ export interface ModelEntry {
   default?: boolean;
 }
 
-const BUILTIN_ENTRIES: ModelEntry[] = [
-  {
-    id: 'claude-haiku-4-5',
-    modelProvider: 'anthropic',
-    displayName: 'claude-haiku-4-5',
-    origin: 'cloud',
-    costPer1kInUsd: 0.001,
-    costPer1kOutUsd: 0.005,
-    costPer1kCachedInUsd: 0.0001,
-    costPer1kTokensUsd: 0.0008,
-    avgLatencySec: 0.9,
-    paramCount: 'not disclosed',
-    modalities: ['text', 'image'],
-    chips: ['⚡ fast', '$ cheap', '☁ Anthropic'],
-    bestFor: 'Short answers, classification, structured output.',
-  },
-  {
-    id: 'claude-sonnet-4-6',
-    modelProvider: 'anthropic',
-    displayName: 'claude-sonnet-4-6',
-    origin: 'cloud',
-    costPer1kInUsd: 0.003,
-    costPer1kOutUsd: 0.015,
-    costPer1kCachedInUsd: 0.0003,
-    costPer1kTokensUsd: 0.012,
-    avgLatencySec: 2.1,
-    paramCount: 'not disclosed',
-    modalities: ['text', 'image'],
-    chips: ['🐢 slower', '$$ pricier', '☁ Anthropic'],
-    bestFor: 'Reasoning, long outputs.',
-    default: true,
-  },
-  // Codex model entries — IDs + descriptions + pricing pulled verbatim
-  // from OpenAI's docs:
-  //   https://developers.openai.com/codex/models
-  //   https://developers.openai.com/api/docs/pricing
-  // Per-1M tokens → per-1k (divide by 1000). Update when OpenAI ships new
-  // codex models or revises pricing — the auto-refresh task on the
-  // post-class punch list will eventually keep this in sync automatically.
-  {
-    id: 'gpt-5.5',
-    modelProvider: 'openai-codex',
-    displayName: 'gpt-5.5',
-    origin: 'cloud',
-    costPer1kInUsd: 0.005,
-    costPer1kOutUsd: 0.03,
-    costPer1kCachedInUsd: 0.0005,
-    modalities: ['text', 'image'],
-    chips: ['☁ OpenAI', '🔝 frontier'],
-    notes: "OpenAI's newest frontier codex model — complex coding, computer use, knowledge work, research.",
-    bestFor: 'Hardest reasoning + multi-step coding tasks.',
-    default: true,
-  },
-  {
-    id: 'gpt-5.4',
-    modelProvider: 'openai-codex',
-    displayName: 'gpt-5.4',
-    origin: 'cloud',
-    costPer1kInUsd: 0.0025,
-    costPer1kOutUsd: 0.015,
-    costPer1kCachedInUsd: 0.00025,
-    modalities: ['text', 'image'],
-    chips: ['☁ OpenAI', '$$ pricier'],
-    notes: 'Flagship — GPT-5.3-Codex coding capabilities + stronger reasoning, tool use, agentic workflows.',
-    bestFor: 'Professional work blending coding with broader agentic flows.',
-  },
-  {
-    id: 'gpt-5.4-mini',
-    modelProvider: 'openai-codex',
-    displayName: 'gpt-5.4-mini',
-    origin: 'cloud',
-    costPer1kInUsd: 0.00075,
-    costPer1kOutUsd: 0.0045,
-    costPer1kCachedInUsd: 0.000075,
-    modalities: ['text', 'image'],
-    chips: ['☁ OpenAI', '⚡ fast', '$ cheap'],
-    notes: 'Fast, efficient mini model for responsive coding tasks and subagents.',
-    bestFor: 'Short tasks, classification, subagents — when latency matters more than depth.',
-  },
-  {
-    id: 'gpt-5.3-codex',
-    modelProvider: 'openai-codex',
-    displayName: 'gpt-5.3-codex',
-    origin: 'cloud',
-    costPer1kInUsd: 0.00175,
-    costPer1kOutUsd: 0.014,
-    costPer1kCachedInUsd: 0.000175,
-    modalities: ['text', 'image'],
-    chips: ['☁ OpenAI', '💻 code'],
-    notes: 'Industry-leading coding model — its coding capabilities also power GPT-5.4.',
-    bestFor: 'Complex software engineering when you want the pure code-tuned model.',
-  },
-  {
-    id: 'gpt-5.2',
-    modelProvider: 'openai-codex',
-    displayName: 'gpt-5.2',
-    origin: 'cloud',
-    // Pricing not on current pricing page (older general-purpose model);
-    // omit rather than guess. The aggregator falls back to $0 cost which
-    // is wrong but conservative — surface a warning if you start charging
-    // students for 5.2 usage.
-    modalities: ['text', 'image'],
-    chips: ['☁ OpenAI', '⏮ previous gen'],
-    notes: 'Previous general-purpose codex model — hard debugging tasks needing deeper deliberation.',
-    bestFor: 'Long-thinking debugging when newer models feel rushed.',
-  },
-  {
-    id: 'Qwen3.6-35B-A3B-UD-MLX-4bit',
-    modelProvider: 'local',
-    displayName: 'Qwen 3.6 (35B, MLX 4-bit)',
-    origin: 'local',
-    costPer1kTokensUsd: 0,
-    avgLatencySec: 8,
-    paramCount: '35B',
-    modalities: ['text', 'image'],
-    notes: 'Runs on the host Mac. Free, no quota — but slower than cloud.',
-    host: 'http://localhost:8000',
-    contextSize: 32768,
-    quantization: 'MLX 4-bit',
-    chips: ['🆓 free', '💻 mlx local', '🐢 slower'],
-    bestFor: 'Comparing local vs cloud cost/latency tradeoffs.',
-    default: true,
-  },
-];
+/** Returns the assembled built-in catalog: concat of every registered
+ *  ProviderAuthSpec's catalogModels. Order: registration order. */
+export function getBuiltinEntries(): ModelEntry[] {
+  return listProviderSpecs().flatMap((s) => s.catalogModels ?? []);
+}
 
 function readLocalEntries(): ModelEntry[] {
   if (!fs.existsSync(MODEL_CATALOG_LOCAL_PATH)) return [];
@@ -203,14 +93,14 @@ export function getModelCatalog(): ModelEntry[] {
 
   // Refresh layer: drop-on-disappear for codex models that have aged out of
   // OpenAI's docs page, plus surface newly-listed IDs as minimal entries
-  // (no pricing — they're still hand-curated by editing BUILTIN_ENTRIES or
-  // the Models-tab local override flow when prices need to attach).
+  // (no pricing — they're still hand-curated by editing codex-spec.ts catalogModels
+  // or the Models-tab local override flow when prices need to attach).
   // Fires the background fetch as a side effect on every catalog read so
   // the cache stays warm without a dedicated scheduler. The refresh module
   // self-rate-limits via its 24h cache + in-flight guard, so this is cheap.
   refreshCodexCatalog().catch(() => {});
   const refreshed = readCachedCodexModels();
-  let builtins = BUILTIN_ENTRIES;
+  let builtins = getBuiltinEntries();
   if (refreshed && refreshed.length > 0) {
     const allowedCodex = new Set(refreshed);
     builtins = builtins.filter((e) => e.modelProvider !== 'openai-codex' || allowedCodex.has(e.id));
@@ -224,7 +114,7 @@ export function getModelCatalog(): ModelEntry[] {
           displayName: id,
           origin: 'cloud',
           modalities: ['text'],
-          notes: `Auto-discovered from developers.openai.com/codex/models on ${new Date().toISOString().slice(0, 10)}. Pricing not yet curated — edit src/model-catalog.ts BUILTIN_ENTRIES or use the Models tab to set rates.`,
+          notes: `Auto-discovered from developers.openai.com/codex/models on ${new Date().toISOString().slice(0, 10)}. Pricing not yet curated — edit codex-spec.ts catalogModels or use the Models tab to set rates.`,
         });
       }
     }
