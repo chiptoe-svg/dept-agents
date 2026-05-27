@@ -864,7 +864,7 @@
           Export the tuned agent in one of four formats. The walkaway script stands it up on
           the participant's own infrastructure — persona, skills, and connections move off the
           classroom server cleanly.
-          <span class="concept-loc future">Export + walkaway · Phase 4</span>
+          <span class="concept-loc">Export shipped · walkaway Phase 4</span>
         </dd>
       </div>
       <div class="concept">
@@ -1115,17 +1115,16 @@
 <section id="tomorrow">
   <div class="container">
     <p class="section-eyebrow">Section 04 — Tabs forthcoming</p>
-    <h2>Five new tabs — Bench, Harness, Sources, Retrieval, Eval.</h2>
+    <h2>Five new tabs — three landed, two ahead.</h2>
     <p>
-      The shipped tabs cover authoring and operating one agent at a time. The forthcoming tabs
-      add the five things that matter when you're teaching what's <em>inside</em> agents and
-      comparing across them: <strong>Bench</strong> measures cost and quality across systems,
-      <strong>Harness</strong> exposes the agent's memory and context window,
-      <strong>Sources</strong> is where corpora get built from PDFs, video, text, and data,
-      <strong>Retrieval</strong> is where retrieval pipelines get designed and tested, and
-      <strong>Eval</strong> compares strategies side by side. Below are schematic mockups drawn
-      before implementation, to settle the visual language and the user's mental model before
-      any code lands.
+      These five tabs cover what matters when you're teaching what's <em>inside</em> agents and
+      comparing across them. As of 2026-05-26, <strong>Bench</strong> (cost and quality across
+      systems), <strong>Sources</strong> (corpus building from PDFs, video, text, data), and
+      <strong>Retrieval</strong> (pipeline design and live test) are live in the playground.
+      <strong>Harness</strong> (memory tiers, live context-window utilization, reasoning-effort
+      knob) and <strong>Eval</strong> (side-by-side strategy comparison with cost-normalized
+      LLM-as-judge) are next. The mockups below were drawn before implementation; the three
+      live tabs match them closely.
     </p>
 
     <div class="tab-gallery">
@@ -1134,7 +1133,7 @@
       <div class="tab-card coming">
         <div class="tab-meta">
           <span class="tab-name">Bench</span>
-          <span class="tab-tag future">○ Phase 3 · planned</span>
+          <span class="tab-tag live">● Live</span>
         </div>
         <p class="tab-summary">
           Run the 5-request benchmark suite against any combination of provider × model ×
@@ -1303,7 +1302,7 @@
       <div class="tab-card coming">
         <div class="tab-meta">
           <span class="tab-name">Sources</span>
-          <span class="tab-tag future">○ Phase 7 · planned</span>
+          <span class="tab-tag live">● Live</span>
         </div>
         <p class="tab-summary">
           Lab bench for building named corpora. Pick a source sub-tab (PDF, Video, Text,
@@ -1361,7 +1360,7 @@
       <div class="tab-card coming">
         <div class="tab-meta">
           <span class="tab-name">Retrieval</span>
-          <span class="tab-tag future">○ Phase 7 · planned</span>
+          <span class="tab-tag live">● Live</span>
         </div>
         <p class="tab-summary">
           Lab bench for designing retrieval pipelines. Select a corpus, configure the
@@ -1461,15 +1460,16 @@
 
     </div>
 
-    <h3>Two more, further out</h3>
+    <h3>Two more — both shipped</h3>
     <p>
-      Also on the Phase 4 build order: <strong>Library</strong> (save / open / branch the
-      current agent state as a named library entry — File menu for agents), and
+      Already landed alongside the RAG tabs: <strong>Library</strong> (save / open / branch
+      the current agent state as a named library entry — File menu for agents), and
       <strong>Export</strong> (one-direction take-home in four formats: <code>nanoclaw</code>,
       <code>claude-code</code>, <code>codex</code>, <code>json</code>). Library precedes Export
-      because export depends on the "what's the current agent" notion being addressable. Together
-      with the walkaway deploy script, these are how someone takes their tuned agent off the
-      classroom server and stands it up on their own infrastructure.
+      because export depends on the "what's the current agent" notion being addressable.
+      The remaining piece is the walkaway deploy script (Phase 9, ahead) — Library + Export
+      already let someone take their tuned agent off the classroom server; walkaway is what
+      stands it up on infrastructure they own.
     </p>
   </div>
 </section>
@@ -1547,12 +1547,15 @@
 <section id="timeline">
   <div class="container">
     <p class="section-eyebrow">Section 06 — Phase timeline</p>
-    <h2>Four phases. Two shipped, two ahead.</h2>
+    <h2>Four phases. Three shipped, one in fragments.</h2>
     <p>
       Phase 1 is the foundation: the multi-tenant platform every install needs. Phase 2 is the
       polish + per-student auth work that absorbed the live-class operating reality. Phase 3 is
-      measurement — the agent-harness benchmark suite. Phase 4 is personalization and labs, where
-      the knowledge-retrieval, evaluation, and deploy-your-own surfaces land.
+      measurement — the agent-harness benchmark suite, now live as the Bench tab. Phase 4 is
+      personalization and labs; most of its surfaces (Agent Library, Agent Export, RAG/Sources/
+      Retrieval, multi-provider Models tab including OMLX and Clemson) have landed, with
+      per-person GWS OAuth still gated on a 5-minute Google Console operator step and three
+      surfaces (Harness tab, Eval framework, walkaway deploy) still to brainstorm and ship.
     </p>
 
     <div class="phases">
@@ -1637,7 +1640,7 @@
       <div class="phase">
         <div class="phase-label">
           <span class="phase-id">Phase 3</span>
-          <span class="phase-status planned">○ In progress</span>
+          <span class="phase-status shipped">● Shipped</span>
         </div>
         <div>
           <div class="phase-title">Measurement — agent-harness benchmark suite</div>
@@ -1657,11 +1660,12 @@
           </div>
           <ul class="checks">
             <li class="done">B0 — token accounting prerequisite (cache_creation / cache_read plumbed)</li>
-            <li class="todo">B1 — baseline runner against <code>claude-sonnet-4-6</code></li>
-            <li class="todo">B2 — programmatic gates + claude-haiku quality rubric</li>
-            <li class="todo">B3 — multi-system matrix runner + markdown report</li>
-            <li class="todo">B4 — full matrix run with cost + context-window comparison</li>
-            <li class="todo">B5 — credential-proxy wire payload logger</li>
+            <li class="done">B1 — baseline runner against <code>claude-sonnet-4-6</code></li>
+            <li class="done">B2 — programmatic gates + claude-haiku quality rubric</li>
+            <li class="done">B3 — multi-system matrix runner + markdown report</li>
+            <li class="done">B4 — full matrix run with cost + context-window comparison</li>
+            <li class="done">B5 — credential-proxy wire payload logger</li>
+            <li class="done">Benchmarks tab — UI, query editor, MRR / hit@k metrics (RAG Phase 7C)</li>
             <li class="future">B6 — harness-config A/B (with/without skills, reasoning, continuation pruning)</li>
           </ul>
         </div>
@@ -1671,7 +1675,7 @@
       <div class="phase">
         <div class="phase-label">
           <span class="phase-id">Phase 4</span>
-          <span class="phase-status future">◇ Future</span>
+          <span class="phase-status planned">◐ In progress · most surfaces shipped</span>
         </div>
         <div>
           <div class="phase-title">Personalization + labs</div>
@@ -1685,16 +1689,17 @@
             connections move off the classroom server onto infrastructure the participant owns.
           </div>
           <ul class="checks">
-            <li class="future">Phase 14 — per-person GWS OAuth (blocked on 5-min GCP click-through)</li>
+            <li class="done">Classroom Phase 4 — student-facing provider settings panel (X.7 per-student auth)</li>
+            <li class="done">Classroom Phase 5b — Agent Library (save / open / branch named agents)</li>
+            <li class="done">Classroom Phase 5 — Agent Export (nanoclaw / claude-code / codex / json)</li>
+            <li class="done">Classroom Phase 7 — Knowledge / RAG strategies (Sources + Retrieval + Benchmarks tabs, <code>knowledge_search</code> MCP tool)</li>
+            <li class="done">Multi-provider Models tab — Anthropic, OpenAI subscription (codex), OpenAI API, OMLX, Clemson</li>
+            <li class="todo">Phase 14 — per-person GWS OAuth (code in main; blocked on 5-min GCP Console click-through)</li>
             <li class="future">GWS 13.5b — Calendar list/create</li>
             <li class="future">GWS 13.5c — Drive listing</li>
             <li class="future">GWS 13.5d — Gmail search/send</li>
-            <li class="future">Classroom Phase 4 (Phase-2 slice) — student-facing provider settings panel</li>
-            <li class="future">Classroom Phase 5b — Agent Library (save / open / branch named agents)</li>
-            <li class="future">Classroom Phase 5 — Agent Export (nanoclaw / claude-code / codex / json)</li>
             <li class="future">Harness tab — three memory tiers, live context-window utilization, compaction trigger, reasoning-effort knob</li>
-            <li class="future">Classroom Phase 7 — Knowledge / RAG strategies + expert-assistant pipeline builder</li>
-            <li class="future">Classroom Phase 8 — Evaluation framework + LLM-as-judge</li>
+            <li class="future">Classroom Phase 8 — Evaluation framework + LLM-as-judge (side-by-side strategy comparison)</li>
             <li class="future">Classroom Phase 9 — Walkaway cloud deploy (bundle + bootstrap script)</li>
           </ul>
         </div>
@@ -1785,13 +1790,14 @@
         </p>
       </div>
       <div class="gcard">
-        <h4>Architectural simplification at the agent layer</h4>
+        <h4>Agent layer collapsed onto pi (Phase D, 2026-05-26)</h4>
         <p>
-          The five hand-rolled provider implementations (claude / codex / opencode / ollama /
-          local MLX) total roughly 2,000 lines and produce the messiest part of the codebase.
-          An alternative library — multi-provider with subscription OAuth, in-process agent loop,
-          built-in cost tracking — would collapse them into one provider. Best evaluated in a
-          separate install before any production migration.
+          Resolved. The five hand-rolled provider implementations (claude / codex / opencode /
+          ollama / local MLX) were collapsed onto <code>pi-ai</code> as the sole harness;
+          <code>claude.ts</code> and <code>codex.ts</code> are deleted on both host and
+          container. <code>container_configs.model_provider</code> now drives upstream
+          selection (anthropic / openai-codex / openai / local / clemson). Live-verified across
+          all seven kept agents.
         </p>
       </div>
       <div class="gcard">
