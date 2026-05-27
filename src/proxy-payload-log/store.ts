@@ -58,6 +58,7 @@ export function openStore(opts: OpenOpts): PayloadStore {
   const dbPath = path.join(dir, `${opts.sessionId}.db`);
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
   db.exec(SCHEMA);
 
   const insertStmt = db.prepare(
@@ -76,8 +77,13 @@ export function openStore(opts: OpenOpts): PayloadStore {
       const truncated = originalLen > MAX_BODY_BYTES ? 1 : 0;
       const body = truncated ? input.body.subarray(0, MAX_BODY_BYTES) : input.body;
       const info = insertStmt.run(input.ts, input.upstreamRoute, input.upstreamPath, body, originalLen, truncated);
-      pruneStmt.run(RETAIN_ROWS);
-      return Number(info.lastInsertRowid);
+      const seq = Number(info.lastInsertRowid);
+      // Prune in batches rather than on every write — keeps the row count
+      // bounded to at most 2*RETAIN_ROWS while keeping the hot path cheap.
+      if (seq % RETAIN_ROWS === 0) {
+        pruneStmt.run(RETAIN_ROWS);
+      }
+      return seq;
     },
     patch(seq, fields) {
       if (fields.responseStatus !== undefined) patchStatus.run(fields.responseStatus, seq);
