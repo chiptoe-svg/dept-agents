@@ -101,21 +101,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `feat/proxy-payload-log`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (18 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (19 commits ahead)
 
 ### Working tree
 
 ```
 ## feat/proxy-payload-log
  M config/playground-seats.json
-M  container/agent-runner/src/proxy-fetch.test.ts
-M  container/agent-runner/src/proxy-fetch.ts
+M  src/credential-proxy.test.ts
+M  src/credential-proxy.ts
+M  src/index.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+a870b97 feat(container/proxy-fetch): propagate X-NanoClaw-Session-Id alongside agent-group
 5ddb39b feat(container-runner): inject X_NANOCLAW_SESSION_ID env for payload-log attribution
 9a50ac1 feat(proxy-payload-log): section parser for anthropic + openai-shaped routes
 8f7f691 fix(proxy-payload-log): busy_timeout pragma + batch-prune on every Nth write
@@ -130,9 +132,8 @@ d413236 feat(provider): mirror codex's 5-model lineup on openai-platform
 21d2c71 refactor(playground): Home Providers card sources from /api/me/models-tab-state
 e598e0a feat(playground): polish Home Providers card for new providers
 c95b9d9 feat(playground): per-student OpenAI Platform key + OMLX prompt-cache bucket
-153a380 chore(playground): add data-provider breadcrumb to Models tab action links
 ```
 
 ### Last refresh
 
-2026-05-27T14:35:23Z
+2026-05-27T14:41:10Z

@@ -48,6 +48,7 @@ import { request as httpRequest, RequestOptions } from 'http';
 import { readEnvFile } from './env.js';
 import { getGoogleAccessTokenForAgentGroup } from './gws-token.js';
 import { log } from './log.js';
+import { openStore, type PayloadStore } from './proxy-payload-log/store.js';
 
 /**
  * Per-request credential resolution outcome returned by the
@@ -108,6 +109,28 @@ export function serializeResolvedCredsError(
 
 /** Header containers send to identify which agent group is calling. */
 const AGENT_GROUP_HEADER = 'x-nanoclaw-agent-group';
+
+/** Header containers send to identify the current session (Task 3/4). */
+const SESSION_ID_HEADER = 'x-nanoclaw-session-id';
+
+interface PayloadLogCtx {
+  baseDir: string;
+  stores: Map<string, PayloadStore>;
+}
+
+function getStore(ctx: PayloadLogCtx, agentGroupId: string, sessionId: string): PayloadStore | null {
+  const key = `${agentGroupId}|${sessionId}`;
+  let s = ctx.stores.get(key);
+  if (s) return s;
+  try {
+    s = openStore({ baseDir: ctx.baseDir, agentGroupId, sessionId });
+    ctx.stores.set(key, s);
+    return s;
+  } catch (err) {
+    log.error('proxy-payload-log: openStore failed', { agentGroupId, sessionId, err });
+    return null;
+  }
+}
 
 /**
  * OAuth client id used by Claude Code CLI for the refresh-token grant.
@@ -341,7 +364,7 @@ async function getOAuthToken(envToken?: string): Promise<string | null> {
   return cachedOAuthToken ?? oauth.accessToken ?? null;
 }
 
-export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<Server> {
+export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLogBaseDir?: string): Promise<Server> {
   const secrets = readEnvFile([
     'ANTHROPIC_API_KEY',
     'CLAUDE_CODE_OAUTH_TOKEN',
@@ -373,6 +396,10 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
   const clemsonUpstream = new URL(secrets.CAMPUS_LLM_BASE_URL || 'https://llm.rcd.clemson.edu');
 
   const requestFor = (isHttps: boolean) => (isHttps ? httpsRequest : httpRequest);
+
+  const payloadLogCtx: PayloadLogCtx | null = payloadLogBaseDir
+    ? { baseDir: payloadLogBaseDir, stores: new Map() }
+    : null;
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -423,6 +450,40 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
         const isHttps = upstreamUrl.protocol === 'https:';
         const makeRequest = requestFor(isHttps);
 
+        // ── payload-log: capture request body ────────────────────────────────
+        const rawSessionId = req.headers[SESSION_ID_HEADER];
+        const sessionId = typeof rawSessionId === 'string' && rawSessionId.length > 0 ? rawSessionId : 'unattributed';
+
+        let payloadSeq: number | null = null;
+        if (payloadLogCtx && agentGroupId) {
+          const store = getStore(payloadLogCtx, agentGroupId, sessionId);
+          if (store) {
+            try {
+              const route = isOpenAIPlatform
+                ? 'openai-platform'
+                : isOpenAI
+                  ? 'openai'
+                  : isOmlx
+                    ? 'omlx'
+                    : isClemson
+                      ? 'clemson'
+                      : isGoogle
+                        ? 'googleapis'
+                        : 'anthropic';
+              payloadSeq = store.write({
+                ts: Date.now(),
+                upstreamRoute: route,
+                upstreamPath,
+                body,
+              });
+            } catch (err) {
+              log.error('proxy-payload-log: write failed', { agentGroupId, sessionId, err });
+              payloadSeq = null;
+            }
+          }
+        }
+        // ── payload-log end ───────────────────────────────────────────────────
+
         const headers: Record<string, string | number | string[] | undefined> = {
           ...(req.headers as Record<string, string>),
           host: upstreamUrl.host,
@@ -435,6 +496,8 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
         delete headers['transfer-encoding'];
         // Don't leak the attribution header upstream — it's a NanoClaw-internal hint.
         delete headers[AGENT_GROUP_HEADER];
+        // Don't leak the session-id header upstream — it's a NanoClaw-internal hint.
+        delete headers[SESSION_ID_HEADER];
 
         // ── per-student-provider-auth:proxy-invocation START ──────────────────────
         let studentCredsApplied = false;
@@ -610,6 +673,20 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
           (upRes) => {
             res.writeHead(upRes.statusCode!, upRes.headers);
             upRes.pipe(res);
+            // Patch the payload row with the response status once the upstream
+            // response has fully arrived. Failures NEVER affect the response.
+            upRes.on('end', () => {
+              if (payloadSeq != null && payloadLogCtx && agentGroupId) {
+                const store = getStore(payloadLogCtx, agentGroupId, sessionId);
+                if (store) {
+                  try {
+                    store.patch(payloadSeq, { responseStatus: upRes.statusCode ?? 0 });
+                  } catch (err) {
+                    log.error('proxy-payload-log: patch failed', { payloadSeq, err });
+                  }
+                }
+              }
+            });
           },
         );
 
@@ -643,6 +720,18 @@ export function startCredentialProxy(port: number, host = '127.0.0.1'): Promise<
     server.listen(port, host, () => {
       log.info('Credential proxy started', { port, host, authMode });
       resolve(server);
+    });
+
+    server.on('close', () => {
+      if (payloadLogCtx) {
+        for (const store of payloadLogCtx.stores.values()) {
+          try {
+            store.close();
+          } catch {
+            // best-effort close
+          }
+        }
+      }
     });
 
     server.on('error', reject);

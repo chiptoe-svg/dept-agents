@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'http';
 import type { AddressInfo } from 'net';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 // `vi.hoisted` ensures mockEnv exists when the vi.mock factory below
 // runs — important now that credential-proxy.ts pulls in
@@ -335,5 +338,130 @@ describe('credential-proxy OMLX_API_KEY default', () => {
   it('uses OMLX_API_KEY env when set', () => {
     process.env.OMLX_API_KEY = 'classroom-shared-key';
     expect(resolveOmlxKey()).toBe('classroom-shared-key');
+  });
+});
+
+describe('credential-proxy payload log', () => {
+  let proxyServer: http.Server;
+  let upstreamServer: http.Server;
+  let proxyPort: number;
+  let upstreamPort: number;
+  let payloadDir: string;
+
+  beforeEach(async () => {
+    payloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-payloads-'));
+    upstreamServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise<void>((resolve) => upstreamServer.listen(0, '127.0.0.1', resolve));
+    upstreamPort = (upstreamServer.address() as AddressInfo).port;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((r) => proxyServer?.close(() => r()));
+    await new Promise<void>((r) => upstreamServer?.close(() => r()));
+    fs.rmSync(payloadDir, { recursive: true, force: true });
+    for (const key of Object.keys(mockEnv)) delete mockEnv[key];
+  });
+
+  it('writes a payload row when a request flows through the proxy', async () => {
+    Object.assign(mockEnv, {
+      ANTHROPIC_API_KEY: 'sk-test',
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
+    proxyPort = (proxyServer.address() as AddressInfo).port;
+
+    await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: {
+          'x-nanoclaw-agent-group': 'ag1',
+          'x-nanoclaw-session-id': 'sess1',
+          'content-type': 'application/json',
+        },
+      },
+      JSON.stringify({ model: 'claude', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+
+    // Give the 'end' event a tick to fire
+    await new Promise((r) => setTimeout(r, 50));
+
+    const dbPath = path.join(payloadDir, 'ag1', 'sess1.db');
+    expect(fs.existsSync(dbPath)).toBe(true);
+    const Database = (await import('better-sqlite3')).default;
+    const db = new Database(dbPath, { readonly: true });
+    const rows = db.prepare('SELECT seq, upstream_route, response_status FROM payloads').all() as Array<{
+      seq: number;
+      upstream_route: string;
+      response_status: number | null;
+    }>;
+    db.close();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].upstream_route).toBe('anthropic');
+    expect(rows[0].response_status).toBe(200);
+  });
+
+  it('still forwards the request when payload-store write fails (bad payloadDir)', async () => {
+    Object.assign(mockEnv, {
+      ANTHROPIC_API_KEY: 'sk-test',
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxyServer = await startCredentialProxy(0, '127.0.0.1', '/dev/null/not-a-dir');
+    proxyPort = (proxyServer.address() as AddressInfo).port;
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: {
+          'x-nanoclaw-agent-group': 'ag1',
+          'x-nanoclaw-session-id': 'sess1',
+          'content-type': 'application/json',
+        },
+      },
+      JSON.stringify({ model: 'claude', messages: [] }),
+    );
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('strips x-nanoclaw-session-id before forwarding upstream', async () => {
+    let capturedHeaders: http.IncomingHttpHeaders = {};
+    // Override upstream to capture headers
+    await new Promise<void>((r) => upstreamServer.close(() => r()));
+    upstreamServer = http.createServer((req, res) => {
+      capturedHeaders = { ...req.headers };
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{}');
+    });
+    await new Promise<void>((r) => upstreamServer.listen(0, '127.0.0.1', r));
+    upstreamPort = (upstreamServer.address() as AddressInfo).port;
+
+    Object.assign(mockEnv, {
+      ANTHROPIC_API_KEY: 'sk-test',
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
+    proxyPort = (proxyServer.address() as AddressInfo).port;
+
+    await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: {
+          'x-nanoclaw-agent-group': 'ag1',
+          'x-nanoclaw-session-id': 'sess1',
+          'content-type': 'application/json',
+        },
+      },
+      '{}',
+    );
+
+    expect(capturedHeaders['x-nanoclaw-session-id']).toBeUndefined();
   });
 });

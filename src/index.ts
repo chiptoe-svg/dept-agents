@@ -120,7 +120,11 @@ async function main(): Promise<void> {
   if (!PROXY_BIND_HOST) {
     throw new Error('CREDENTIAL_PROXY_HOST is not set in .env. Run /convert-to-apple-container to configure.');
   }
-  proxyServer = await startCredentialProxy(CREDENTIAL_PROXY_PORT, PROXY_BIND_HOST);
+  proxyServer = await startCredentialProxy(
+    CREDENTIAL_PROXY_PORT,
+    PROXY_BIND_HOST,
+    path.join(DATA_DIR, 'proxy-payloads'),
+  );
   setStudentCredsHook(resolveStudentCreds);
 
   // 2c. GWS MCP relay — host-side Google Workspace tools. Containers reach
