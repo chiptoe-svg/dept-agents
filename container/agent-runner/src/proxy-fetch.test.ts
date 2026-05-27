@@ -122,3 +122,56 @@ describe('installProxyFetch', () => {
     expect(cap.calls[0]!.headers.get(HEADER_NAME)).toBe('ag_test_42');
   });
 });
+
+describe('proxy-fetch session-id header', () => {
+  let originalAgentGroup: string | undefined;
+  let originalSessionId: string | undefined;
+  let originalAnthropic: string | undefined;
+  let restoreFetch: (() => void) | null = null;
+
+  beforeEach(() => {
+    originalAgentGroup = process.env.X_NANOCLAW_AGENT_GROUP;
+    originalSessionId = process.env.X_NANOCLAW_SESSION_ID;
+    originalAnthropic = process.env.ANTHROPIC_BASE_URL;
+  });
+
+  afterEach(() => {
+    if (restoreFetch) restoreFetch();
+    restoreFetch = null;
+    if (originalAgentGroup === undefined) delete process.env.X_NANOCLAW_AGENT_GROUP;
+    else process.env.X_NANOCLAW_AGENT_GROUP = originalAgentGroup;
+    if (originalSessionId === undefined) delete process.env.X_NANOCLAW_SESSION_ID;
+    else process.env.X_NANOCLAW_SESSION_ID = originalSessionId;
+    if (originalAnthropic === undefined) delete process.env.ANTHROPIC_BASE_URL;
+    else process.env.ANTHROPIC_BASE_URL = originalAnthropic;
+  });
+
+  test('adds X-NanoClaw-Session-Id to proxy-bound requests', async () => {
+    process.env.X_NANOCLAW_AGENT_GROUP = 'ag1';
+    process.env.X_NANOCLAW_SESSION_ID = 'sess1';
+    process.env.ANTHROPIC_BASE_URL = PROXY_ORIGIN;
+    const cap = captureHeaders();
+    restoreFetch = cap.reset;
+
+    installProxyFetch();
+    await fetch(`${PROXY_ORIGIN}/v1/messages`, { method: 'POST', body: '{}' });
+
+    expect(cap.calls).toHaveLength(1);
+    expect(cap.calls[0]!.headers.get('X-NanoClaw-Session-Id')).toBe('sess1');
+    expect(cap.calls[0]!.headers.get(HEADER_NAME)).toBe('ag1');
+  });
+
+  test('does NOT add the session header to non-proxy requests', async () => {
+    process.env.X_NANOCLAW_AGENT_GROUP = 'ag1';
+    process.env.X_NANOCLAW_SESSION_ID = 'sess1';
+    process.env.ANTHROPIC_BASE_URL = PROXY_ORIGIN;
+    const cap = captureHeaders();
+    restoreFetch = cap.reset;
+
+    installProxyFetch();
+    await fetch('https://api.example.com/something', { method: 'GET' });
+
+    expect(cap.calls).toHaveLength(1);
+    expect(cap.calls[0]!.headers.get('X-NanoClaw-Session-Id')).toBeNull();
+  });
+});
