@@ -804,25 +804,24 @@ function renderInstructorGroupRow(group, specsById) {
   const hasAnyApiKey = group.specIds.some((sid) => specsById[sid]?.creds?.hasApiKey);
   const anyConnected = hasAnyOAuth || hasAnyApiKey;
 
-  let status;
-  if (!anyConnected) status = 'Not connected';
-  else if (group.hasMixed && hasAnyOAuth && hasAnyApiKey) status = 'Subscription + API key set';
-  else if (hasAnyOAuth) {
-    const email = canonical.creds.accountEmail;
-    status = email ? `Subscription (${escapeHtml(email)})` : 'Subscription set';
-  } else status = 'API key set';
-
   // Active-method radio for mixed groups. Always rendered when the group
   // is mixed — un-connected methods are disabled. Drives canonical spec's
-  // creds.active, which the C-1 class-pool resolver reads.
+  // creds.active, which the C-1 class-pool resolver reads. The radio
+  // doubles as the status display: filled = connected, empty = not.
   let radioHtml = '';
   if (group.hasMixed) {
     const active = canonical.creds.active;
+    const tooltip = canonical.creds.accountEmail
+      ? `Connected as ${canonical.creds.accountEmail}`
+      : 'Which credential to send for class-pool calls';
     radioHtml = `
-      <span class="provider-active" title="Which credential to send for class-pool calls">
+      <span class="provider-active" title="${escapeHtml(tooltip)}">
         <label><input type="radio" name="active-${group.id}" value="oauth"  ${active === 'oauth'  ? 'checked' : ''} ${hasAnyOAuth  ? '' : 'disabled'}> Subscription</label>
         <label><input type="radio" name="active-${group.id}" value="apiKey" ${active === 'apiKey' ? 'checked' : ''} ${hasAnyApiKey ? '' : 'disabled'}> API key</label>
       </span>`;
+  } else {
+    // Non-mixed groups (Local, Clemson): the mark dot is the only signal.
+    radioHtml = '<span class="provider-active"></span>';
   }
 
   const buttonLabel =
@@ -833,7 +832,6 @@ function renderInstructorGroupRow(group, specsById) {
     <div class="provider-row ${anyConnected ? 'is-connected' : ''}" data-group="${group.id}">
       <span class="provider-mark">${mark}</span>
       <strong class="provider-name">${escapeHtml(group.displayName)}</strong>
-      <span class="provider-status">${status}</span>
       ${radioHtml}
       <button class="btn provider-manage">${buttonLabel}</button>
     </div>`;

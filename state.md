@@ -105,28 +105,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (29 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (30 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 18]
+## main...origin/main [ahead 19]
  M config/playground-seats.json
-M  src/channels/playground/api-routes.ts
-M  src/channels/playground/api/class-controls.test.ts
-M  src/channels/playground/api/class-controls.ts
-M  src/channels/playground/public/provider-groups.js
 M  src/channels/playground/public/style.css
 M  src/channels/playground/public/tabs/home.js
-M  src/classroom-provider-resolver.test.ts
-M  src/classroom-provider-resolver.ts
-M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+37606a6 refactor(playground/home): simplify instructor LLM Providers card per UX review
 95758c1 feat(playground/home): instructor-view LLM Providers card (Phase C-2)
 24f86da feat(classroom): class pool = owner's per-user creds (Phase C-1)
 4a5f555 docs(plan): instructor class-pool + provider grouping (Phase C)
@@ -141,9 +135,8 @@ a870b97 feat(container/proxy-fetch): propagate X-NanoClaw-Session-Id alongside a
 5ddb39b feat(container-runner): inject X_NANOCLAW_SESSION_ID env for payload-log attribution
 9a50ac1 feat(proxy-payload-log): section parser for anthropic + openai-shaped routes
 8f7f691 fix(proxy-payload-log): busy_timeout pragma + batch-prune on every Nth write
-fc1b51d feat(proxy-payload-log): per-session storage layer with 50-row retention
 ```
 
 ### Last refresh
 
-2026-05-28T17:24:21Z
+2026-05-28T17:55:00Z

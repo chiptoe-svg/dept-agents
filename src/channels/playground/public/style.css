@@ -997,23 +997,27 @@ select.model-changed {
 .provider-row:last-child { border-bottom: none; }
 .provider-active { font-size: 12px; color: #555; margin-top: 4px; }
 .provider-active label { margin-right: 12px; }
-/* Instructor view — compact one-row-per-group layout. Status pill +
-   optional active-method radio (OpenAI/Anthropic) + single button. */
+/* Instructor view — compact one-row-per-group grid layout. Four columns:
+   mark / name / radio block / button. Grid keeps the button inside the
+   card no matter how narrow it gets; nowrap on the radio prevents the
+   text from breaking. The mark dot + radio fill state convey "what's
+   live" without a separate status string. */
 .provider-row[data-group] {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px 110px 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 8px 0;
+  border-bottom: 1px solid #eee;
 }
-.provider-row[data-group] .provider-mark { width: 14px; color: #6b6b6b; }
+.provider-row[data-group]:last-child { border-bottom: none; }
+.provider-row[data-group] .provider-mark { color: #b5b5b5; font-size: 14px; line-height: 1; text-align: center; }
 .provider-row[data-group].is-connected .provider-mark { color: #2a8b34; }
-.provider-row[data-group] .provider-name { min-width: 96px; }
-.provider-row[data-group] .provider-status { flex: 1; color: #555; font-size: 12px; }
-.provider-row[data-group] .provider-active { font-size: 12px; color: #555; display: inline-flex; gap: 10px; }
-.provider-row[data-group] .provider-active label { display: inline-flex; align-items: center; gap: 4px; }
-.provider-row[data-group] .provider-active input[disabled] + label,
-.provider-row[data-group] .provider-active label:has(input[disabled]) { opacity: 0.45; }
-.provider-row[data-group] .provider-manage { font-size: 12px; padding: 4px 12px; }
+.provider-row[data-group] .provider-name { white-space: nowrap; }
+.provider-row[data-group] .provider-active { font-size: 12px; color: #555; display: flex; gap: 14px; white-space: nowrap; }
+.provider-row[data-group] .provider-active label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.provider-row[data-group] .provider-active label:has(input[disabled]) { opacity: 0.4; cursor: default; }
+.provider-row[data-group] .provider-manage { font-size: 12px; padding: 4px 14px; white-space: nowrap; }
 .provider-paste-form { margin-top: 8px; padding: 8px; background: #f8fafe; border: 1px solid #d6e2f5; border-radius: 6px; }
 .provider-paste-form .paste-open-link { margin-bottom: 10px; display: flex; align-items: center; flex-wrap: wrap; }
 .provider-paste-form .paste-open-link a { text-decoration: none; }
