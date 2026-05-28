@@ -67,5 +67,22 @@ registerProvider({
       bestFor: 'Reasoning, long outputs.',
       default: true,
     },
+    {
+      id: 'claude-opus-4-7',
+      modelProvider: 'anthropic',
+      displayName: 'claude-opus-4-7',
+      origin: 'cloud',
+      // Anthropic Opus pricing tier (revise after the next published rate
+      // update). Per-1M token rates → divide by 1000 for per-1k.
+      costPer1kInUsd: 0.015,
+      costPer1kOutUsd: 0.075,
+      costPer1kCachedInUsd: 0.0015,
+      costPer1kTokensUsd: 0.045,
+      avgLatencySec: 3.5,
+      paramCount: 'not disclosed',
+      modalities: ['text', 'image'],
+      chips: ['🐢 slower', '$$$ premium', '☁ Anthropic', '🔝 frontier'],
+      bestFor: 'Hardest reasoning, long-form writing, multi-step agentic flows.',
+    },
   ] satisfies ModelEntry[],
 });

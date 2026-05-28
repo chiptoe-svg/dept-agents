@@ -105,23 +105,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (38 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (39 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 27]
+## main...origin/main [ahead 28]
  M config/playground-seats.json
-M  src/channels/playground/api/models-tab-state.test.ts
 M  src/channels/playground/api/models-tab-state.ts
-M  src/channels/playground/public/tabs/chat.js
-M  src/modules/permissions/db/user-roles.ts
+M  src/providers/claude-spec.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+ab6eac0 fix: class-pool gating + chat dropdown only shows checked models
 626ab94 feat(playground/models): group + dedupe + richer cards + explicit toggle (Phase C-4)
 21c8b8f style(playground/home): bump provider gear icon from 16px to 24px
 a50f538 refactor(playground/home): split chip state from settings — gear icon on right
@@ -136,9 +135,8 @@ d8e414f fix(playground/home): grid layout for instructor providers card, drop st
 4a5f555 docs(plan): instructor class-pool + provider grouping (Phase C)
 5b765ed fix(playground/home): un-break Class Controls form, group OpenAI specs into one row
 557c42d fix(playground/chat): derive providerAuth via auth-registry, not legacy model-providers
-521b757 fix(container/test-infra): honor SESSION_*_DB_PATH env vars + sync test schema
 ```
 
 ### Last refresh
 
-2026-05-28T19:20:22Z
+2026-05-28T19:22:34Z

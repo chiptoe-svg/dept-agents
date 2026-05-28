@@ -97,6 +97,7 @@ import { listProviderSpecs } from '../../../providers/auth-registry.js';
 import { DEFAULT_CLASS_ID, readClassControls } from './class-controls.js';
 import { loadStudentProviderCreds } from '../../../student-provider-auth.js';
 import { getOwnerUserId } from '../../../modules/permissions/db/user-roles.js';
+import { listAllForProvider } from '../../../model-discovery.js';
 import type { ModelEntry } from '../../../model-catalog.js';
 
 // Mirrors SIBLING_API_KEY_SPECS in classroom-provider-resolver.ts — when
@@ -117,6 +118,37 @@ function classPoolReadyForSpec(ownerId: string | null, specId: string): boolean 
     if (sibCreds?.apiKey?.value) return true;
   }
   return false;
+}
+
+/**
+ * For OMLX (local server) only — augment the static catalog with whatever
+ * mlx-omni-server reports at /v1/models right now. Synthesises minimal
+ * ModelEntry objects for ids not already in the spec's catalogModels.
+ * model-discovery's in-process cache (CACHE_TTL_MS) bounds the rate.
+ */
+async function omlxLiveCatalog(staticEntries: readonly ModelEntry[]): Promise<ModelEntry[]> {
+  let hints: Awaited<ReturnType<typeof listAllForProvider>> = [];
+  try {
+    hints = await listAllForProvider('local');
+  } catch {
+    return [];
+  }
+  const known = new Set(staticEntries.map((e) => e.id));
+  const out: ModelEntry[] = [];
+  for (const h of hints) {
+    if (known.has(h.id)) continue;
+    out.push({
+      id: h.id,
+      modelProvider: 'local',
+      displayName: h.id,
+      origin: 'local',
+      costPer1kTokensUsd: 0,
+      modalities: ['text'],
+      chips: ['🆓 free', '💻 mlx local', '🔍 discovered'],
+      notes: h.note || 'Discovered live from your mlx-omni-server.',
+    });
+  }
+  return out;
 }
 
 const REACHABILITY_CACHE_MS = 30_000;
@@ -200,6 +232,14 @@ export async function handleGetModelsTabState(input: {
       };
       const classPoolReady = classPoolReadyForSpec(ownerId, spec.id);
       const derived = deriveProviderState({ spec: facts, policy, creds, reachable, classPoolReady });
+      // OMLX-specific: live-augment the catalog with whatever the local
+      // server is currently serving. Hidden specs skip the query.
+      const staticEntries = spec.catalogModels ?? [];
+      let fullCatalog: ModelEntry[] = staticEntries;
+      if (spec.id === 'omlx' && derived.state !== 'HIDDEN') {
+        const live = await omlxLiveCatalog(staticEntries);
+        fullCatalog = [...staticEntries, ...live];
+      }
       return {
         id: spec.id,
         displayName: spec.displayName,
@@ -217,7 +257,7 @@ export async function handleGetModelsTabState(input: {
           accountEmail: credsRaw?.oauth?.account,
         },
         policy,
-        catalogModels: derived.state === 'HIDDEN' ? [] : (spec.catalogModels ?? []),
+        catalogModels: derived.state === 'HIDDEN' ? [] : fullCatalog,
       };
     }),
   );
