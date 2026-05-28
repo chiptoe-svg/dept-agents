@@ -9,7 +9,8 @@ import { readEnvFile } from '../../../env.js';
 import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
 import { listAllForProvider } from '../../../model-discovery.js';
 import { setModelProviderAndModel } from '../../../model-provider-switch.js';
-import { getModelProvider } from '../../../model-providers/index.js';
+import { DEFAULT_CLASS_ID } from './class-controls.js';
+import { computeProviderAvailability } from './models-tab-state.js';
 
 export interface ApiResult<T> {
   status: number;
@@ -34,10 +35,10 @@ export interface ModelsResponse {
    */
   localServerOnline: boolean | null;
   /**
-   * Per-provider usability. `true` when a chat/agent call can actually be
-   * made: cloud providers (claude, codex) need a host API key / OAuth token;
-   * the local provider needs its server reachable. The Chat-tab dropdowns
-   * use this to hide providers that would only produce a failed call.
+   * Per-provider usability. `true` when this user can actually make a
+   * chat/agent call right now — derived from the same composition the
+   * Models tab uses (auth-registry spec + class policy + personal creds +
+   * reachability). The Chat-tab dropdowns hide anything not `true`.
    */
   providerAuth: Record<string, boolean>;
 }
@@ -64,7 +65,7 @@ async function probeLocalServer(): Promise<boolean> {
   }
 }
 
-export async function handleGetModels(draftFolder: string): Promise<ApiResult<ModelsResponse>> {
+export async function handleGetModels(draftFolder: string, userId: string): Promise<ApiResult<ModelsResponse>> {
   try {
     const group = getAgentGroupByFolder(draftFolder);
     if (!group) return { status: 404, body: { error: `Agent group not found: ${draftFolder}` } };
@@ -72,11 +73,12 @@ export async function handleGetModels(draftFolder: string): Promise<ApiResult<Mo
     const catalog = getModelCatalog();
     const catalogIds = new Set(catalog.map((m) => `${m.modelProvider}:${m.id}`));
 
-    const [claudeHints, codexHints, localHints, localServerOnline] = await Promise.all([
+    const [claudeHints, codexHints, localHints, localServerOnline, providerAuth] = await Promise.all([
       listAllForProvider('claude').catch(() => []),
       listAllForProvider('codex').catch(() => []),
       listAllForProvider('local').catch(() => []),
       probeLocalServer(),
+      computeProviderAvailability({ userId, classId: DEFAULT_CLASS_ID }),
     ]);
 
     const discovered: DiscoveredModel[] = [];
@@ -96,19 +98,6 @@ export async function handleGetModels(draftFolder: string): Promise<ApiResult<Mo
         : cfg.provider && cfg.model
           ? { modelProvider: cfg.provider, model: cfg.model }
           : null;
-
-    // Per-provider auth status. The local provider has no real auth — its
-    // omlx adapter always returns a token — so reachability stands in for
-    // usability there. Cloud providers resolve to false when the host has
-    // no key/OAuth (getAuth() returns null).
-    const providerAuth: Record<string, boolean> = {};
-    const providersSeen = new Set<string>([
-      ...catalog.map((m) => m.modelProvider),
-      ...discovered.map((d) => d.modelProvider),
-    ]);
-    for (const p of providersSeen) {
-      providerAuth[p] = p === 'local' ? localServerOnline !== false : getModelProvider(p)?.getAuth() != null;
-    }
 
     return {
       status: 200,

@@ -193,3 +193,41 @@ export async function handleGetModelsTabState(input: {
 
   return { status: 200, body: { providers } };
 }
+
+/**
+ * Per-spec availability snapshot — same composition as `handleGetModelsTabState`
+ * but stripped to `{ [specId]: state === 'AVAILABLE' }`. Used by the Chat tab
+ * to filter the provider dropdown to what the student can actually use right
+ * now (class policy + personal creds + reachability).
+ */
+export async function computeProviderAvailability(input: {
+  userId: string;
+  classId: string;
+}): Promise<Record<string, boolean>> {
+  const cc = readClassControls();
+  const policies = cc.classes[input.classId]?.providers ?? {};
+  const specs = listProviderSpecs();
+  const entries = await Promise.all(
+    specs.map(async (spec) => {
+      const policy = policies[spec.id] ?? { allow: false, provideDefault: false, allowByo: false };
+      const credsRaw = loadStudentProviderCreds(input.userId, spec.id);
+      const creds: CredState = credsRaw
+        ? { hasOAuth: !!credsRaw.oauth, hasApiKey: !!credsRaw.apiKey }
+        : { hasOAuth: false, hasApiKey: false };
+      const isLocalOnly = spec.credentialFileShape === 'none' && !!spec.reachability;
+      const reachable = spec.reachability ? await probeWithCache(spec.id, spec.reachability) : true;
+      const facts: SpecFacts = {
+        id: spec.id,
+        displayName: spec.displayName,
+        catalogModels: (spec.catalogModels ?? []).map((m) => ({ id: m.id, modelProvider: m.modelProvider })),
+        hasReachabilityProbe: !!spec.reachability,
+        isLocalOnly,
+        hasOauthMethod: !!spec.oauth,
+        hasApiKeyMethod: !!spec.apiKey,
+      };
+      const derived = deriveProviderState({ spec: facts, policy, creds, reachable });
+      return [spec.id, derived.state === 'AVAILABLE'] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}

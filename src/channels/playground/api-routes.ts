@@ -583,7 +583,7 @@ export async function route(
   const modelsMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/models$/);
   if (method === 'GET' && modelsMatch) {
     if (!canReadDraft(modelsMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
-    const r = await handleGetModels(modelsMatch[1]!);
+    const r = await handleGetModels(modelsMatch[1]!, session.userId ?? '');
     return send(res, r.status, r.body);
   }
   if (method === 'PUT' && modelsMatch) {

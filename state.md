@@ -101,25 +101,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `feat/proxy-payload-log`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (23 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (24 commits ahead)
 
 ### Working tree
 
 ```
 ## feat/proxy-payload-log
  M config/playground-seats.json
-M  container/agent-runner/src/db/connection.ts
-M  container/agent-runner/src/providers/pi-mcp-bridge.test.ts
- M src/channels/playground/api-routes.ts
- M src/channels/playground/api/models-tab-state.ts
- M src/channels/playground/api/models.test.ts
- M src/channels/playground/api/models.ts
+M  src/channels/playground/api-routes.ts
+M  src/channels/playground/api/models-tab-state.ts
+M  src/channels/playground/api/models.test.ts
+M  src/channels/playground/api/models.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+521b757 fix(container/test-infra): honor SESSION_*_DB_PATH env vars + sync test schema
 f4b0fec fix(api/payloads): reject path-traversal IDs + sanitize numeric query params
 b911658 feat(api): GET /api/sessions/:id/payloads handler for trace/context panel
 f13ea4e fix(credential-proxy): memoize openStore failures + cleanup notes
@@ -134,9 +133,8 @@ f0f103a docs(spec): proxy payload log foundation
 8024422 docs(scope): capture multi-arc planning, drop Eval tab, expand Bench
 bb4874d docs(vision): reconcile roadmap with shipped state — 2026-05-26 audit
 96b09cf fix(agents): buildModalShell builds actions skeleton before calling bodyFn
-d413236 feat(provider): mirror codex's 5-model lineup on openai-platform
 ```
 
 ### Last refresh
 
-2026-05-28T15:35:47Z
+2026-05-28T15:36:00Z

@@ -32,16 +32,14 @@ describe('models API', () => {
         return [];
       }),
     }));
-    vi.doMock('../../../model-providers/index.js', () => ({
-      getModelProvider: (name: string) => ({
-        getAuth: () => (name === 'anthropic' ? { name: 'x-api-key', value: 'k' } : null),
-      }),
+    vi.doMock('./models-tab-state.js', () => ({
+      computeProviderAvailability: async () => ({ anthropic: true }),
     }));
     vi.doMock('../../../model-provider-switch.js', () => ({
       setModelProviderAndModel: vi.fn(async () => {}),
     }));
     const { handleGetModels } = await import('./models.js');
-    const result = await handleGetModels('draft_demo');
+    const result = await handleGetModels('draft_demo', 'user-1');
     expect(result.status).toBe(200);
     const body = result.body as { catalog: unknown[]; allowedModels: unknown[]; discovered: unknown[] };
     expect(body.catalog).toHaveLength(1);
@@ -76,20 +74,20 @@ describe('models API', () => {
     vi.doMock('../../../model-discovery.js', () => ({
       listAllForProvider: vi.fn(async () => []),
     }));
-    vi.doMock('../../../model-providers/index.js', () => ({
-      getModelProvider: () => ({ getAuth: () => ({ name: 'x-api-key', value: 'k' }) }),
+    vi.doMock('./models-tab-state.js', () => ({
+      computeProviderAvailability: async () => ({ anthropic: true }),
     }));
     vi.doMock('../../../model-provider-switch.js', () => ({
       setModelProviderAndModel: vi.fn(async () => {}),
     }));
     const { handleGetModels } = await import('./models.js');
-    const result = await handleGetModels('draft_demo');
+    const result = await handleGetModels('draft_demo', 'user-1');
     expect(result.status).toBe(200);
     const body = result.body as { activeModel: { modelProvider: string; model: string } | null };
     expect(body.activeModel).toEqual({ modelProvider: 'anthropic', model: 'claude-sonnet-4-6' });
   });
 
-  it('GET reports per-provider auth: cloud via getAuth, local via reachability', async () => {
+  it('GET surfaces providerAuth from computeProviderAvailability', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({ ok: true })),
@@ -116,17 +114,18 @@ describe('models API', () => {
     vi.doMock('../../../model-discovery.js', () => ({
       listAllForProvider: vi.fn(async () => []),
     }));
-    vi.doMock('../../../model-providers/index.js', () => ({
-      // anthropic has a host key; openai-codex does not.
-      getModelProvider: (name: string) => ({
-        getAuth: () => (name === 'anthropic' ? { name: 'x-api-key', value: 'k' } : null),
+    vi.doMock('./models-tab-state.js', () => ({
+      computeProviderAvailability: async () => ({
+        anthropic: true,
+        'openai-codex': false,
+        local: true,
       }),
     }));
     vi.doMock('../../../model-provider-switch.js', () => ({
       setModelProviderAndModel: vi.fn(async () => {}),
     }));
     const { handleGetModels } = await import('./models.js');
-    const result = await handleGetModels('draft_demo');
+    const result = await handleGetModels('draft_demo', 'user-1');
     expect(result.status).toBe(200);
     const body = result.body as { providerAuth: Record<string, boolean> };
     expect(body.providerAuth).toEqual({ anthropic: true, 'openai-codex': false, local: true });
