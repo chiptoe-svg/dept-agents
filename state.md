@@ -105,21 +105,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (44 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (45 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 33]
+## main...origin/main [ahead 34]
  M config/playground-seats.json
-M  src/channels/playground/public/style.css
-M  src/channels/playground/public/tabs/models.js
+M  src/channels/playground/public/tabs/chat.js
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+3657abe feat(playground/models): pre-add probe — fail fast with the upstream's error
 be704d4 fix(pi): per-modelProvider continuation + duplicate-item recovery + Models tab refresh button
 a3cda47 fix(direct-chat): accept catalog modelProvider names (openai-codex, anthropic, ...)
 77e1bd8 fix(playground/models): recognize both namespaces in whitelist + write to catalog name
@@ -134,9 +134,8 @@ a50f538 refactor(playground/home): split chip state from settings — gear icon 
 d7cf2e8 fix(playground/home): visible cred dialog + on-row active radio + Class Controls Apply
 3d169ed refactor(playground/home): clickable method chips, no separate button
 d8e414f fix(playground/home): grid layout for instructor providers card, drop status text
-37606a6 refactor(playground/home): simplify instructor LLM Providers card per UX review
 ```
 
 ### Last refresh
 
-2026-05-28T20:47:21Z
+2026-05-28T20:51:41Z

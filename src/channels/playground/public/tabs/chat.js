@@ -1030,9 +1030,31 @@ function piHandleToolcallEnd(trace, ame, st) {
  * Usage fields: input, output, cacheRead, cacheWrite, cost.total.
  */
 function piHandleMessageEnd(trace, event, st) {
-  // Auto-collapse the assistant body now that streaming is done — the
-  // summary still shows the preview snippet, click to re-expand.
-  if (st.messageDetails) st.messageDetails.open = false;
+  // gpt-5.x quirk: after a tool result comes back, the model often
+  // returns an empty "final_answer" assistant message — just a
+  // textSignature reasoning trace, output ~4 tokens, no visible text,
+  // no tool calls. Rendered raw it looks like "the agent said nothing,"
+  // which makes users think the chat failed. Replace the empty bubble
+  // with a compact note so the trace stays honest without looking
+  // broken.
+  const msg = event.message;
+  const onlyEmptyText =
+    Array.isArray(msg?.content)
+    && msg.content.length > 0
+    && msg.content.every((part) => part.type === 'text' && (!part.text || part.text === ''));
+  if (onlyEmptyText && st.messageBubble) {
+    if (st.messageTextEl) st.messageTextEl.textContent = '';
+    if (st.messagePreviewEl) {
+      st.messagePreviewEl.textContent = '(no further reply — tool result was the answer)';
+      st.messagePreviewEl.style.fontStyle = 'italic';
+      st.messagePreviewEl.style.color = '#888';
+    }
+    if (st.messageDetails) st.messageDetails.open = false;
+  } else if (st.messageDetails) {
+    // Normal turn: auto-collapse the assistant body now that streaming
+    // is done — the summary still shows the preview snippet.
+    st.messageDetails.open = false;
+  }
 
   const usage = event.message && event.message.usage;
   if (!usage || !st.messageBubble) return;
