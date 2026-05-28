@@ -100,24 +100,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `feat/proxy-payload-log`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (24 commits ahead)
+- **Current:** `main`
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (25 commits ahead)
 
 ### Working tree
 
 ```
-## feat/proxy-payload-log
+## main...origin/main [ahead 14]
  M config/playground-seats.json
-M  src/channels/playground/api-routes.ts
-M  src/channels/playground/api/models-tab-state.ts
-M  src/channels/playground/api/models.test.ts
-M  src/channels/playground/api/models.ts
+A  plans/class-controls-provider-grouping.md
+A  src/channels/playground/public/provider-groups.js
+M  src/channels/playground/public/tabs/home.js
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+557c42d fix(playground/chat): derive providerAuth via auth-registry, not legacy model-providers
 521b757 fix(container/test-infra): honor SESSION_*_DB_PATH env vars + sync test schema
 f4b0fec fix(api/payloads): reject path-traversal IDs + sanitize numeric query params
 b911658 feat(api): GET /api/sessions/:id/payloads handler for trace/context panel
@@ -132,9 +132,8 @@ fc1b51d feat(proxy-payload-log): per-session storage layer with 50-row retention
 f0f103a docs(spec): proxy payload log foundation
 8024422 docs(scope): capture multi-arc planning, drop Eval tab, expand Bench
 bb4874d docs(vision): reconcile roadmap with shipped state — 2026-05-26 audit
-96b09cf fix(agents): buildModalShell builds actions skeleton before calling bodyFn
 ```
 
 ### Last refresh
 
-2026-05-28T15:36:00Z
+2026-05-28T16:00:06Z

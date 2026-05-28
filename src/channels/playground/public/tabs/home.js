@@ -1,4 +1,5 @@
 import { openCredDialog } from '../components/cred-dialog.js';
+import { PROVIDER_GROUPS } from '../provider-groups.js';
 
 export function mountHome(el) {
   const { agent, user } = window.__pg || { agent: { name: '?', folder: '?' }, user: { id: '?' } };
@@ -467,33 +468,30 @@ function renderClassControlsForm(body, cfg) {
     <label class="cc-check"><input type="checkbox" data-cc-tab="${t}" ${cls.tabsVisibleToStudents.includes(t) ? 'checked' : ''}> ${t}</label>
   `).join('');
   // ── classroom-provider-auth:class-controls-providers START ────────────
+  // Group toggles use AND-on-read / broadcast-on-write across underlying
+  // spec ids — see plans/class-controls-provider-grouping.md.
   const policies = cls.providers || {};
   const unconfigured = !cls.providers || Object.keys(cls.providers).length === 0;
   const unconfiguredBanner = unconfigured
     ? `<div class="cc-banner-warn">⚠ Class mode not yet configured — pick provider policies below, then Save.</div>`
     : '';
-  const providerRows = PROVIDERS.concat([{ id: 'local', displayName: 'Local' }])
-    .map((p) => {
-      const pol = policies[p.id] || { allow: false, provideDefault: false, allowByo: false };
-      return `
+  const groupFlag = (group, field) =>
+    group.specIds.length > 0 &&
+    group.specIds.every((sid) => !!(policies[sid] && policies[sid][field]));
+  const providerRows = PROVIDER_GROUPS.map((g) => `
         <tr>
-          <td>${escapeHtml(p.displayName)}</td>
-          <td><input type="checkbox" data-cc-provider-allow="${p.id}" ${pol.allow ? 'checked' : ''}></td>
-          <td><input type="checkbox" data-cc-provider-default="${p.id}" ${pol.provideDefault ? 'checked' : ''}></td>
-          <td><input type="checkbox" data-cc-provider-byo="${p.id}" ${pol.allowByo ? 'checked' : ''}></td>
-        </tr>`;
-    })
-    .join('');
+          <td>${escapeHtml(g.displayName)}</td>
+          <td><input type="checkbox" data-cc-group-visible="${g.id}" ${groupFlag(g, 'allow') ? 'checked' : ''}></td>
+          <td><input type="checkbox" data-cc-group-provided="${g.id}" ${groupFlag(g, 'provideDefault') ? 'checked' : ''}></td>
+          <td><input type="checkbox" data-cc-group-byo="${g.id}" ${groupFlag(g, 'allowByo') ? 'checked' : ''}></td>
+        </tr>`).join('');
   const providersBlock = `
     <table class="cc-providers-table">
-      <thead><tr><th>Provider</th><th>Allow?</th><th>Provide default?</th><th>Let students BYO?</th></tr></thead>
+      <thead><tr><th>Provider</th><th>Visible</th><th>Provided</th><th>Let students auth themselves</th></tr></thead>
       <tbody>${providerRows}</tbody>
     </table>
   `;
   // ── classroom-provider-auth:class-controls-providers END ──────────────
-  const authChecks = ALL_AUTH.map((a) => `
-    <label class="cc-check"><input type="checkbox" data-cc-auth="${a}" ${cls.authModesAvailable.includes(a) ? 'checked' : ''}> ${escapeHtml(AUTH_LABEL[a])}</label>
-  `).join('');
 
   body.innerHTML = `
     ${unconfiguredBanner}
@@ -505,10 +503,6 @@ function renderClassControlsForm(body, cfg) {
       <h3>Providers available</h3>
       ${providersBlock}
     </div>
-    <div class="cc-group">
-      <h3>Auth modes available</h3>
-      <div class="cc-row">${authChecks}</div>
-    </div>
     <div class="home-actions">
       <button class="btn btn-primary" id="cc-save">Save class controls</button>
       <span class="muted" id="cc-status"></span>
@@ -516,19 +510,23 @@ function renderClassControlsForm(body, cfg) {
   `;
 
   body.querySelector('#cc-save').addEventListener('click', async () => {
-    const providers = {};
-    for (const p of PROVIDERS.concat([{ id: 'local' }])) {
-      providers[p.id] = {
-        allow:          body.querySelector(`[data-cc-provider-allow="${p.id}"]`)?.checked || false,
-        provideDefault: body.querySelector(`[data-cc-provider-default="${p.id}"]`)?.checked || false,
-        allowByo:       body.querySelector(`[data-cc-provider-byo="${p.id}"]`)?.checked || false,
-      };
+    // Preserve unknown-spec entries (e.g. future specs registered on the
+    // host but not yet in PROVIDER_GROUPS) so a UI save doesn't clobber
+    // them. Then broadcast each group toggle to every underlying spec id.
+    const providers = { ...policies };
+    for (const g of PROVIDER_GROUPS) {
+      const visible = body.querySelector(`[data-cc-group-visible="${g.id}"]`)?.checked || false;
+      const provided = body.querySelector(`[data-cc-group-provided="${g.id}"]`)?.checked || false;
+      const byo = body.querySelector(`[data-cc-group-byo="${g.id}"]`)?.checked || false;
+      for (const sid of g.specIds) {
+        providers[sid] = { allow: visible, provideDefault: provided, allowByo: byo };
+      }
     }
     const next = {
       classes: {
         default: {
           tabsVisibleToStudents: [...body.querySelectorAll('[data-cc-tab]')].filter((i) => i.checked).map((i) => i.dataset.ccTab),
-          authModesAvailable:    [...body.querySelectorAll('[data-cc-auth]')].filter((i) => i.checked).map((i) => i.dataset.ccAuth),
+          authModesAvailable:    cls.authModesAvailable || [],
           providers,
         },
       },
