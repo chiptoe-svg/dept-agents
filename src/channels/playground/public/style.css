@@ -308,9 +308,57 @@ html, body {
   color: #1c1f24;
 }
 .cred-modal-body { margin: 4px 0 14px; font-size: 13px; color: #333; }
-.cred-modal-body p { margin: 8px 0; }
+.cred-modal-body p { margin: 8px 0; line-height: 1.4; }
 .cred-modal-body .muted { color: #777; }
 .cred-modal-close { margin-top: 4px; }
+
+/* Mixed-variant tab sections (Subscription, API key) — each is its own
+   block separated by a divider so the dialog reads as two distinct
+   panels. */
+.cred-modal [data-tab] {
+  margin: 14px 0 18px;
+  padding-top: 14px;
+  border-top: 1px solid #ececec;
+}
+.cred-modal [data-tab]:first-of-type { border-top: 0; padding-top: 0; margin-top: 4px; }
+.cred-modal h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: #1c1f24; }
+
+.cred-modal .home-actions { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; align-items: center; }
+.cred-modal .home-actions .btn { margin: 0; }
+
+.cred-modal .cred-active-method { margin-bottom: 4px; }
+.cred-modal .cred-active-method fieldset { border: 1px solid #dbe1e8; border-radius: 6px; padding: 8px 12px 10px; margin: 4px 0 0; }
+.cred-modal .cred-active-method legend { padding: 0 6px; font-size: 12px; color: #666; }
+.cred-modal .cred-active-method label { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; font-size: 13px; }
+
+/* OAuth paste-back form (also used outside the modal, hence the
+   double-scope so it picks up modal-tighter spacing without breaking
+   anywhere else). */
+.cred-modal .paste-open-link { margin: 10px 0 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cred-modal .paste-open-link a { text-decoration: none; }
+.cred-modal .paste-instructions { background: #f6f8fa; border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.5; color: #3a3f45; margin: 10px 0 8px; }
+.cred-modal .paste-instructions > div { margin-bottom: 3px; }
+.cred-modal .paste-instructions > div:last-child { margin-bottom: 0; }
+.cred-modal .paste-code {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  border: 1px solid #cfd5dc;
+  border-radius: 4px;
+  margin: 6px 0 10px;
+}
+.cred-modal input[type="text"]:not(.paste-code) {
+  box-sizing: border-box;
+  padding: 6px 9px;
+  font-size: 13px;
+  border: 1px solid #cfd5dc;
+  border-radius: 4px;
+  min-width: 240px;
+}
+.cred-modal .paste-err { color: #c8482a; font-size: 12px; margin: 8px 0 0; }
+.cred-modal label { display: inline-block; }
 
 /* ── Toasts ──────────────────────────────────────────────────────────── */
 

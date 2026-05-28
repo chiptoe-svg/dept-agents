@@ -105,23 +105,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (33 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (34 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 22]
+## main...origin/main [ahead 23]
  M config/playground-seats.json
-M  src/channels/playground/api-routes.ts
-M  src/channels/playground/api/class-controls.test.ts
-M  src/channels/playground/api/class-controls.ts
-M  src/channels/playground/public/tabs/home.js
+M  src/channels/playground/public/components/cred-dialog.js
+M  src/channels/playground/public/style.css
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+243411f fix(playground/home): single Apply button on Class Controls with dirty tracking
 d7cf2e8 fix(playground/home): visible cred dialog + on-row active radio + Class Controls Apply
 3d169ed refactor(playground/home): clickable method chips, no separate button
 d8e414f fix(playground/home): grid layout for instructor providers card, drop status text
@@ -136,9 +135,8 @@ f4b0fec fix(api/payloads): reject path-traversal IDs + sanitize numeric query pa
 b911658 feat(api): GET /api/sessions/:id/payloads handler for trace/context panel
 f13ea4e fix(credential-proxy): memoize openStore failures + cleanup notes
 f797c05 feat(credential-proxy): capture request bodies to per-session payload log
-a870b97 feat(container/proxy-fetch): propagate X-NanoClaw-Session-Id alongside agent-group
 ```
 
 ### Last refresh
 
-2026-05-28T18:38:45Z
+2026-05-28T18:43:19Z

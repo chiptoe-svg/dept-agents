@@ -657,7 +657,14 @@ function showPasteForm(container, providerId, displayName, state, instructions, 
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      if (errLine) { errLine.textContent = `Failed: ${err.error || r.status}`; errLine.hidden = false; }
+      let msg = `Failed: ${err.error || r.status}`;
+      // OAuth state lives in process memory; a host restart between
+      // clicking Connect and pasting the code invalidates it. Tell the
+      // user so they re-Connect instead of staring at a generic error.
+      if (typeof err.error === 'string' && err.error.toLowerCase().includes('expired state')) {
+        msg += ' — the server may have restarted between Connect and paste. Click Cancel, then Connect again.';
+      }
+      if (errLine) { errLine.textContent = msg; errLine.hidden = false; }
       return;
     }
     if (onSuccess) onSuccess();
