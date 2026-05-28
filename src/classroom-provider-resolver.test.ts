@@ -158,3 +158,95 @@ describe('classroom-provider-resolver', () => {
     expect(r).toBeNull();
   });
 });
+
+// ── C-1: class pool = owner's per-user creds ────────────────────────────
+describe('classroom-provider-resolver: class pool = owner creds (C-1)', () => {
+  async function writeProvideDefaultPolicy(providerId: string) {
+    fs.writeFileSync(
+      path.join(tmpRoot, 'config', 'class-controls.json'),
+      JSON.stringify({
+        classes: {
+          default: {
+            tabsVisibleToStudents: [],
+            authModesAvailable: [],
+            providers: { [providerId]: { allow: true, provideDefault: true, allowByo: false } },
+          },
+        },
+      }),
+    );
+  }
+
+  async function setOwner(userId: string | null) {
+    const { setOwnerLookupForTests } = await import('./classroom-provider-resolver.js');
+    setOwnerLookupForTests(() => userId);
+  }
+
+  it('returns owner apiKey when provideDefault and owner has api-key cred', async () => {
+    const { addApiKey } = await import('./student-provider-auth.js');
+    const { resolveStudentCreds } = await import('./classroom-provider-resolver.js');
+    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
+    await setOwner('instructor@x.edu');
+    await writeProvideDefaultPolicy('claude');
+    addApiKey('instructor@x.edu', 'claude', 'sk-instructor');
+    const r = await resolveStudentCreds('g1', 'claude');
+    expect(r).toEqual({ kind: 'apiKey', value: 'sk-instructor' });
+  });
+
+  it('returns owner oauth accessToken when provideDefault and owner has oauth', async () => {
+    const { addOAuth } = await import('./student-provider-auth.js');
+    const { resolveStudentCreds } = await import('./classroom-provider-resolver.js');
+    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
+    await setOwner('instructor@x.edu');
+    await writeProvideDefaultPolicy('codex');
+    addOAuth('instructor@x.edu', 'codex', {
+      accessToken: 'instructor-oauth',
+      refreshToken: 'rt',
+      expiresAt: Date.now() + 3600_000,
+    });
+    const r = await resolveStudentCreds('g1', 'codex');
+    expect(r).toEqual({ kind: 'oauth', accessToken: 'instructor-oauth' });
+  });
+
+  it('refreshes owner oauth on near-expiry and persists new token under owner', async () => {
+    const { addOAuth, loadStudentProviderCreds } = await import('./student-provider-auth.js');
+    const { resolveStudentCreds, setOAuthRefresherForTests } = await import('./classroom-provider-resolver.js');
+    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
+    await setOwner('instructor@x.edu');
+    await writeProvideDefaultPolicy('codex');
+    addOAuth('instructor@x.edu', 'codex', {
+      accessToken: 'stale',
+      refreshToken: 'rt',
+      expiresAt: Date.now() + 60_000,
+      account: 'instructor@x.edu',
+    });
+    setOAuthRefresherForTests(async () => ({
+      accessToken: 'refreshed',
+      refreshToken: 'rt2',
+      expiresAt: Date.now() + 3600_000,
+    }));
+    const r = await resolveStudentCreds('g1', 'codex');
+    expect(r).toEqual({ kind: 'oauth', accessToken: 'refreshed' });
+    // New token should be persisted under owner so the next call doesn't refresh.
+    const ownerCreds = loadStudentProviderCreds('instructor@x.edu', 'codex');
+    expect(ownerCreds?.oauth?.accessToken).toBe('refreshed');
+  });
+
+  it('returns null when provideDefault but owner has no creds for that provider', async () => {
+    const { resolveStudentCreds } = await import('./classroom-provider-resolver.js');
+    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
+    await setOwner('instructor@x.edu');
+    await writeProvideDefaultPolicy('claude');
+    // No addApiKey/addOAuth for instructor — they haven't connected.
+    const r = await resolveStudentCreds('g1', 'claude');
+    expect(r).toBeNull();
+  });
+
+  it('returns null when provideDefault but no owner is configured (solo install)', async () => {
+    const { resolveStudentCreds } = await import('./classroom-provider-resolver.js');
+    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
+    await setOwner(null);
+    await writeProvideDefaultPolicy('claude');
+    const r = await resolveStudentCreds('g1', 'claude');
+    expect(r).toBeNull();
+  });
+});

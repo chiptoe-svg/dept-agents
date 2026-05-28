@@ -8,7 +8,9 @@
  *   2. loadStudentProviderCreds(userId, providerId)
  *      If present: branch on creds.active. Refresh OAuth if expiry near.
  *   3. Class Controls policy for classId.providers[providerId]:
- *      provideDefault=true  → host .env (via class-pool reader; null = use trunk .env chain)
+ *      provideDefault=true  → owner's per-user creds (the "class pool" =
+ *                             the same per-user store students use, just
+ *                             keyed by the install owner's userId)
  *      provideDefault=false, allowByo=true → connect_required sentinel
  *      allow=false → forbidden sentinel
  *
@@ -23,6 +25,7 @@ import { loadStudentProviderCreds, addOAuth } from './student-provider-auth.js';
 import { DEFAULT_CLASS_ID, readClassControls } from './channels/playground/api/class-controls.js';
 import { lookupRosterByAgentGroupId } from './db/classroom-roster.js';
 import { getProviderSpec } from './providers/auth-registry.js';
+import { getOwnerUserId } from './modules/permissions/db/user-roles.js';
 
 // Test seam: roster lookup is injectable for unit tests.
 let rosterLookup: (gid: string) => { userId: string; classId: string } | null = (gid) => {
@@ -87,15 +90,55 @@ export function setOAuthRefresherForTests(
   oauthRefresher = fn;
 }
 
-// Test seam: class-pool creds reader is injectable. Default returns null
-// (trunk falls back to existing .env chain when this returns null).
-let classPoolCreds: (classId: string, providerId: string) => ResolvedCreds = () => null;
+// Test seam: owner-userId lookup is injectable so unit tests don't need
+// to stand up the central DB just to exercise the class-pool path.
+let ownerLookup: () => string | null = () => getOwnerUserId();
 
-export function setClassPoolCredsForTests(fn: (classId: string, providerId: string) => ResolvedCreds): void {
-  classPoolCreds = fn;
+export function setOwnerLookupForTests(fn: () => string | null): void {
+  ownerLookup = fn;
 }
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+
+// Class-pool credentials reader. Per Phase C-1: the class pool *is* the
+// owner's per-user credential store — same shape as student creds, looked
+// up via the same loadStudentProviderCreds helper. When the owner has
+// nothing connected for a provider this returns null and the proxy 502s
+// with "instructor hasn't connected …" (caller's responsibility — see
+// credential-proxy serializeResolvedCredsError).
+//
+// Sync overrides still work: the await in resolveStudentCreds accepts
+// both Promise<ResolvedCreds> and ResolvedCreds. Test injections that
+// returned the resolved value directly continue to compile.
+let classPoolCreds: (classId: string, providerId: string) => Promise<ResolvedCreds> | ResolvedCreds = async (
+  _classId,
+  providerId,
+) => {
+  const ownerId = ownerLookup();
+  if (!ownerId) return null;
+  const creds = loadStudentProviderCreds(ownerId, providerId);
+  if (!creds) return null;
+  if (creds.active === 'apiKey' && creds.apiKey) {
+    return { kind: 'apiKey', value: creds.apiKey.value };
+  }
+  if (creds.active === 'oauth' && creds.oauth) {
+    const needsRefresh = creds.oauth.expiresAt - Date.now() < REFRESH_BUFFER_MS;
+    if (needsRefresh) {
+      const refreshed = await oauthRefresher(creds.oauth.refreshToken, providerId);
+      if (!refreshed) return null;
+      addOAuth(ownerId, providerId, { ...refreshed, account: creds.oauth.account });
+      return { kind: 'oauth', accessToken: refreshed.accessToken };
+    }
+    return { kind: 'oauth', accessToken: creds.oauth.accessToken };
+  }
+  return null;
+};
+
+export function setClassPoolCredsForTests(
+  fn: (classId: string, providerId: string) => Promise<ResolvedCreds> | ResolvedCreds,
+): void {
+  classPoolCreds = fn;
+}
 
 export async function resolveStudentCreds(agentGroupId: string, providerId: string): Promise<ResolvedCreds> {
   const ident = rosterLookup(agentGroupId);
@@ -130,7 +173,7 @@ export async function resolveStudentCreds(agentGroupId: string, providerId: stri
     return { kind: 'forbidden', provider: providerId };
   }
   if (policy.provideDefault) {
-    return classPoolCreds(ident.classId, providerId);
+    return await classPoolCreds(ident.classId, providerId);
   }
   return {
     kind: 'connect_required',

@@ -65,6 +65,19 @@ export function getOwners(): UserRole[] {
     .all('owner') as UserRole[];
 }
 
+/**
+ * First owner's user id, or null when no owner is configured. Classroom
+ * installs have exactly one; solo installs may have none until /setup
+ * runs. Use this when you want the singleton without unpacking
+ * getOwners()[0] at every call site.
+ */
+export function getOwnerUserId(): string | null {
+  const row = getDb()
+    .prepare('SELECT user_id FROM user_roles WHERE role = ? AND agent_group_id IS NULL ORDER BY granted_at LIMIT 1')
+    .get('owner') as { user_id: string } | undefined;
+  return row?.user_id ?? null;
+}
+
 export function hasAnyOwner(): boolean {
   const row = getDb()
     .prepare('SELECT 1 FROM user_roles WHERE role = ? AND agent_group_id IS NULL LIMIT 1')

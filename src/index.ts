@@ -11,6 +11,7 @@ import { enforceStartupBackoff, resetCircuitBreaker } from './circuit-breaker.js
 import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
 import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
+import { runEnvToOwnerMigration } from './env-to-owner-migration.js';
 import { backfillContainerConfigs } from './backfill-container-configs.js';
 import { getActiveSessions } from './db/sessions.js';
 import { recoverStaleOutboundJournals } from './session-manager.js';
@@ -108,6 +109,18 @@ async function main(): Promise<void> {
 
   // 1b. One-time filesystem cutover — idempotent, no-op after first run.
   migrateGroupsToClaudeLocal();
+
+  // 1c. One-time class-pool credential migration: lift API keys from .env
+  // into the owner's per-user creds store so the LLM Providers card
+  // becomes the source of truth. See plans/instructor-class-pool-and-grouping.md
+  // (Phase C-1). Idempotent via a marker file under data/.
+  const envMig = runEnvToOwnerMigration();
+  if (envMig.ran) {
+    log.info('env-to-owner credential migration ran', {
+      migrated: envMig.migrated,
+      skipped: envMig.skipped,
+    });
+  }
 
   // 2. Container runtime
   ensureContainerRuntimeRunning();

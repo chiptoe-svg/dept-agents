@@ -81,6 +81,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-05-28** — Phase C-1: class pool = owner's per-user creds. Why: makes the LLM Providers card the single source of truth for class-pool credentials (was `.env`). `classroom-provider-resolver.ts`'s `classPoolCreds` default now loads the owner's creds via `loadStudentProviderCreds`; the `.env`-to-owner-creds migration (`env-to-owner-migration.ts`) runs once at startup (marker file `data/.env-to-owner-migration-done` gates re-runs). `.env` API keys left in place as recovery hatch but the resolver no longer prefers them when the owner has matching creds. Plan: `plans/instructor-class-pool-and-grouping.md`.
+- **2026-05-28** — Class Controls form on Home tab fixed + reshaped around 4 hard-coded user-facing provider groups (OpenAI, Anthropic, Local, Clemson) with renamed columns (Visible / Provided / Let students auth themselves). Why: `21d2c71` had removed `const PROVIDERS = [...]` for the Home Providers card refactor but left two refs in `renderClassControlsForm`, throwing ReferenceError on render; while fixing, switched to a `provider-groups.js` single source of truth. Plan: `plans/class-controls-provider-grouping.md`. Commit: `5b765ed`.
 - **2026-05-26** — Clemson RCD-hosted LLM provider added + pi-ai integration gap closed for OMLX and Clemson. Why: institution-paid endpoint (FERPA-friendly, no per-student billing) becomes the preferred class-pool default; the "pi-ai doesn't know about local/clemson" gap from mptab-15 closed by synthesizing a `Model<'openai-completions'>` directly in `pi-model.ts` (pi-ai's `Provider`/`Api` types are open-ended strings, so a hand-rolled Model works without upstream PR). Load-bearing detail: baseUrl must include `/v1` because the OpenAI Node SDK appends `/chat/completions` directly. Live-verified: pi-test agent invokes both `clemson/gptoss-20b` and `local/Qwen3.6-35B-A3B` end-to-end with real token accounting. Commits: `9346fc0` (Clemson provider surface), `cdbc213` (pi-ai integration).
 - **2026-05-26** — Multi-Provider Models Tab shipped. Why: extend per-student auth + Models tab UI to cover Anthropic + OpenAI-codex + OpenAI Platform (new) + OMLX (local), with each upstream provider as one TypeScript module (Approach A) so future Google/OpenRouter additions are one-file changes. New `GET /api/me/models-tab-state` endpoint runs the greying rule server-side. Cred-dialog extracted from home.js into a shared component reused by Home + (future) Models tab inline manage links. Extensibility verified live via Google POC in AC8: one new file + one barrel-import + one policy entry → new section appears in Models tab. Plan: `docs/superpowers/plans/2026-05-26-multi-provider-models-tab.md`. Tag: `multi-provider-models-tab-complete-2026-05-26`.
 - **2026-05-26** — Phase D shipped: pi sole agent harness. Why: collapse three harness adapters (claude.ts, codex.ts, pi.ts) to one; pi-ai handles all upstream routing internally. Plan: `docs/superpowers/plans/2026-05-25-phase-d-pi-sole-harness.md`. Tag: `phase-d-complete-2026-05-26`.
@@ -101,20 +103,27 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (26 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (27 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 15]
+## main...origin/main [ahead 16]
  M config/playground-seats.json
-A  plans/instructor-class-pool-and-grouping.md
+M  src/classroom-provider-resolver.test.ts
+M  src/classroom-provider-resolver.ts
+A  src/env-to-owner-migration.test.ts
+A  src/env-to-owner-migration.ts
+M  src/index.ts
+M  src/modules/permissions/db/user-roles.ts
+M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+4a5f555 docs(plan): instructor class-pool + provider grouping (Phase C)
 5b765ed fix(playground/home): un-break Class Controls form, group OpenAI specs into one row
 557c42d fix(playground/chat): derive providerAuth via auth-registry, not legacy model-providers
 521b757 fix(container/test-infra): honor SESSION_*_DB_PATH env vars + sync test schema
@@ -129,9 +138,8 @@ a870b97 feat(container/proxy-fetch): propagate X-NanoClaw-Session-Id alongside a
 fc1b51d feat(proxy-payload-log): per-session storage layer with 50-row retention
 929819b docs(plan): proxy payload log foundation — 6-task TDD plan
 f0f103a docs(spec): proxy payload log foundation
-8024422 docs(scope): capture multi-arc planning, drop Eval tab, expand Bench
 ```
 
 ### Last refresh
 
-2026-05-28T16:26:33Z
+2026-05-28T16:34:38Z
