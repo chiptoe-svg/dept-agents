@@ -1092,6 +1092,20 @@ select.model-changed {
 .model-card .model-modalities { font-size: 10px; color: #777; margin-top: 4px; text-transform: lowercase; letter-spacing: 0.2px; }
 .model-card .model-localspecs { font-size: 10px; color: #777; margin-top: 2px; }
 
+/* Probe-failure message rendered inline at the bottom of the card when
+   the pre-add probe rejects. Cleared on the next toggle attempt. */
+.model-card .model-card-error {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: #fdecea;
+  border: 1px solid #f5b7b1;
+  color: #922b21;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
 /* ── Models tab v2 — per-provider section status dots ────────────────── */
 .status-dot--personal-oauth,
 .status-dot--personal-key,

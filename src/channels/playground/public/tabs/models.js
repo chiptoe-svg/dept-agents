@@ -289,14 +289,14 @@ function renderModelCard(model, group, rootEl) {
   if (toggleBtn && !toggleBtn.disabled) {
     toggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleModel(model.id, group, card, rootEl);
+      toggleModel(model, group, card, rootEl);
     });
   }
   // Card body also clickable as a fallback (matches prior behavior); only
   // when the section is AVAILABLE.
   if (group.state === 'AVAILABLE') {
     card.style.cursor = 'pointer';
-    card.addEventListener('click', () => toggleModel(model.id, group, card, rootEl));
+    card.addEventListener('click', () => toggleModel(model, group, card, rootEl));
   }
 
   return card;
@@ -340,12 +340,31 @@ function formatCostLatency(m) {
   return '(pricing not set)';
 }
 
-async function toggleModel(modelId, group, card, rootEl) {
+async function toggleModel(model, group, card, rootEl) {
+  const modelId = model.id;
   const groupNames = groupAllowedNames(group);
   const isAllowed = allowedModelsCache.some(
     (a) => groupNames.has(a.modelProvider) && a.model === modelId,
   );
   const nowAllowed = !isAllowed;
+
+  // Pre-add probe: send a 1-token "hi" so the user gets a real error
+  // BEFORE the model lands in the chat dropdown and they discover it's
+  // broken mid-conversation. Skip when removing (no point probing a
+  // remove) and for providers that direct-chat doesn't dispatch yet
+  // (clemson — class-pool by definition, instructor's job to ensure).
+  if (nowAllowed && model.modelProvider !== 'clemson') {
+    const btn = card.querySelector('button.model-toggle');
+    const prevText = btn?.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+    clearCardError(card);
+    const probe = await probeModel(model.modelProvider, modelId);
+    if (btn) { btn.disabled = false; btn.textContent = prevText ?? '+ Add to chat'; }
+    if (!probe.ok) {
+      showCardError(card, probe.error || 'probe failed');
+      return;
+    }
+  }
 
   // Snapshot for rollback.
   const before = allowedModelsCache.slice();
@@ -408,6 +427,49 @@ async function refreshSection(specId, rootEl) {
     { credentials: 'same-origin' },
   );
   await loadModels(rootEl);
+}
+
+/**
+ * Probe the model by sending a 1-token "hi" through /api/direct-chat.
+ * The direct-chat handler normalizes catalog modelProvider names
+ * (openai-codex → codex, anthropic → claude, etc.) so we can pass the
+ * raw modelProvider straight through. Returns {ok, error?}.
+ */
+async function probeModel(modelProvider, modelId) {
+  try {
+    const r = await fetch('/api/direct-chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        provider: modelProvider,
+        model: modelId,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      return { ok: false, error: body.error || `HTTP ${r.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+function showCardError(card, message) {
+  let err = card.querySelector('.model-card-error');
+  if (!err) {
+    err = document.createElement('div');
+    err.className = 'model-card-error';
+    card.appendChild(err);
+  }
+  err.textContent = `⚠ ${message}`;
+}
+
+function clearCardError(card) {
+  const err = card.querySelector('.model-card-error');
+  if (err) err.remove();
 }
 
 function groupAllowedNames(group) {
