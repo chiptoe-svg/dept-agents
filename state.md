@@ -105,20 +105,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (36 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (37 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 25]
+## main...origin/main [ahead 26]
  M config/playground-seats.json
 M  src/channels/playground/public/style.css
+M  src/channels/playground/public/tabs/models.js
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+21c8b8f style(playground/home): bump provider gear icon from 16px to 24px
 a50f538 refactor(playground/home): split chip state from settings — gear icon on right
 913f955 fix(playground/cred-dialog): proper internal layout + helpful state-expired hint
 243411f fix(playground/home): single Apply button on Class Controls with dirty tracking
@@ -133,9 +135,8 @@ d8e414f fix(playground/home): grid layout for instructor providers card, drop st
 557c42d fix(playground/chat): derive providerAuth via auth-registry, not legacy model-providers
 521b757 fix(container/test-infra): honor SESSION_*_DB_PATH env vars + sync test schema
 f4b0fec fix(api/payloads): reject path-traversal IDs + sanitize numeric query params
-b911658 feat(api): GET /api/sessions/:id/payloads handler for trace/context panel
 ```
 
 ### Last refresh
 
-2026-05-28T18:49:39Z
+2026-05-28T19:08:58Z

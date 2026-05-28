@@ -1059,6 +1059,39 @@ select.model-changed {
 .model-section-status.status-offline { color: #8a4b00; background: #fff3e0; }
 .model-card.active { box-shadow: 0 0 0 2px #1a7a1a; }
 
+/* Card head: model name on the left, in-chat toggle on the right. */
+.model-card .model-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.model-card .model-head strong { font-size: 13px; }
+
+/* Toggle button — explicit add/remove from chat dropdown. */
+.model-toggle {
+  background: #ffffff;
+  color: #4a4a4a;
+  border: 1px solid #cfd5dc;
+  border-radius: 4px;
+  padding: 3px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.model-toggle:hover { background: #f1faf3; color: #1f5e26; border-color: #9bc6a0; }
+.model-toggle.is-allowed { background: #2a8b34; color: #ffffff; border-color: #2a8b34; }
+.model-toggle.is-allowed:hover { background: #226e2a; border-color: #226e2a; }
+.model-toggle:disabled { opacity: 0.4; cursor: not-allowed; background: #f4f4f4; }
+.model-toggle:disabled:hover { background: #f4f4f4; color: #4a4a4a; border-color: #cfd5dc; }
+
+/* Restored richer info rows. */
+.model-card .model-bestfor { font-size: 11px; color: #444; margin-top: 4px; line-height: 1.4; }
+.model-card .model-modalities { font-size: 10px; color: #777; margin-top: 4px; text-transform: lowercase; letter-spacing: 0.2px; }
+.model-card .model-localspecs { font-size: 10px; color: #777; margin-top: 2px; }
+
 /* ── Models tab v2 — per-provider section status dots ────────────────── */
 .status-dot--personal-oauth,
 .status-dot--personal-key,

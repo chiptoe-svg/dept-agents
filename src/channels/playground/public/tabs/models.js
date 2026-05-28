@@ -1,5 +1,6 @@
 import { showDraftBanner } from '../draft-banner.js';
 import { openCredDialog } from '../components/cred-dialog.js';
+import { PROVIDER_GROUPS } from '../provider-groups.js';
 
 // Allowlist state — what the instructor has whitelisted for this agent group.
 // Kept as module state so toggleModel / re-renders stay in sync.
@@ -45,17 +46,75 @@ async function loadModels(el) {
   layout.className = 'models-layout';
   container.appendChild(layout);
 
+  const groups = groupSections(data.providers || []);
+
   let hiddenCount = 0;
   const hiddenNames = [];
-  for (const provider of data.providers) {
-    if (provider.state === 'HIDDEN') {
+  for (const group of groups) {
+    if (group.state === 'HIDDEN') {
       hiddenCount++;
-      hiddenNames.push(provider.displayName);
+      hiddenNames.push(group.displayName);
       continue;
     }
-    layout.appendChild(renderProviderSection(provider, el));
+    layout.appendChild(renderProviderSection(group, el));
   }
   if (hiddenCount > 0) layout.appendChild(renderHiddenFooter(hiddenCount, hiddenNames));
+}
+
+/**
+ * Fold the per-spec provider list from /api/me/models-tab-state into the
+ * 4 user-facing PROVIDER_GROUPS. Each output section has:
+ *   id, displayName  — from PROVIDER_GROUPS
+ *   state            — AVAILABLE if any member is AVAILABLE,
+ *                      else GREYED if any is GREYED, else HIDDEN
+ *   source           — first member's source that's non-null (canonical wins)
+ *   actionLabel      — canonical member's actionLabel
+ *   credentialFileShape — canonical member's shape (for cred-dialog routing)
+ *   catalogModels    — concat of member catalogs, deduped by model id
+ *                      (canonical spec wins; later members skip dupes)
+ *   members          — original spec entries, useful for whitelist sibling
+ *                      checks downstream
+ */
+function groupSections(providers) {
+  const specsById = {};
+  for (const p of providers) specsById[p.id] = p;
+
+  const out = [];
+  for (const group of PROVIDER_GROUPS) {
+    const members = group.specIds.map((sid) => specsById[sid]).filter(Boolean);
+    if (members.length === 0) continue;
+    const canonical = specsById[group.canonicalSpecId] || members[0];
+
+    // State aggregation: any AVAILABLE → AVAILABLE; else any GREYED → GREYED.
+    let state = 'HIDDEN';
+    if (members.some((m) => m.state === 'AVAILABLE')) state = 'AVAILABLE';
+    else if (members.some((m) => m.state === 'GREYED')) state = 'GREYED';
+
+    // Dedupe catalog by model id; canonical's entries come first.
+    const orderedMembers = [canonical, ...members.filter((m) => m.id !== canonical.id)];
+    const seenIds = new Set();
+    const catalogModels = [];
+    for (const m of orderedMembers) {
+      for (const entry of m.catalogModels || []) {
+        if (seenIds.has(entry.id)) continue;
+        seenIds.add(entry.id);
+        catalogModels.push(entry);
+      }
+    }
+
+    out.push({
+      id: group.id,
+      displayName: group.displayName,
+      state,
+      source: members.find((m) => m.source)?.source ?? canonical.source ?? null,
+      actionLabel: canonical.actionLabel ?? null,
+      credentialFileShape: canonical.credentialFileShape ?? 'none',
+      catalogModels,
+      members,
+      canonicalSpecId: canonical.id,
+    });
+  }
+  return out;
 }
 
 function renderProviderSection(provider, rootEl) {
@@ -143,28 +202,68 @@ function renderProviderSection(provider, rootEl) {
   return section;
 }
 
-function renderModelCard(model, provider, rootEl) {
+function renderModelCard(model, group, rootEl) {
   const card = document.createElement('div');
   card.className = `model-card origin-${model.origin || 'cloud'}`;
 
+  // Selected = the model id is in allowedModels under ANY of the group's
+  // member spec ids. Toggle writes to the canonical spec; deselect cleans
+  // every sibling so the wire stays consistent.
+  const memberIds = (group.members || []).map((m) => m.id);
   const isAllowed = allowedModelsCache.some(
-    (a) => a.modelProvider === provider.id && a.model === model.id,
+    (a) => memberIds.includes(a.modelProvider) && a.model === model.id,
   );
   if (isAllowed) card.classList.add('selected');
 
   const chipsHtml = (model.chips ?? []).map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join(' ');
 
+  // Extra info rows — bestFor, modalities, paramCount/contextSize.
+  // Each appears only when the underlying catalog entry has it set.
+  const modalityRow = (model.modalities && model.modalities.length)
+    ? `<div class="model-modalities">${model.modalities.map((m) => escapeHtml(m)).join(' · ')}</div>`
+    : '';
+  const localSpecs = model.origin === 'local' && (model.paramCount || model.contextSize)
+    ? `<div class="model-localspecs">${[
+        model.paramCount ? `${escapeHtml(model.paramCount)}` : null,
+        model.contextSize ? `${escapeHtml(String(model.contextSize))} ctx` : null,
+        model.quantization ? `${escapeHtml(model.quantization)}` : null,
+      ].filter(Boolean).join(' · ')}</div>`
+    : '';
+  const bestForRow = model.bestFor
+    ? `<div class="model-bestfor">${escapeHtml(model.bestFor)}</div>`
+    : '';
+
+  const toggleLabel = isAllowed ? '✓ In chat' : '+ Add to chat';
+  const toggleClass = isAllowed ? 'model-toggle is-allowed' : 'model-toggle';
+  const toggleDisabled = group.state === 'AVAILABLE' ? '' : 'disabled';
+  const toggleTitle = group.state === 'AVAILABLE'
+    ? (isAllowed ? 'Remove from chat dropdown' : 'Add to chat dropdown')
+    : `${group.displayName} is not yet connected.`;
+
   card.innerHTML = `
-    <div class="model-head" style="display:flex;align-items:baseline;gap:6px">
+    <div class="model-head">
       <strong>${escapeHtml(model.displayName || model.id)}</strong>
+      <button class="${toggleClass}" type="button" ${toggleDisabled} title="${escapeHtml(toggleTitle)}">${toggleLabel}</button>
     </div>
     <div class="chips">${chipsHtml}</div>
     <div class="cost-line">${escapeHtml(formatCostLatency(model))}</div>
+    ${bestForRow}
+    ${modalityRow}
+    ${localSpecs}
   `;
 
-  if (provider.state === 'AVAILABLE') {
+  const toggleBtn = card.querySelector('button.model-toggle');
+  if (toggleBtn && !toggleBtn.disabled) {
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleModel(model.id, group, card, rootEl);
+    });
+  }
+  // Card body also clickable as a fallback (matches prior behavior); only
+  // when the section is AVAILABLE.
+  if (group.state === 'AVAILABLE') {
     card.style.cursor = 'pointer';
-    card.addEventListener('click', () => selectModel(provider.id, model.id, card, rootEl));
+    card.addEventListener('click', () => toggleModel(model.id, group, card, rootEl));
   }
 
   return card;
@@ -208,24 +307,30 @@ function formatCostLatency(m) {
   return '(pricing not set)';
 }
 
-async function selectModel(providerId, modelId, card, rootEl) {
+async function toggleModel(modelId, group, card, rootEl) {
+  const memberIds = (group.members || []).map((m) => m.id);
   const isAllowed = allowedModelsCache.some(
-    (a) => a.modelProvider === providerId && a.model === modelId,
+    (a) => memberIds.includes(a.modelProvider) && a.model === modelId,
   );
   const nowAllowed = !isAllowed;
 
-  // Optimistic local update.
+  // Snapshot for rollback.
+  const before = allowedModelsCache.slice();
+
+  // Optimistic local update — remove ALL sibling entries for this model
+  // id, then add a fresh one under the canonical spec if turning on.
   allowedModelsCache = allowedModelsCache.filter(
-    (a) => !(a.modelProvider === providerId && a.model === modelId),
+    (a) => !(memberIds.includes(a.modelProvider) && a.model === modelId),
   );
   if (nowAllowed) {
-    allowedModelsCache.push({ modelProvider: providerId, model: modelId });
+    allowedModelsCache.push({ modelProvider: group.canonicalSpecId, model: modelId });
     card.classList.add('selected');
+    updateToggleLabel(card, true);
   } else {
     card.classList.remove('selected');
+    updateToggleLabel(card, false);
   }
 
-  // PUT to backend — same endpoint and wire format as the old toggleModel.
   const folder = window.__pg.agent.folder;
   const wireModels = allowedModelsCache.map((a) => ({ provider: a.modelProvider, model: a.model }));
   try {
@@ -241,15 +346,23 @@ async function selectModel(providerId, modelId, card, rootEl) {
     }
   } catch {
     // Revert on failure.
-    allowedModelsCache = allowedModelsCache.filter(
-      (a) => !(a.modelProvider === providerId && a.model === modelId),
-    );
+    allowedModelsCache = before;
     if (nowAllowed) {
       card.classList.remove('selected');
+      updateToggleLabel(card, false);
     } else {
       card.classList.add('selected');
+      updateToggleLabel(card, true);
     }
   }
+}
+
+function updateToggleLabel(card, allowed) {
+  const btn = card.querySelector('button.model-toggle');
+  if (!btn) return;
+  btn.textContent = allowed ? '✓ In chat' : '+ Add to chat';
+  btn.classList.toggle('is-allowed', allowed);
+  btn.title = allowed ? 'Remove from chat dropdown' : 'Add to chat dropdown';
 }
 
 function escapeHtml(s) {
