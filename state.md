@@ -105,24 +105,26 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (49 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (50 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 38]
+## main...origin/main [ahead 39]
  M config/playground-seats.json
-M  src/channels/playground/api/class-controls.ts
-M  src/channels/playground/api/models-tab-state.ts
-M  src/channels/playground/public/style.css
-M  src/channels/playground/public/tabs/home.js
-A  src/owner-creds-ready.ts
+M  src/channels/playground/api-routes.ts
+M  src/channels/playground/api/models.test.ts
+M  src/channels/playground/api/models.ts
+M  src/channels/playground/public/provider-groups.js
+M  src/channels/playground/public/tabs/chat.js
+A  src/provider-groups.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+2495a8c feat(class-controls): grey out Provided when owner has no cred (Phase C-3)
 fe7497f feat(models-tab): enrich discovered local + clemson models from HuggingFace
 1010fca feat(models-tab): live Clemson discovery + per-card ✕ hide + refresh clears hides
 a0da6e7 feat(playground/chat): latency in pi message-end stats + turn totals
@@ -137,9 +139,8 @@ ab6eac0 fix: class-pool gating + chat dropdown only shows checked models
 626ab94 feat(playground/models): group + dedupe + richer cards + explicit toggle (Phase C-4)
 21c8b8f style(playground/home): bump provider gear icon from 16px to 24px
 a50f538 refactor(playground/home): split chip state from settings — gear icon on right
-913f955 fix(playground/cred-dialog): proper internal layout + helpful state-expired hint
 ```
 
 ### Last refresh
 
-2026-05-28T23:13:23Z
+2026-05-28T23:39:59Z

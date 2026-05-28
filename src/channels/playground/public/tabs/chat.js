@@ -1,4 +1,5 @@
 import { showDraftBanner } from '../draft-banner.js';
+import { PROVIDER_GROUPS } from '../provider-groups.js';
 
 let sse = null; // single EventSource per agent
 
@@ -100,50 +101,70 @@ function loadModelDropdowns(el, folder) {
       const allowedSet = new Set((data.allowedModels || []).map((a) => `${a.provider}/${a.model}`));
       const visible = combined.filter((m) => allowedSet.has(`${m.modelProvider}/${m.id}`));
 
-      // Filter providers by class-controls — owner sees everything;
-      // students see only what the instructor authorized.
+      // Fold catalog entries into the 4 user-facing PROVIDER_GROUPS. The
+      // provider dropdown now shows group displayNames (OpenAI / Anthropic
+      // / Local / Clemson) instead of raw catalog modelProvider names
+      // (openai-codex / anthropic / local / clemson). The model dropdown
+      // dedupes by id within a group so the two mirrored OpenAI catalogs
+      // collapse to one set of gpt-5.x rows.
+      const groupOfModelProvider = (mp) =>
+        PROVIDER_GROUPS.find((g) => (g.memberModelProviders || []).includes(mp));
+
+      // Filter visible-in-tab by class-controls (owner sees everything;
+      // students see only what the instructor authorised) AND by
+      // server-side group-keyed providerAuth (post-C-5).
       const ac = window.__pg && window.__pg.activeClass;
       const isOwner = window.__pg && window.__pg.user && window.__pg.user.role === 'owner';
-      // v2 shape: providers is a map of { allow, provideDefault, allowByo }.
       const providerAllowed = isOwner || !ac
         ? null
-        : (p) => !!(ac.providers && ac.providers[p] && ac.providers[p].allow);
-      // Hide providers the host can't authenticate (no API key / OAuth, or
-      // the local server is offline) — selecting one would only produce a
-      // failed call. Applies to everyone, owner included. A provider absent
-      // from the map stays visible (defensive: don't hide on partial data).
+        : (specId) => !!(ac.providers && ac.providers[specId] && ac.providers[specId].allow);
       const providerAuth = data.providerAuth || {};
-      const providers = [...new Set(visible.map((m) => m.modelProvider))].filter(
-        (p) => (!providerAllowed || providerAllowed(p)) && providerAuth[p] !== false,
-      );
+
+      const groupVisible = PROVIDER_GROUPS.filter((g) => {
+        // Auth gate: providerAuth post-C-5 is keyed by group id.
+        if (providerAuth[g.id] === false) return false;
+        // Class-controls allow gate: pass if ANY member spec is allowed.
+        if (providerAllowed && !g.specIds.some(providerAllowed)) return false;
+        // Group must have at least one visible (allow-listed) model.
+        return visible.some((m) => (g.memberModelProviders || []).includes(m.modelProvider));
+      });
+
       provSel.innerHTML = '';
-      if (providers.length === 0) {
+      if (groupVisible.length === 0) {
         const placeholder = new Option('— no models checked in Models tab —', '');
         placeholder.disabled = true;
         placeholder.selected = true;
         provSel.add(placeholder);
       } else {
-        for (const p of providers) provSel.add(new Option(p, p));
+        for (const g of groupVisible) provSel.add(new Option(g.displayName, g.id));
       }
 
-      // Pre-select the currently active modelProvider+model returned by the API,
-      // falling back to the first catalog entries when none is set. Without
-      // this the dropdowns default to whatever happens to be first alphabetically,
-      // misrepresenting agents currently configured for a different provider —
-      // confusing AND a footgun, since clicking elsewhere then `Apply` would
-      // silently rewrite the active model.
+      // Pre-select from active model. The server may have written a raw
+      // catalog modelProvider name (codex era) or a group id (post-C-5);
+      // resolve either to the group id used as the dropdown value.
       const active = data.activeModel;
-      if (active && providers.includes(active.modelProvider)) {
-        provSel.value = active.modelProvider;
+      if (active) {
+        const activeGroup =
+          groupVisible.find((g) => g.id === active.modelProvider)
+          || groupVisible.find((g) => (g.memberModelProviders || []).includes(active.modelProvider));
+        if (activeGroup) provSel.value = activeGroup.id;
       }
 
       const renderModels = () => {
         modelSel.innerHTML = '';
-        for (const m of visible.filter((mm) => mm.modelProvider === provSel.value)) {
+        const g = groupVisible.find((gg) => gg.id === provSel.value);
+        if (!g) return;
+        const memberMps = new Set(g.memberModelProviders || []);
+        // Dedupe by model id within the group — mirrors what the Models
+        // tab does after dedupe.
+        const seenIds = new Set();
+        for (const m of visible) {
+          if (!memberMps.has(m.modelProvider)) continue;
+          if (seenIds.has(m.id)) continue;
+          seenIds.add(m.id);
           modelSel.add(new Option(m.displayName || m.id, m.id));
         }
-        if (active && active.modelProvider === provSel.value) {
-          // Use Array.from to test for membership without triggering a change event.
+        if (active) {
           const ids = Array.from(modelSel.options).map((o) => o.value);
           if (ids.includes(active.model)) modelSel.value = active.model;
         }

@@ -134,10 +134,14 @@ describe('models API', () => {
     const result = await handleGetModels('draft_demo', 'user-1');
     expect(result.status).toBe(200);
     const body = result.body as { providerAuth: Record<string, boolean> };
+    // Post-C-5: keyed by group id, OR across member specs.
+    //   openai    = codex(false) || openai-platform(missing) → false
+    //   anthropic = claude(true)                              → true
+    //   local     = omlx(true)                                → true
+    //   clemson   = clemson(missing)                          → false
     expect(body.providerAuth).toEqual({
+      openai: false,
       anthropic: true,
-      'openai-codex': false,
-      'openai-platform': false,
       local: true,
       clemson: false,
     });
@@ -238,14 +242,98 @@ describe('models API', () => {
         calls.push({ agentGroupId, opts });
       },
     }));
+    // 'anthropic' is BOTH a group id and the catalog modelProvider name —
+    // the resolver finds it as a group, sees user-1 has claude apiKey, and
+    // resolves to the same 'anthropic' string. End-state is unchanged.
+    vi.doMock('../../../student-provider-auth.js', () => ({
+      loadStudentProviderCreds: (userId: string, specId: string) =>
+        userId === 'user-1' && specId === 'claude' ? { apiKey: { value: 'sk-ant-fake' }, active: 'apiKey' } : null,
+    }));
+    vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
+      getOwnerUserId: () => null,
+    }));
     const { handlePutActiveModel } = await import('./models.js');
-    const result = await handlePutActiveModel('draft_demo', { modelProvider: 'anthropic', model: 'claude-sonnet-4-6' });
+    const result = await handlePutActiveModel('draft_demo', 'user-1', {
+      modelProvider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+    });
     expect(result.status).toBe(200);
     expect(calls).toEqual([
       { agentGroupId: 'ag-demo', opts: { modelProvider: 'anthropic', model: 'claude-sonnet-4-6' } },
     ]);
     const body = result.body as { ok: true; activeModel: { modelProvider: string; model: string } };
     expect(body.activeModel).toEqual({ modelProvider: 'anthropic', model: 'claude-sonnet-4-6' });
+  });
+
+  it('PUT /active-model resolves group id (openai) to a concrete spec when user has creds', async () => {
+    const calls: { agentGroupId: string; opts: unknown }[] = [];
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
+    }));
+    vi.doMock('../../../model-provider-switch.js', () => ({
+      setModelProviderAndModel: async (agentGroupId: string, opts: unknown) => {
+        calls.push({ agentGroupId, opts });
+      },
+    }));
+    // user-1 has codex creds (e.g. ChatGPT OAuth pasted).
+    vi.doMock('../../../student-provider-auth.js', () => ({
+      loadStudentProviderCreds: (userId: string, specId: string) => {
+        if (userId === 'user-1' && specId === 'codex') {
+          return {
+            apiKey: undefined,
+            oauth: { accessToken: 'sk-fake', refreshToken: 'rt', expiresAt: Date.now() + 3600_000 },
+            active: 'oauth',
+          };
+        }
+        return null;
+      },
+    }));
+    vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
+      getOwnerUserId: () => null,
+    }));
+
+    const { handlePutActiveModel } = await import('./models.js');
+    const result = await handlePutActiveModel('draft_demo', 'user-1', { modelProvider: 'openai', model: 'gpt-5.5' });
+    expect(result.status).toBe(200);
+    // Group 'openai' should resolve to the modelProvider name 'openai-codex'
+    // because user-1 has codex creds and openai-codex comes first in the
+    // group's member list.
+    expect(calls).toEqual([{ agentGroupId: 'ag-demo', opts: { modelProvider: 'openai-codex', model: 'gpt-5.5' } }]);
+  });
+
+  it('PUT /active-model rejects a group selection when nobody has creds', async () => {
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => ({
+        id: 'ag-demo',
+        folder: 'draft_demo',
+        name: 'Demo',
+        agent_provider: null,
+        created_at: '',
+      }),
+    }));
+    vi.doMock('../../../model-provider-switch.js', () => ({
+      setModelProviderAndModel: vi.fn(async () => {}),
+    }));
+    vi.doMock('../../../student-provider-auth.js', () => ({
+      loadStudentProviderCreds: () => null,
+    }));
+    vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
+      getOwnerUserId: () => null,
+    }));
+    const { handlePutActiveModel } = await import('./models.js');
+    const result = await handlePutActiveModel('draft_demo', 'user-1', {
+      modelProvider: 'anthropic',
+      model: 'claude-haiku-4-5',
+    });
+    expect(result.status).toBe(400);
+    const body = result.body as { error: string };
+    expect(body.error).toMatch(/No usable Anthropic credential/);
   });
 
   it('PUT /active-model rejects missing modelProvider', async () => {
@@ -262,7 +350,7 @@ describe('models API', () => {
       setModelProviderAndModel: vi.fn(async () => {}),
     }));
     const { handlePutActiveModel } = await import('./models.js');
-    const result = await handlePutActiveModel('draft_demo', { model: 'claude-sonnet-4-6' });
+    const result = await handlePutActiveModel('draft_demo', 'user-1', { model: 'claude-sonnet-4-6' });
     expect(result.status).toBe(400);
     const body = result.body as { error: string };
     expect(body.error).toMatch(/modelProvider/);

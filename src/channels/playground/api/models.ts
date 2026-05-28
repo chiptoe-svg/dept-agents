@@ -9,6 +9,9 @@ import { readEnvFile } from '../../../env.js';
 import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
 import { listAllForProvider } from '../../../model-discovery.js';
 import { setModelProviderAndModel } from '../../../model-provider-switch.js';
+import { PROVIDER_GROUPS, findGroupById } from '../../../provider-groups.js';
+import { loadStudentProviderCreds } from '../../../student-provider-auth.js';
+import { getOwnerUserId } from '../../../modules/permissions/db/user-roles.js';
 import { DEFAULT_CLASS_ID } from './class-controls.js';
 import { computeProviderAvailability } from './models-tab-state.js';
 
@@ -101,19 +104,11 @@ export async function handleGetModels(draftFolder: string, userId: string): Prom
 
     // computeProviderAvailability returns availability keyed by spec id
     // (claude / codex / openai-platform / omlx / clemson). The chat-tab
-    // dropdown filters by `modelProvider` strings (anthropic /
-    // openai-codex / openai-platform / local / clemson). Translate at
-    // the boundary so chat.js doesn't have to know the mapping.
-    const MODEL_PROVIDER_TO_SPEC: Record<string, string> = {
-      anthropic: 'claude',
-      'openai-codex': 'codex',
-      'openai-platform': 'openai-platform',
-      local: 'omlx',
-      clemson: 'clemson',
-    };
-    const providerAuthByModelProvider: Record<string, boolean> = {};
-    for (const [modelProvider, specId] of Object.entries(MODEL_PROVIDER_TO_SPEC)) {
-      providerAuthByModelProvider[modelProvider] = !!providerAuth[specId];
+    // dropdown filters by group id post-C-5 (openai / anthropic / local
+    // / clemson). A group is "auth" if ANY member spec is auth.
+    const providerAuthByGroup: Record<string, boolean> = {};
+    for (const group of PROVIDER_GROUPS) {
+      providerAuthByGroup[group.id] = group.members.some((m) => !!providerAuth[m.specId]);
     }
 
     return {
@@ -124,7 +119,7 @@ export async function handleGetModels(draftFolder: string, userId: string): Prom
         discovered,
         activeModel,
         localServerOnline,
-        providerAuth: providerAuthByModelProvider,
+        providerAuth: providerAuthByGroup,
       },
     };
   } catch (err) {
@@ -157,15 +152,64 @@ export function handlePutModels(
   }
 }
 
+/**
+ * Resolve a user-facing group id (e.g. 'openai') to the concrete
+ * catalog modelProvider name that should be written into
+ * `container_configs.model_provider`. Priority:
+ *   1. student's own per-user creds — first member with creds wins
+ *   2. instructor's (owner's) creds — same iteration
+ *   3. null → caller returns 400 "no usable credential"
+ * The active-method radio on the LLM Providers card already picks
+ * OAuth vs API key within a spec, so we only resolve member-spec
+ * here, not auth mode.
+ */
+function resolveGroupToModelProvider(groupId: string, userId: string): string | null {
+  const group = findGroupById(groupId);
+  if (!group) return null;
+  // Try the requesting user's own creds first.
+  for (const m of group.members) {
+    const creds = loadStudentProviderCreds(userId, m.specId);
+    if (creds?.apiKey?.value || creds?.oauth?.accessToken) return m.modelProvider;
+  }
+  // Fall back to the install owner (= class pool).
+  const ownerId = getOwnerUserId();
+  if (ownerId && ownerId !== userId) {
+    for (const m of group.members) {
+      const creds = loadStudentProviderCreds(ownerId, m.specId);
+      if (creds?.apiKey?.value || creds?.oauth?.accessToken) return m.modelProvider;
+    }
+  }
+  return null;
+}
+
 export async function handlePutActiveModel(
   draftFolder: string,
+  userId: string,
   body: { modelProvider?: unknown; model?: unknown },
 ): Promise<ApiResult<{ ok: true; activeModel: { modelProvider: string; model: string } }>> {
   if (typeof body.modelProvider !== 'string' || typeof body.model !== 'string') {
     return { status: 400, body: { error: 'modelProvider and model are required strings' } };
   }
-  const modelProvider = body.modelProvider;
+  let modelProvider = body.modelProvider;
   const model = body.model;
+  // Post-C-5: chat.js writes group ids (openai / anthropic / local /
+  // clemson). Resolve to the concrete catalog modelProvider name that
+  // pi.ts dispatches on. Non-group values pass through unchanged so
+  // legacy callers (and the Models tab "set default" path which writes
+  // modelProvider names directly) keep working.
+  if (findGroupById(modelProvider)) {
+    const resolved = resolveGroupToModelProvider(modelProvider, userId);
+    if (!resolved) {
+      const group = findGroupById(modelProvider)!;
+      return {
+        status: 400,
+        body: {
+          error: `No usable ${group.displayName} credential — connect one in the LLM Providers card first.`,
+        },
+      };
+    }
+    modelProvider = resolved;
+  }
   try {
     const group = getAgentGroupByFolder(draftFolder);
     if (!group) return { status: 404, body: { error: `Agent group not found: ${draftFolder}` } };

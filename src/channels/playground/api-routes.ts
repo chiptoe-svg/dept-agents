@@ -608,7 +608,7 @@ export async function route(
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
     const body = await readJsonBody(req);
-    const r = await handlePutActiveModel(draftFolder, body);
+    const r = await handlePutActiveModel(draftFolder, session.userId ?? '', body);
     return send(res, r.status, r.body);
   }
 

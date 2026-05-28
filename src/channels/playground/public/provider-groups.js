@@ -33,6 +33,10 @@ export const PROVIDER_GROUPS = [
     id: 'openai',
     displayName: 'OpenAI',
     specIds: ['codex', 'openai-platform'],
+    // Member catalog modelProvider names — what the catalog entries
+    // carry on their `modelProvider` field. Used by chat.js to fold
+    // catalog rows into a single per-group provider in the dropdown.
+    memberModelProviders: ['openai-codex', 'openai-platform'],
     canonicalSpecId: 'codex',
     hasMixed: true,
   },
@@ -40,6 +44,7 @@ export const PROVIDER_GROUPS = [
     id: 'anthropic',
     displayName: 'Anthropic',
     specIds: ['claude'],
+    memberModelProviders: ['anthropic'],
     canonicalSpecId: 'claude',
     hasMixed: true,
   },
@@ -47,6 +52,7 @@ export const PROVIDER_GROUPS = [
     id: 'local',
     displayName: 'Local (OMLX)',
     specIds: ['omlx'],
+    memberModelProviders: ['local'],
     canonicalSpecId: 'omlx',
     hasMixed: false,
   },
@@ -54,6 +60,7 @@ export const PROVIDER_GROUPS = [
     id: 'clemson',
     displayName: 'Clemson',
     specIds: ['clemson'],
+    memberModelProviders: ['clemson'],
     canonicalSpecId: 'clemson',
     hasMixed: false,
   },
