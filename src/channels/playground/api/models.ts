@@ -99,6 +99,23 @@ export async function handleGetModels(draftFolder: string, userId: string): Prom
           ? { modelProvider: cfg.provider, model: cfg.model }
           : null;
 
+    // computeProviderAvailability returns availability keyed by spec id
+    // (claude / codex / openai-platform / omlx / clemson). The chat-tab
+    // dropdown filters by `modelProvider` strings (anthropic /
+    // openai-codex / openai-platform / local / clemson). Translate at
+    // the boundary so chat.js doesn't have to know the mapping.
+    const MODEL_PROVIDER_TO_SPEC: Record<string, string> = {
+      anthropic: 'claude',
+      'openai-codex': 'codex',
+      'openai-platform': 'openai-platform',
+      local: 'omlx',
+      clemson: 'clemson',
+    };
+    const providerAuthByModelProvider: Record<string, boolean> = {};
+    for (const [modelProvider, specId] of Object.entries(MODEL_PROVIDER_TO_SPEC)) {
+      providerAuthByModelProvider[modelProvider] = !!providerAuth[specId];
+    }
+
     return {
       status: 200,
       body: {
@@ -107,7 +124,7 @@ export async function handleGetModels(draftFolder: string, userId: string): Prom
         discovered,
         activeModel,
         localServerOnline,
-        providerAuth,
+        providerAuth: providerAuthByModelProvider,
       },
     };
   } catch (err) {

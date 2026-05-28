@@ -105,21 +105,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (39 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (40 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 28]
+## main...origin/main [ahead 29]
  M config/playground-seats.json
-M  src/channels/playground/api/models-tab-state.ts
-M  src/providers/claude-spec.ts
+M  src/channels/playground/api/models.test.ts
+M  src/channels/playground/api/models.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+0f64b40 feat(models-tab): live-augment OMLX catalog from server + add claude-opus-4-7
 ab6eac0 fix: class-pool gating + chat dropdown only shows checked models
 626ab94 feat(playground/models): group + dedupe + richer cards + explicit toggle (Phase C-4)
 21c8b8f style(playground/home): bump provider gear icon from 16px to 24px
@@ -134,9 +135,8 @@ d8e414f fix(playground/home): grid layout for instructor providers card, drop st
 24f86da feat(classroom): class pool = owner's per-user creds (Phase C-1)
 4a5f555 docs(plan): instructor class-pool + provider grouping (Phase C)
 5b765ed fix(playground/home): un-break Class Controls form, group OpenAI specs into one row
-557c42d fix(playground/chat): derive providerAuth via auth-registry, not legacy model-providers
 ```
 
 ### Last refresh
 
-2026-05-28T19:22:34Z
+2026-05-28T19:43:47Z

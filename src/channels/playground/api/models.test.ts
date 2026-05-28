@@ -114,11 +114,17 @@ describe('models API', () => {
     vi.doMock('../../../model-discovery.js', () => ({
       listAllForProvider: vi.fn(async () => []),
     }));
+    // computeProviderAvailability returns availability keyed by SPEC id
+    // (claude / codex / openai-platform / omlx / clemson). handleGetModels
+    // translates those into modelProvider keys (anthropic / openai-codex /
+    // … / local / clemson) so the chat-tab dropdown filter can look up
+    // by the same string the catalog uses.
     vi.doMock('./models-tab-state.js', () => ({
       computeProviderAvailability: async () => ({
-        anthropic: true,
-        'openai-codex': false,
-        local: true,
+        claude: true,
+        codex: false,
+        omlx: true,
+        // openai-platform + clemson omitted → translation reports false
       }),
     }));
     vi.doMock('../../../model-provider-switch.js', () => ({
@@ -128,7 +134,13 @@ describe('models API', () => {
     const result = await handleGetModels('draft_demo', 'user-1');
     expect(result.status).toBe(200);
     const body = result.body as { providerAuth: Record<string, boolean> };
-    expect(body.providerAuth).toEqual({ anthropic: true, 'openai-codex': false, local: true });
+    expect(body.providerAuth).toEqual({
+      anthropic: true,
+      'openai-codex': false,
+      'openai-platform': false,
+      local: true,
+      clemson: false,
+    });
     vi.unstubAllGlobals();
   });
 
