@@ -92,6 +92,10 @@ export async function fetchHfMetadata(id: string): Promise<HfMetadata | null> {
       .replace(/-GGUF$/i, '');
     metadata = await searchHfModels(searchTerm, id);
   }
+  if (metadata) {
+    const matched = extractMatchedRepo(metadata);
+    if (matched) metadata = await enrichWithConfigJson(metadata, matched);
+  }
   cache.set(id, { value: metadata, expiresAt: now + CACHE_TTL_MS });
   return metadata;
 }
@@ -162,6 +166,44 @@ function synthesiseMetadata(
   }
   out.notes = `Auto-filled from HuggingFace (${data.modelId || source}).`;
   return out;
+}
+
+/**
+ * Second-pass enrichment: the /api/models/<repo> response usually doesn't
+ * include `max_position_embeddings`, so fetch the raw config.json from the
+ * matched repo's main revision to fill in contextSize. Best-effort —
+ * returns the original on any failure (timeout, missing file, parse).
+ */
+async function enrichWithConfigJson(meta: HfMetadata, repo: string): Promise<HfMetadata> {
+  if (meta.contextSize != null) return meta;
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2500);
+    const res = await fetch(`https://huggingface.co/${encodeURI(repo)}/resolve/main/config.json`, {
+      signal: ctl.signal,
+      headers: { 'user-agent': 'nanoclaw-playground/1.0' },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return meta;
+    const cfg = (await res.json()) as {
+      max_position_embeddings?: number;
+      // Multi-modal models (Gemma 4, Qwen-VL, …) nest the language config.
+      text_config?: { max_position_embeddings?: number };
+    };
+    const ctx = cfg.max_position_embeddings ?? cfg.text_config?.max_position_embeddings;
+    if (typeof ctx === 'number') {
+      return { ...meta, contextSize: ctx };
+    }
+  } catch (err) {
+    log.debug('hf-metadata config.json fetch failed', { repo, err });
+  }
+  return meta;
+}
+
+/** Pull the resolved repo id out of the synthesised notes line. */
+function extractMatchedRepo(meta: HfMetadata): string | null {
+  const m = meta.notes?.match(/Auto-filled from HuggingFace \(([^)]+)\)/);
+  return m ? m[1]! : null;
 }
 
 /** Test seam. */
