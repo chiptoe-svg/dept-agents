@@ -92,10 +92,13 @@ function loadModelDropdowns(el, folder) {
       // handler in wireSse — a separate scope) can look up cost fields by
       // modelProvider+model when rendering an agent-mode call entry.
       if (window.__pg) window.__pg.catalog = combined;
-      const allow = (data.allowedModels && data.allowedModels.length > 0)
-        ? new Set(data.allowedModels.map((a) => `${a.provider}/${a.model}`))
-        : null;
-      const visible = allow ? combined.filter((m) => allow.has(`${m.modelProvider}/${m.id}`)) : combined;
+      // Only show models the instructor has checked off in the Models tab.
+      // Previously fell back to "show all" when allowedModels was empty,
+      // which let students pick providers that weren't actually authorised
+      // for chat use. Empty whitelist now means empty dropdown — the chat
+      // log gets a hint banner below to point the user at Models.
+      const allowedSet = new Set((data.allowedModels || []).map((a) => `${a.provider}/${a.model}`));
+      const visible = combined.filter((m) => allowedSet.has(`${m.modelProvider}/${m.id}`));
 
       // Filter providers by class-controls — owner sees everything;
       // students see only what the instructor authorized.
@@ -114,7 +117,14 @@ function loadModelDropdowns(el, folder) {
         (p) => (!providerAllowed || providerAllowed(p)) && providerAuth[p] !== false,
       );
       provSel.innerHTML = '';
-      for (const p of providers) provSel.add(new Option(p, p));
+      if (providers.length === 0) {
+        const placeholder = new Option('— no models checked in Models tab —', '');
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        provSel.add(placeholder);
+      } else {
+        for (const p of providers) provSel.add(new Option(p, p));
+      }
 
       // Pre-select the currently active modelProvider+model returned by the API,
       // falling back to the first catalog entries when none is set. Without

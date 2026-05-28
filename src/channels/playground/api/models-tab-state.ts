@@ -52,8 +52,14 @@ export function deriveProviderState(input: {
   policy: ProviderPolicy;
   creds: CredState;
   reachable: boolean;
+  /** True when the instructor (owner) actually has class-pool credentials
+   *  for this spec OR a sibling spec (e.g. codex ↔ openai-platform share
+   *  the same OpenAI API key). When `provideDefault` is on but this is
+   *  false, the section greys out instead of falsely showing AVAILABLE.
+   *  Undefined = legacy callers; default to true for backward compat. */
+  classPoolReady?: boolean;
 }): DerivedProviderState {
-  const { spec, policy, creds, reachable } = input;
+  const { spec, policy, creds, reachable, classPoolReady } = input;
 
   if (!policy.allow) return { state: 'HIDDEN', source: null, actionLabel: null };
 
@@ -62,7 +68,9 @@ export function deriveProviderState(input: {
     return { state: 'AVAILABLE', source: 'local', actionLabel: 'settings' };
   }
 
-  if (policy.provideDefault) {
+  // Class pool only counts as AVAILABLE when the instructor actually has
+  // creds for the spec (or a sibling that the resolver will fall back on).
+  if (policy.provideDefault && classPoolReady !== false) {
     return {
       state: 'AVAILABLE',
       source: 'class-pool',
@@ -88,7 +96,28 @@ export function deriveProviderState(input: {
 import { listProviderSpecs } from '../../../providers/auth-registry.js';
 import { DEFAULT_CLASS_ID, readClassControls } from './class-controls.js';
 import { loadStudentProviderCreds } from '../../../student-provider-auth.js';
+import { getOwnerUserId } from '../../../modules/permissions/db/user-roles.js';
 import type { ModelEntry } from '../../../model-catalog.js';
+
+// Mirrors SIBLING_API_KEY_SPECS in classroom-provider-resolver.ts — when
+// the resolver looks up class-pool creds for one OpenAI spec and the
+// owner only stored the key under the other, it falls back. Keep the
+// two maps in sync.
+const CLASS_POOL_SIBLINGS: Record<string, string[]> = {
+  codex: ['openai-platform'],
+  'openai-platform': ['codex'],
+};
+
+function classPoolReadyForSpec(ownerId: string | null, specId: string): boolean {
+  if (!ownerId) return false;
+  const direct = loadStudentProviderCreds(ownerId, specId);
+  if (direct?.apiKey?.value || direct?.oauth?.accessToken) return true;
+  for (const sib of CLASS_POOL_SIBLINGS[specId] ?? []) {
+    const sibCreds = loadStudentProviderCreds(ownerId, sib);
+    if (sibCreds?.apiKey?.value) return true;
+  }
+  return false;
+}
 
 const REACHABILITY_CACHE_MS = 30_000;
 
@@ -145,6 +174,7 @@ export async function handleGetModelsTabState(input: {
   const cc = readClassControls();
   const policies = cc.classes[input.classId]?.providers ?? {};
   const specs = listProviderSpecs();
+  const ownerId = getOwnerUserId();
 
   const providers = await Promise.all(
     specs.map(async (spec) => {
@@ -168,7 +198,8 @@ export async function handleGetModelsTabState(input: {
         hasOauthMethod: !!spec.oauth,
         hasApiKeyMethod: !!spec.apiKey,
       };
-      const derived = deriveProviderState({ spec: facts, policy, creds, reachable });
+      const classPoolReady = classPoolReadyForSpec(ownerId, spec.id);
+      const derived = deriveProviderState({ spec: facts, policy, creds, reachable, classPoolReady });
       return {
         id: spec.id,
         displayName: spec.displayName,
@@ -207,6 +238,7 @@ export async function computeProviderAvailability(input: {
   const cc = readClassControls();
   const policies = cc.classes[input.classId]?.providers ?? {};
   const specs = listProviderSpecs();
+  const ownerId = getOwnerUserId();
   const entries = await Promise.all(
     specs.map(async (spec) => {
       const policy = policies[spec.id] ?? { allow: false, provideDefault: false, allowByo: false };
@@ -225,7 +257,8 @@ export async function computeProviderAvailability(input: {
         hasOauthMethod: !!spec.oauth,
         hasApiKeyMethod: !!spec.apiKey,
       };
-      const derived = deriveProviderState({ spec: facts, policy, creds, reachable });
+      const classPoolReady = classPoolReadyForSpec(ownerId, spec.id);
+      const derived = deriveProviderState({ spec: facts, policy, creds, reachable, classPoolReady });
       return [spec.id, derived.state === 'AVAILABLE'] as const;
     }),
   );

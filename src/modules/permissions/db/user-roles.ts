@@ -72,9 +72,16 @@ export function getOwners(): UserRole[] {
  * getOwners()[0] at every call site.
  */
 export function getOwnerUserId(): string | null {
-  const row = getDb()
-    .prepare('SELECT user_id FROM user_roles WHERE role = ? AND agent_group_id IS NULL ORDER BY granted_at LIMIT 1')
-    .get('owner') as { user_id: string } | undefined;
+  // try/catch so pre-init code paths (tests that import handlers without
+  // initDb()) treat "no owner" as the safe default.
+  let row: { user_id: string } | undefined;
+  try {
+    row = getDb()
+      .prepare('SELECT user_id FROM user_roles WHERE role = ? AND agent_group_id IS NULL ORDER BY granted_at LIMIT 1')
+      .get('owner') as { user_id: string } | undefined;
+  } catch {
+    return null;
+  }
   return row?.user_id ?? null;
 }
 

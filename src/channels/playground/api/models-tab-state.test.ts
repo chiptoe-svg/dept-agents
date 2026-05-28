@@ -164,6 +164,15 @@ describe('handleGetModelsTabState — integration', () => {
       },
     });
 
+    // Seed an owner with a claude credential so classPoolReady=true. The
+    // class-pool path returns AVAILABLE only when the instructor actually
+    // has creds for the spec — see deriveProviderState's classPoolReady gate.
+    vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
+      getOwnerUserId: () => 'owner:test',
+    }));
+    const { addApiKey } = await import('../../../student-provider-auth.js');
+    addApiKey('owner:test', 'claude', 'sk-ant-instructor');
+
     // Student has no personal creds (no cred files in tmpRoot/data/).
     const { handleGetModelsTabState } = await import('./models-tab-state.js');
     const res = await handleGetModelsTabState({

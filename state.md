@@ -105,21 +105,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (37 commits ahead)
+- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (38 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 26]
+## main...origin/main [ahead 27]
  M config/playground-seats.json
-M  src/channels/playground/public/style.css
-M  src/channels/playground/public/tabs/models.js
+M  src/channels/playground/api/models-tab-state.test.ts
+M  src/channels/playground/api/models-tab-state.ts
+M  src/channels/playground/public/tabs/chat.js
+M  src/modules/permissions/db/user-roles.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+626ab94 feat(playground/models): group + dedupe + richer cards + explicit toggle (Phase C-4)
 21c8b8f style(playground/home): bump provider gear icon from 16px to 24px
 a50f538 refactor(playground/home): split chip state from settings — gear icon on right
 913f955 fix(playground/cred-dialog): proper internal layout + helpful state-expired hint
@@ -134,9 +137,8 @@ d8e414f fix(playground/home): grid layout for instructor providers card, drop st
 5b765ed fix(playground/home): un-break Class Controls form, group OpenAI specs into one row
 557c42d fix(playground/chat): derive providerAuth via auth-registry, not legacy model-providers
 521b757 fix(container/test-infra): honor SESSION_*_DB_PATH env vars + sync test schema
-f4b0fec fix(api/payloads): reject path-traversal IDs + sanitize numeric query params
 ```
 
 ### Last refresh
 
-2026-05-28T19:08:58Z
+2026-05-28T19:20:22Z
