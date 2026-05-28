@@ -199,6 +199,67 @@ export function resetClemsonCache(): void {
   clemsonCache = null;
 }
 
+/**
+ * Anthropic live discovery — uses the `claude` model-discovery adapter
+ * which hits api.anthropic.com/v1/models with whichever auth header the
+ * adapter resolves (host .env, ANTHROPIC_BASE_URL via the credential
+ * proxy, etc.). Discovered ids that aren't already in the spec's static
+ * catalog get a synthesised entry tagged modelProvider='anthropic'.
+ * Static entries (cost-tuned by hand) win on collision.
+ */
+async function anthropicLiveCatalog(staticEntries: readonly ModelEntry[]): Promise<ModelEntry[]> {
+  let hints: Awaited<ReturnType<typeof listAllForProvider>> = [];
+  try {
+    hints = await listAllForProvider('claude');
+  } catch {
+    return [];
+  }
+  const known = new Set(staticEntries.map((e) => e.id));
+  return hints
+    .filter((h) => !known.has(h.id))
+    .map((h) => ({
+      id: h.id,
+      modelProvider: 'anthropic',
+      displayName: h.id,
+      origin: 'cloud',
+      modalities: ['text'],
+      chips: ['☁ Anthropic', '🔍 discovered'],
+      notes: h.note || 'Discovered live from api.anthropic.com/v1/models.',
+    }));
+}
+
+/**
+ * OpenAI live discovery via the `codex` model-discovery adapter
+ * (api.openai.com/v1/models). The discovered ids belong equally to
+ * the `codex` and `openai-platform` proxy routes; the modelProvider
+ * tag we write here matches the spec being augmented so the Models
+ * tab dedupes correctly within the OpenAI group.
+ */
+async function openaiLiveCatalog(
+  staticEntries: readonly ModelEntry[],
+  modelProvider: 'openai-codex' | 'openai-platform',
+): Promise<ModelEntry[]> {
+  let hints: Awaited<ReturnType<typeof listAllForProvider>> = [];
+  try {
+    hints = await listAllForProvider('codex');
+  } catch {
+    return [];
+  }
+  const known = new Set(staticEntries.map((e) => e.id));
+  const sourceLabel = modelProvider === 'openai-codex' ? 'codex' : 'platform';
+  return hints
+    .filter((h) => !known.has(h.id))
+    .map((h) => ({
+      id: h.id,
+      modelProvider,
+      displayName: h.id,
+      origin: 'cloud',
+      modalities: ['text'],
+      chips: ['☁ OpenAI', '🔍 discovered'],
+      notes: h.note || `Discovered live from api.openai.com/v1/models (${sourceLabel} route).`,
+    }));
+}
+
 const REACHABILITY_CACHE_MS = 30_000;
 
 /** Exported so tests / the future re-test button can bust the cache. */
@@ -300,10 +361,8 @@ export async function handleGetModelsTabState(input: {
       };
       const classPoolReady = classPoolReadyForSpec(ownerId, spec.id);
       const derived = deriveProviderState({ spec: facts, policy, creds, reachable, classPoolReady });
-      // Live-augment catalog for providers with a discoverable /v1/models:
-      //   omlx    → mlx-omni-server on host
-      //   clemson → Clemson RCD endpoint
-      // Hidden specs skip the query.
+      // Live-augment catalog for providers with a discoverable /v1/models.
+      // Hidden specs skip the query (no creds path → would 401 anyway).
       const staticEntries = spec.catalogModels ?? [];
       let fullCatalog: ModelEntry[] = staticEntries;
       if (derived.state !== 'HIDDEN') {
@@ -312,6 +371,15 @@ export async function handleGetModelsTabState(input: {
           fullCatalog = [...staticEntries, ...live];
         } else if (spec.id === 'clemson') {
           const live = await clemsonLiveCatalog(staticEntries);
+          fullCatalog = [...staticEntries, ...live];
+        } else if (spec.id === 'claude') {
+          const live = await anthropicLiveCatalog(staticEntries);
+          fullCatalog = [...staticEntries, ...live];
+        } else if (spec.id === 'codex') {
+          const live = await openaiLiveCatalog(staticEntries, 'openai-codex');
+          fullCatalog = [...staticEntries, ...live];
+        } else if (spec.id === 'openai-platform') {
+          const live = await openaiLiveCatalog(staticEntries, 'openai-platform');
           fullCatalog = [...staticEntries, ...live];
         }
       }
