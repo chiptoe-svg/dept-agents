@@ -81,6 +81,15 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-05-29** — Anthropic catalog tier chips/notes normalised to match OpenAI Option-B voice (frontier / ⚖ balanced / ⚡ fast). Why: chat dropdown reads consistently across providers; no catalog scope change (haiku/sonnet/opus already cover 3 of the 5 tiers cleanly). Commit: `6ecf75a`.
+- **2026-05-28** — `OPENAI_CATALOG` extracted to `src/providers/openai-catalog.ts`; `codex-spec.ts` + `openai-platform-spec.ts` map from it; `CODEX_WHITELIST` + `STATIC_FALLBACK` derive from it via `LEGACY_CODEX_IDS` for retired ids. Why: adding the next OpenAI model is a one-file edit; structural drift between codex and platform spec files is gone. Pricing remains manual (no OpenAI pricing API). Commit: `d169b4c`.
+- **2026-05-28** — OpenAI catalog tier ladder (Option B from 2026-05-28 review): gpt-5.5-pro / gpt-5.5 / gpt-5.4 ★ default / gpt-5.4-mini / gpt-5.4-nano. Why: wider cost/performance spread (1000× top-to-bottom); `-pro` and `-nano` ship with no pricing (not on OpenAI's published page) — cost aggregator falls back to $0, surface a warning if billable usage appears. Retired ids (5.3-codex, 5.2) kept in `LEGACY_CODEX_IDS` so existing container_configs keep dispatching. Commit: `159cefc`.
+- **2026-05-28** — `/api/drafts/:folder/recent` endpoint + chat.js mount/reconnect backfill. Why: host SSE `pushToDraft` is fire-and-forget — any chat-kind row delivered while EventSource is in auto-reconnect window is permanently lost; confirmed on a user-reported case (`outbound.db.delivered` showed status=delivered but chat log was empty). Live deliveries don't yet carry seq, so reconnect catch-up can rarely re-render a live message — bounded by lastSeenSeq advance per `/recent` call. Commit: `27c1de5`.
+- **2026-05-28** — Models tab gains live discovery for Anthropic + OpenAI + Clemson sections (+ existing OMLX), per-card ✕ hide via localStorage, pre-add probe via `/api/direct-chat` that fails fast with the upstream's error before whitelisting, HuggingFace metadata enrichment (modalities + contextSize incl. nested `text_config.max_position_embeddings`). Why: refresh button does real work everywhere now; users see breakage at add-time instead of mid-conversation. OpenAI live discovery is whitelist-gated by `CODEX_WHITELIST` — surfaces only ids in the curated catalog. Commits: `7d8ada8`, `3434c91`, `3657abe`, `fe7497f`, `1010fca`.
+- **2026-05-28** — Phase C-5 closed: chat-tab provider dropdown reads `PROVIDER_GROUPS` by displayName; server-side `handlePutActiveModel` resolves group id → concrete catalog modelProvider name (student per-user creds first → owner's class-pool creds → 400). Why: dropdown UX consistent with rest of the surface; auto-picks subscription vs API key based on what creds exist instead of forcing students to learn spec-id rules. Commit: `ff4105b`. Tag: `phase-c-complete-2026-05-28`.
+- **2026-05-28** — Phase C-4 shipped: Models tab grouping by `PROVIDER_GROUPS`, dedupe within group by model id, richer cards (bestFor / modalities / paramCount/ctx for local), explicit `+ Add to chat` / `✓ In chat` toggle button, allowedModels writes to canonical spec id with sibling-fallback recognition. Why: collapses the duplicate-OpenAI-catalogs UX problem; gives students a clear in/out affordance vs the old click-anywhere-on-card. Commits: `626ab94` + namespace fixes (`77e1bd8`, `ab6eac0`, `2795cba`).
+- **2026-05-28** — Phase C-3 shipped: Class Controls "Provided" checkbox greys out per group when the install owner has no usable credential for any member spec. `providedReady` field added to GET response, computed via shared `ownerHasCredsForSpec` helper that mirrors the resolver's sibling-fallback. Why: instructor can't accidentally promise students access to a provider whose class-pool cred isn't connected → no more 502 at first message. Commit: `2495a8c`.
+- **2026-05-28** — Pi continuation keyed by `pi:<modelProvider>` (was just `pi`); `isSessionInvalid` catches "duplicate item found" so OpenAI Responses API mid-format-mismatch errors auto-recover; Models tab gains ↻ refresh button per section that busts `model-discovery` + reachability caches. Why: switching modelProvider on the instructor agent (anthropic → openai-codex) was replaying anthropic-shaped session items into chatgpt.com → 400 dup-ids; cleared the stuck row + made the routing failure self-healing. Commit: `be704d4`.
 - **2026-05-28** — Phase C-2 revised after UI review: instructor card is now one row per group with status + active-method radio (mixed only) + single [Manage] button. Apply-to-class affordance dropped — credential management lives on the LLM Providers card, policy lives on the Class Controls card. POST `/api/class-controls/apply-from-creds` removed accordingly. Cross-spec OpenAI API-key sibling fallback added to `classroom-provider-resolver.ts` (codex ↔ openai-platform) so a single sk- key paste covers both proxy routes — necessary because the canonical-spec cred dialog stores the OpenAI key under codex only.
 - **2026-05-28** — Phase C-2: instructor-view LLM Providers card. Why: the existing per-spec student-flavored card was the wrong shape for the instructor (no Apply-to-class affordance, two duplicate OpenAI rows). New `renderInstructorProvidersCard` (Home tab) renders one row per `PROVIDER_GROUPS` entry with sub-rows per auth method (OAuth / API key / Settings), active-method radio when ≥2 sub-rows connected, and a per-row "Apply to class" button that POSTs to a new `/api/class-controls/apply-from-creds` endpoint (owner-only). Sub-row connected state can fall back across sibling specs via `alsoCheck` (e.g. Platform API key sub-row reads codex.apiKey too — necessary because C-1 migrated OPENAI_API_KEY to codex while the canonical OpenAI API-key bucket post-grouping is openai-platform). Student view branch is unchanged. Plan: `plans/instructor-class-pool-and-grouping.md` Phase C-2.
 - **2026-05-28** — Phase C-1: class pool = owner's per-user creds. Why: makes the LLM Providers card the single source of truth for class-pool credentials (was `.env`). `classroom-provider-resolver.ts`'s `classPoolCreds` default now loads the owner's creds via `loadStudentProviderCreds`; the `.env`-to-owner-creds migration (`env-to-owner-migration.ts`) runs once at startup (marker file `data/.env-to-owner-migration-done` gates re-runs). `.env` API keys left in place as recovery hatch but the resolver no longer prefers them when the owner has matching creds. Plan: `plans/instructor-class-pool-and-grouping.md`.
@@ -105,19 +114,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (3 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (4 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-M  src/providers/claude-spec.ts
+## main...origin/main [ahead 2]
+M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+6ecf75a catalog(anthropic): align tier chips/notes with the OpenAI 5-tier voice
 7668e30 chore(playground-seats): add Pi Test seat as owner
 d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
 159cefc catalog(openai): retire 5.3-codex + 5.2; add 5.5-pro + 5.4-nano; move default to 5.4
@@ -132,9 +142,8 @@ a0da6e7 feat(playground/chat): latency in pi message-end stats + turn totals
 32ea930 fix(playground/chat): collapse empty post-tool gpt-5.x turn into a note
 3657abe feat(playground/models): pre-add probe — fail fast with the upstream's error
 be704d4 fix(pi): per-modelProvider continuation + duplicate-item recovery + Models tab refresh button
-a3cda47 fix(direct-chat): accept catalog modelProvider names (openai-codex, anthropic, ...)
 ```
 
 ### Last refresh
 
-2026-05-29T03:19:15Z
+2026-05-29T03:20:53Z
