@@ -21,7 +21,19 @@ registerProvider({
   // If a model ID returns 404 when invoked via api.openai.com (i.e. the
   // empirical assumption is wrong for that specific model), drop it from
   // this catalog and surface the gap in state.md.
+  // Tier ladder per the 2026-05-28 review (Option B); mirrors codex-spec.ts.
   catalogModels: [
+    {
+      id: 'gpt-5.5-pro',
+      modelProvider: 'openai-platform',
+      displayName: 'gpt-5.5-pro',
+      origin: 'cloud',
+      modalities: ['text', 'image'],
+      chips: ['☁ OpenAI', '🔝 frontier', '$$$ premium'],
+      notes:
+        'Frontier-max tier — extends gpt-5.5 with stronger reasoning and longer thinking budgets. Pricing not on the published page; omit rather than guess.',
+      bestFor: 'Hardest reasoning, complex multi-step planning, research.',
+    },
     {
       id: 'gpt-5.5',
       modelProvider: 'openai-platform',
@@ -32,9 +44,9 @@ registerProvider({
       costPer1kCachedInUsd: 0.0005,
       modalities: ['text', 'image'],
       chips: ['☁ OpenAI', '🔝 frontier'],
-      notes: "OpenAI's newest frontier model — complex coding, computer use, knowledge work, research.",
-      bestFor: 'Hardest reasoning + multi-step coding tasks.',
-      default: true,
+      notes:
+        "OpenAI's frontier model — complex coding, computer use, knowledge work. Headroom above the daily driver for tough problems.",
+      bestFor: 'Hard reasoning + multi-step coding when 5.4 isn’t enough.',
     },
     {
       id: 'gpt-5.4',
@@ -45,9 +57,10 @@ registerProvider({
       costPer1kOutUsd: 0.015,
       costPer1kCachedInUsd: 0.00025,
       modalities: ['text', 'image'],
-      chips: ['☁ OpenAI', '$$ pricier'],
-      notes: 'Flagship — coding capabilities + stronger reasoning, tool use, agentic workflows.',
+      chips: ['☁ OpenAI', '⚖ balanced'],
+      notes: 'Daily driver — balanced quality + cost. Recommended default for most class work.',
       bestFor: 'Professional work blending coding with broader agentic flows.',
+      default: true,
     },
     {
       id: 'gpt-5.4-mini',
@@ -59,34 +72,19 @@ registerProvider({
       costPer1kCachedInUsd: 0.000075,
       modalities: ['text', 'image'],
       chips: ['☁ OpenAI', '⚡ fast', '$ cheap'],
-      notes: 'Fast, efficient mini model for responsive coding tasks and subagents.',
+      notes: 'Fast, efficient mini for responsive tasks and subagents.',
       bestFor: 'Short tasks, classification, subagents — when latency matters more than depth.',
     },
     {
-      id: 'gpt-5.3-codex',
+      id: 'gpt-5.4-nano',
       modelProvider: 'openai-platform',
-      displayName: 'gpt-5.3-codex',
+      displayName: 'gpt-5.4-nano',
       origin: 'cloud',
-      costPer1kInUsd: 0.00175,
-      costPer1kOutUsd: 0.014,
-      costPer1kCachedInUsd: 0.000175,
       modalities: ['text', 'image'],
-      chips: ['☁ OpenAI', '💻 code'],
-      notes: 'Industry-leading coding model — its coding capabilities also power GPT-5.4.',
-      bestFor: 'Complex software engineering when you want the pure code-tuned model.',
-    },
-    {
-      id: 'gpt-5.2',
-      modelProvider: 'openai-platform',
-      displayName: 'gpt-5.2',
-      origin: 'cloud',
-      // Pricing not on current pricing page (older general-purpose model);
-      // omit rather than guess. Aggregator falls back to $0 cost which is
-      // wrong but conservative — surface a warning if billable usage appears.
-      modalities: ['text', 'image'],
-      chips: ['☁ OpenAI', '⏮ previous gen'],
-      notes: 'Previous general-purpose model — hard debugging tasks needing deeper deliberation.',
-      bestFor: 'Long-thinking debugging when newer models feel rushed.',
+      chips: ['☁ OpenAI', '⚡ ultra-fast', '$ cheapest'],
+      notes:
+        'Smallest 5.4-family variant — cheapest and fastest, lighter capability. Pricing not on the published page; omit rather than guess.',
+      bestFor: 'Penny-per-turn subagents, classification, lookups.',
     },
   ] satisfies ModelEntry[],
 });

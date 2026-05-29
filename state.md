@@ -105,22 +105,25 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `multi-provider-models-tab-complete-2026-05-26` (53 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (0 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
+## main...origin/main
  M config/playground-seats.json
-M  src/channels/playground/api-routes.ts
-A  src/channels/playground/api/recent.ts
-M  src/channels/playground/public/tabs/chat.js
+M  src/model-providers/openai.ts
+M  src/providers/codex-spec.test.ts
+M  src/providers/codex-spec.ts
+M  src/providers/openai-platform-spec.test.ts
+M  src/providers/openai-platform-spec.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+27c1de5 feat(playground/chat): /recent endpoint backfills dropped-SSE messages
 3434c91 feat(models-tab): live discovery for Anthropic + OpenAI sections
 7d8ada8 feat(hf-metadata): fetch contextSize from repo config.json (incl. nested text_config)
 ff4105b feat(chat-tab): provider dropdown reads PROVIDER_GROUPS; server resolves group on PUT (Phase C-5)
@@ -135,9 +138,8 @@ a3cda47 fix(direct-chat): accept catalog modelProvider names (openai-codex, anth
 77e1bd8 fix(playground/models): recognize both namespaces in whitelist + write to catalog name
 2795cba fix(playground/chat): providerAuth keyed by modelProvider not spec id
 0f64b40 feat(models-tab): live-augment OMLX catalog from server + add claude-opus-4-7
-ab6eac0 fix: class-pool gating + chat dropdown only shows checked models
 ```
 
 ### Last refresh
 
-2026-05-29T00:02:51Z
+2026-05-29T00:23:10Z

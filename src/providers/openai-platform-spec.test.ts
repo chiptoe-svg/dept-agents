@@ -15,7 +15,7 @@ describe('openai-platform-spec', () => {
   it("mirrors codex-spec's 5-model lineup (user assumption: API exposes everything subscription does)", () => {
     const spec = getProviderSpec('openai-platform');
     const ids = spec!.catalogModels!.map((m) => m.id).sort();
-    expect(ids).toEqual(['gpt-5.2', 'gpt-5.3-codex', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5']);
+    expect(ids).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.5', 'gpt-5.5-pro']);
     for (const entry of spec!.catalogModels!) {
       expect(entry.modelProvider).toBe('openai-platform');
     }

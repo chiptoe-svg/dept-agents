@@ -47,7 +47,25 @@ registerProvider({
   // Per-1M tokens → per-1k (divide by 1000). Update when OpenAI ships new
   // codex models or revises pricing — the auto-refresh task on the
   // post-class punch list will eventually keep this in sync automatically.
+  // Tier ladder per the 2026-05-28 review (Option B): frontier-max →
+  // frontier → daily driver (default ★) → fast/cheap → ultra-cheap nano.
+  // Same lineup mirrored in openai-platform-spec.ts — when updating one,
+  // update the other.
   catalogModels: [
+    {
+      id: 'gpt-5.5-pro',
+      modelProvider: 'openai-codex',
+      displayName: 'gpt-5.5-pro',
+      origin: 'cloud',
+      // Pricing not on OpenAI's published page yet — omit rather than guess.
+      // The cost aggregator falls back to 0 which is wrong but conservative;
+      // surface a warning if billable -pro usage appears in usage reports.
+      modalities: ['text', 'image'],
+      chips: ['☁ OpenAI', '🔝 frontier', '$$$ premium'],
+      notes:
+        'Frontier-max tier — extends gpt-5.5 with stronger reasoning and longer thinking budgets. May be subscription-tier-gated on ChatGPT EDU/Plus.',
+      bestFor: 'Hardest reasoning, complex multi-step planning, research.',
+    },
     {
       id: 'gpt-5.5',
       modelProvider: 'openai-codex',
@@ -58,9 +76,9 @@ registerProvider({
       costPer1kCachedInUsd: 0.0005,
       modalities: ['text', 'image'],
       chips: ['☁ OpenAI', '🔝 frontier'],
-      notes: "OpenAI's newest frontier codex model — complex coding, computer use, knowledge work, research.",
-      bestFor: 'Hardest reasoning + multi-step coding tasks.',
-      default: true,
+      notes:
+        "OpenAI's frontier model — complex coding, computer use, knowledge work. Headroom above the daily driver for tough problems.",
+      bestFor: 'Hard reasoning + multi-step coding when 5.4 isn’t enough.',
     },
     {
       id: 'gpt-5.4',
@@ -71,9 +89,10 @@ registerProvider({
       costPer1kOutUsd: 0.015,
       costPer1kCachedInUsd: 0.00025,
       modalities: ['text', 'image'],
-      chips: ['☁ OpenAI', '$$ pricier'],
-      notes: 'Flagship — GPT-5.3-Codex coding capabilities + stronger reasoning, tool use, agentic workflows.',
+      chips: ['☁ OpenAI', '⚖ balanced'],
+      notes: 'Daily driver — balanced quality + cost. Recommended default for most class work.',
       bestFor: 'Professional work blending coding with broader agentic flows.',
+      default: true,
     },
     {
       id: 'gpt-5.4-mini',
@@ -85,35 +104,19 @@ registerProvider({
       costPer1kCachedInUsd: 0.000075,
       modalities: ['text', 'image'],
       chips: ['☁ OpenAI', '⚡ fast', '$ cheap'],
-      notes: 'Fast, efficient mini model for responsive coding tasks and subagents.',
+      notes: 'Fast, efficient mini for responsive tasks and subagents.',
       bestFor: 'Short tasks, classification, subagents — when latency matters more than depth.',
     },
     {
-      id: 'gpt-5.3-codex',
+      id: 'gpt-5.4-nano',
       modelProvider: 'openai-codex',
-      displayName: 'gpt-5.3-codex',
+      displayName: 'gpt-5.4-nano',
       origin: 'cloud',
-      costPer1kInUsd: 0.00175,
-      costPer1kOutUsd: 0.014,
-      costPer1kCachedInUsd: 0.000175,
+      // Pricing not on OpenAI's published page yet — omit rather than guess.
       modalities: ['text', 'image'],
-      chips: ['☁ OpenAI', '💻 code'],
-      notes: 'Industry-leading coding model — its coding capabilities also power GPT-5.4.',
-      bestFor: 'Complex software engineering when you want the pure code-tuned model.',
-    },
-    {
-      id: 'gpt-5.2',
-      modelProvider: 'openai-codex',
-      displayName: 'gpt-5.2',
-      origin: 'cloud',
-      // Pricing not on current pricing page (older general-purpose model);
-      // omit rather than guess. The aggregator falls back to $0 cost which
-      // is wrong but conservative — surface a warning if you start charging
-      // students for 5.2 usage.
-      modalities: ['text', 'image'],
-      chips: ['☁ OpenAI', '⏮ previous gen'],
-      notes: 'Previous general-purpose codex model — hard debugging tasks needing deeper deliberation.',
-      bestFor: 'Long-thinking debugging when newer models feel rushed.',
+      chips: ['☁ OpenAI', '⚡ ultra-fast', '$ cheapest'],
+      notes: 'Smallest 5.4-family variant — cheapest and fastest, lighter capability.',
+      bestFor: 'Penny-per-turn subagents, classification, lookups.',
     },
   ] satisfies ModelEntry[],
 });

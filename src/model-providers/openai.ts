@@ -46,10 +46,23 @@ const NOTES: Record<string, string> = {
  * metadata for it: add a corresponding BUILTIN_ENTRIES entry in
  * src/model-catalog.ts, or per-install via config/model-catalog-local.json.
  */
+// Curated catalog tier ladder (Option B from the 2026-05-28 review):
+//   gpt-5.5-pro    — frontier-max
+//   gpt-5.5        — frontier default
+//   gpt-5.4        — daily driver (the recommended default)
+//   gpt-5.4-mini   — fast/cheap
+//   gpt-5.4-nano   — penny-per-turn subagents
+// Older variants (5.3-codex, 5.3-codex-spark, 5.2) stay in this set so
+// existing container_configs that reference them don't suddenly become
+// "unrecognised model" — the catalog itself only ships entries for the
+// 5 ids above. Removing legacy ids is a separate migration.
 const CODEX_WHITELIST = new Set<string>([
+  'gpt-5.5-pro',
   'gpt-5.5',
   'gpt-5.4',
   'gpt-5.4-mini',
+  'gpt-5.4-nano',
+  // Legacy — kept whitelisted to avoid breaking existing configs.
   'gpt-5.3-codex',
   'gpt-5.3-codex-spark',
   'gpt-5.2',
