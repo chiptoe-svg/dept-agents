@@ -105,24 +105,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (1 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (2 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
- M config/playground-seats.json
-M  src/model-providers/openai.test.ts
-M  src/model-providers/openai.ts
-M  src/providers/codex-spec.ts
-A  src/providers/openai-catalog.ts
-M  src/providers/openai-platform-spec.ts
+## main...origin/main
+M  config/playground-seats.json
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
 159cefc catalog(openai): retire 5.3-codex + 5.2; add 5.5-pro + 5.4-nano; move default to 5.4
 27c1de5 feat(playground/chat): /recent endpoint backfills dropped-SSE messages
 3434c91 feat(models-tab): live discovery for Anthropic + OpenAI sections
@@ -137,9 +133,8 @@ a0da6e7 feat(playground/chat): latency in pi message-end stats + turn totals
 be704d4 fix(pi): per-modelProvider continuation + duplicate-item recovery + Models tab refresh button
 a3cda47 fix(direct-chat): accept catalog modelProvider names (openai-codex, anthropic, ...)
 77e1bd8 fix(playground/models): recognize both namespaces in whitelist + write to catalog name
-2795cba fix(playground/chat): providerAuth keyed by modelProvider not spec id
 ```
 
 ### Last refresh
 
-2026-05-29T02:34:52Z
+2026-05-29T03:18:04Z

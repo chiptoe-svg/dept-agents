@@ -5,6 +5,7 @@
     { "label": "TA",         "folder": "ta_01",              "role": "ta"     },
     { "label": "Student 1",  "folder": "student_01",         "role": "member" },
     { "label": "Student 2",  "folder": "student_02",         "role": "member" },
-    { "label": "Student 3",  "folder": "student_03",         "role": "member" }
+    { "label": "Student 3",  "folder": "student_03",         "role": "member" },
+    { "label": "Pi Test",    "folder": "pi-test",            "role": "owner"  }
   ]
 }
