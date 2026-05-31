@@ -114,19 +114,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (4 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (5 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  state.md
+## main...origin/main
+A  src/codex-auth-json.test.ts
+A  src/codex-auth-json.ts
+M  src/providers/pi.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+e0a8f58 docs(state): decision-log entries for the 2026-05-28/29 arc
 6ecf75a catalog(anthropic): align tier chips/notes with the OpenAI 5-tier voice
 7668e30 chore(playground-seats): add Pi Test seat as owner
 d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
@@ -141,9 +144,8 @@ fe7497f feat(models-tab): enrich discovered local + clemson models from HuggingF
 a0da6e7 feat(playground/chat): latency in pi message-end stats + turn totals
 32ea930 fix(playground/chat): collapse empty post-tool gpt-5.x turn into a note
 3657abe feat(playground/models): pre-add probe — fail fast with the upstream's error
-be704d4 fix(pi): per-modelProvider continuation + duplicate-item recovery + Models tab refresh button
 ```
 
 ### Last refresh
 
-2026-05-29T03:20:53Z
+2026-05-29T17:16:52Z
