@@ -18,6 +18,7 @@ import { openOutboundDb } from '../../../db/session-db.js';
 import type { ApiResult } from './me.js';
 
 export interface RecentMessage {
+  id: string;
   seq: number;
   timestamp: string;
   kind: string;
@@ -49,12 +50,13 @@ export function handleGetRecent(
     try {
       const rows = db
         .prepare(
-          `SELECT seq, timestamp, kind, content, provider, model, tokens_in, tokens_out, latency_ms
+          `SELECT id, seq, timestamp, kind, content, provider, model, tokens_in, tokens_out, latency_ms
            FROM messages_out
            WHERE kind = 'chat' AND seq > ?
            ORDER BY seq DESC LIMIT ?`,
         )
         .all(sinceSeq, limit) as Array<{
+        id: string;
         seq: number;
         timestamp: string;
         kind: string;
@@ -73,6 +75,7 @@ export function handleGetRecent(
           parsed = { text: r.content };
         }
         all.push({
+          id: r.id,
           seq: r.seq,
           timestamp: r.timestamp,
           kind: r.kind,

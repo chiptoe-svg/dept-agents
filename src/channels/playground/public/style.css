@@ -452,6 +452,25 @@ html, body {
   color: #888;
   margin-top: 4px;
 }
+.agent-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.agent-file-link {
+  display: inline-block;
+  font-size: 12px;
+  color: #0066cc;
+  text-decoration: none;
+  padding: 3px 8px;
+  border: 1px solid #cfd9e6;
+  border-radius: 4px;
+  background: #f4f7fb;
+}
+.agent-file-link:hover {
+  background: #e8eef7;
+}
 #chat-form {
   display: flex;
   align-items: flex-end;

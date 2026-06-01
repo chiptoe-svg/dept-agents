@@ -292,12 +292,26 @@ function wireSse(el, folder) {
       for (const m of messages || []) {
         if (m.seq <= lastSeenSeq) continue;
         lastSeenSeq = m.seq;
+        // Reconstruct file download URLs from content.files + id (live SSE
+        // already arrives with files: [{filename, url}]; /recent only has
+        // the filename array, so we build the URL the same way the adapter
+        // does — files staged at /api/drafts/<folder>/files/<id>/<name>).
+        let files;
+        if (m.content && Array.isArray(m.content.files) && m.id) {
+          files = m.content.files
+            .filter((f) => typeof f === 'string')
+            .map((filename) => ({
+              filename,
+              url: `/api/drafts/${encodeURIComponent(folder)}/files/${encodeURIComponent(m.id)}/${encodeURIComponent(filename)}`,
+            }));
+        }
         appendAgentReply(log, {
           content: m.content,
           provider: m.provider,
           model: m.model,
           tokens: m.tokensIn != null && m.tokensOut != null ? { input: m.tokensIn, output: m.tokensOut } : undefined,
           latencyMs: m.latencyMs,
+          files,
         });
       }
     } catch {
@@ -671,6 +685,25 @@ function appendAgentReply(log, data) {
     annot.className = 'cost-annot';
     annot.textContent = parts.join(' · ');
     li.appendChild(annot);
+  }
+  // Agent-produced file downloads. The playground adapter stages files into
+  // data/playground-outbox/<folder>/<messageId>/ and pushes {filename, url}
+  // entries; /recent backfill synthesizes the same shape from content.files
+  // + the messages_out.id. Browser handles the download via the anchor's
+  // `download` attribute.
+  if (Array.isArray(data.files) && data.files.length > 0) {
+    const fileBox = document.createElement('div');
+    fileBox.className = 'agent-files';
+    for (const f of data.files) {
+      if (!f || typeof f.filename !== 'string' || typeof f.url !== 'string') continue;
+      const a = document.createElement('a');
+      a.href = f.url;
+      a.setAttribute('download', f.filename);
+      a.textContent = `↓ ${f.filename}`;
+      a.className = 'agent-file-link';
+      fileBox.appendChild(a);
+    }
+    if (fileBox.children.length > 0) li.appendChild(fileBox);
   }
   log.appendChild(li);
   log.scrollTop = log.scrollHeight;
