@@ -97,6 +97,11 @@ export interface OutboundFile {
 export interface OutboundMessage {
   kind: string;
   content: unknown; // parsed JSON from messages_out
+  /** messages_out.id — needed by adapters that persist file attachments
+   *  to a per-message location (e.g. playground stages outbox files into
+   *  `data/playground-outbox/<folder>/<messageId>/` so the browser can
+   *  fetch them after delivery completes and `clearOutbox` runs). */
+  messageId?: string;
   files?: OutboundFile[]; // file attachments from the session outbox
   /** Provider cost/speed annotations (present only for agent replies). */
   meta?: {

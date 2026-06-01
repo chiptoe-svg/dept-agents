@@ -210,13 +210,14 @@ async function main(): Promise<void> {
       content: string,
       files?: import('./channels/adapter.js').OutboundFile[],
       meta?: import('./delivery.js').ChannelDeliveryMeta,
+      messageId?: string,
     ): Promise<string | undefined> {
       const adapter = getChannelAdapter(channelType);
       if (!adapter) {
         log.warn('No adapter for channel type', { channelType });
         return;
       }
-      return adapter.deliver(platformId, threadId, { kind, content: JSON.parse(content), files, meta });
+      return adapter.deliver(platformId, threadId, { kind, content: JSON.parse(content), files, meta, messageId });
     },
     async setTyping(channelType: string, platformId: string, threadId: string | null): Promise<void> {
       const adapter = getChannelAdapter(channelType);

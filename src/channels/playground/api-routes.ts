@@ -40,7 +40,38 @@ import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
 import { checkDraftMutation } from '../playground-gate-registry.js';
 import { canReadDraft } from './draft-read-gate.js';
-import { getPlatformPrefix, getSetupConfig } from './adapter.js';
+import { getPlatformPrefix, getSetupConfig, playgroundOutboxDir } from './adapter.js';
+import { isSafeAttachmentName } from '../../attachment-safety.js';
+
+// Minimal content-type lookup for agent-produced files. The chat tab renders
+// these as `<a download>` links so the browser only needs the type as a hint.
+function contentTypeFor(filename: string): string {
+  const ext = filename.toLowerCase().slice(filename.lastIndexOf('.'));
+  switch (ext) {
+    case '.md':
+      return 'text/markdown; charset=utf-8';
+    case '.txt':
+      return 'text/plain; charset=utf-8';
+    case '.json':
+      return 'application/json; charset=utf-8';
+    case '.csv':
+      return 'text/csv; charset=utf-8';
+    case '.html':
+    case '.htm':
+      return 'text/html; charset=utf-8';
+    case '.pdf':
+      return 'application/pdf';
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.zip':
+      return 'application/zip';
+    default:
+      return 'application/octet-stream';
+  }
+}
 import type { PlaygroundSession } from './auth-store.js';
 import { readJsonBody, readRawBody, send } from './http-helpers.js';
 import {
@@ -834,6 +865,35 @@ export async function route(
       return;
     }
     return send(res, result.status, { error: result.error });
+  }
+
+  // GET /api/drafts/:folder/files/:messageId/:filename — serve an agent-produced
+  // file from the playground-outbox staging dir. Files land here via the
+  // playground adapter when the container's send_file MCP tool fires; the
+  // chat tab renders <a download> links pointing at this route.
+  const outboxFileMatch = url.pathname.match(
+    /^\/api\/drafts\/([A-Za-z0-9_-]+)\/files\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/,
+  );
+  if (method === 'GET' && outboxFileMatch) {
+    const draftFolder = outboxFileMatch[1]!;
+    const messageId = outboxFileMatch[2]!;
+    const filename = outboxFileMatch[3]!;
+    if (!canReadDraft(draftFolder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    if (!isSafeAttachmentName(messageId) || !isSafeAttachmentName(filename)) {
+      return send(res, 400, { error: 'Invalid path' });
+    }
+    const filePath = path.join(playgroundOutboxDir(draftFolder, messageId), filename);
+    if (!fs.existsSync(filePath)) return send(res, 404, { error: 'File not found' });
+    const stat = fs.lstatSync(filePath);
+    if (!stat.isFile() || stat.isSymbolicLink()) return send(res, 400, { error: 'Invalid file' });
+    res.writeHead(200, {
+      'content-type': contentTypeFor(filename),
+      'content-disposition': `attachment; filename="${filename.replace(/"/g, '')}"`,
+      'content-length': stat.size,
+      'cache-control': 'private, max-age=3600',
+    });
+    fs.createReadStream(filePath).pipe(res);
+    return;
   }
 
   // GET /api/drafts/:folder/recent — last N chat-kind messages across this

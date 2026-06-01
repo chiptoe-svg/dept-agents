@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# RAG PDF Ingest — POST a PDF to the configured ingestion service, save the
+# returned markdown into /workspace/agent/, print the output path.
+#
+# Configured via per-agent-group env:
+#   RAG_INGEST_URL    base URL of the ingestion service (no trailing slash)
+#   RAG_INGEST_TOKEN  bearer token (optional)
+#
+# See SKILL.md for usage + when-to-use guidance.
+
+set -euo pipefail
+
+PDF="${1:-}"
+if [ -z "$PDF" ]; then
+  echo "Usage: rag-ingest <pdf-path>" >&2
+  exit 2
+fi
+
+if [ ! -f "$PDF" ]; then
+  echo "rag-ingest: file not found: $PDF" >&2
+  exit 1
+fi
+
+if [ -z "${RAG_INGEST_URL:-}" ]; then
+  echo "rag-ingest: RAG_INGEST_URL is not set on this agent group" >&2
+  exit 1
+fi
+
+base="$(basename "$PDF")"
+stem="${base%.pdf}"
+out="/workspace/agent/${stem}.md"
+
+auth_args=()
+if [ -n "${RAG_INGEST_TOKEN:-}" ]; then
+  auth_args=(-H "Authorization: Bearer ${RAG_INGEST_TOKEN}")
+fi
+
+if ! curl -fsS -X POST "${RAG_INGEST_URL}/ingest" \
+  -H "Accept: text/markdown" \
+  "${auth_args[@]}" \
+  -F "file=@${PDF}" \
+  -o "$out"; then
+  echo "rag-ingest: upload failed for $PDF" >&2
+  rm -f "$out"
+  exit 1
+fi
+
+echo "$out"
