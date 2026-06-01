@@ -114,26 +114,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (6 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (7 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-M  src/channels/adapter.ts
-M  src/channels/playground/adapter.ts
-M  src/channels/playground/api-routes.ts
-M  src/channels/playground/api/recent.ts
-M  src/channels/playground/public/style.css
-M  src/channels/playground/public/tabs/chat.js
-M  src/delivery.ts
-M  src/index.ts
+## main...origin/main [ahead 1]
+A  container/skills/rag-pdf-ingest/SKILL.md
+A  container/skills/rag-pdf-ingest/rag-ingest
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+40175a0 feat(playground): render agent-produced file downloads in chat
 be16b43 feat(pi/codex): per-student auth.json on the agent path
 e0a8f58 docs(state): decision-log entries for the 2026-05-28/29 arc
 6ecf75a catalog(anthropic): align tier chips/notes with the OpenAI 5-tier voice
@@ -148,9 +143,8 @@ ff4105b feat(chat-tab): provider dropdown reads PROVIDER_GROUPS; server resolves
 fe7497f feat(models-tab): enrich discovered local + clemson models from HuggingFace
 1010fca feat(models-tab): live Clemson discovery + per-card ✕ hide + refresh clears hides
 a0da6e7 feat(playground/chat): latency in pi message-end stats + turn totals
-32ea930 fix(playground/chat): collapse empty post-tool gpt-5.x turn into a note
 ```
 
 ### Last refresh
 
-2026-06-01T13:52:24Z
+2026-06-01T13:53:46Z
