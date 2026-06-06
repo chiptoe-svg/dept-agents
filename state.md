@@ -115,21 +115,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (8 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (9 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
  M .claude/scheduled_tasks.lock
-A  plans/omlx-0.4.0-upgrade.md
-M  state.md
+A  docs/superpowers/specs/2026-06-06-pipeline-explorer-knobs-design.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+cda5d5d ops(omlx): upgrade 0.3.8 → 0.4.0 (smoke-verified)
 2433ff8 feat(skills): rag-pdf-ingest — wrap remote markdown-extraction endpoint
 40175a0 feat(playground): render agent-produced file downloads in chat
 be16b43 feat(pi/codex): per-student auth.json on the agent path
@@ -144,9 +144,8 @@ d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
 ff4105b feat(chat-tab): provider dropdown reads PROVIDER_GROUPS; server resolves group on PUT (Phase C-5)
 2495a8c feat(class-controls): grey out Provided when owner has no cred (Phase C-3)
 fe7497f feat(models-tab): enrich discovered local + clemson models from HuggingFace
-1010fca feat(models-tab): live Clemson discovery + per-card ✕ hide + refresh clears hides
 ```
 
 ### Last refresh
 
-2026-06-04T04:38:57Z
+2026-06-06T21:36:10Z
