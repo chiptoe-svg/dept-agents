@@ -123,15 +123,29 @@ async function main(): Promise<void> {
     });
   }
 
-  // 1d. One-time dir rename from the controlled-access vocabulary sweep:
-  // data/student-provider-creds → data/user-provider-creds. Idempotent —
-  // only moves when the old dir exists and the new one doesn't.
+  // 1d. One-time migration from the controlled-access vocabulary sweep:
+  // data/student-provider-creds → data/user-provider-creds. Merges per-user
+  // subdirs (robust even if an empty new dir was created first by another
+  // startup path) and removes the old dir once drained. Idempotent.
   {
     const oldCredsDir = path.join(DATA_DIR, 'student-provider-creds');
     const newCredsDir = path.join(DATA_DIR, 'user-provider-creds');
-    if (fs.existsSync(oldCredsDir) && !fs.existsSync(newCredsDir)) {
-      fs.renameSync(oldCredsDir, newCredsDir);
-      log.info('Migrated per-user provider creds dir', { from: oldCredsDir, to: newCredsDir });
+    if (fs.existsSync(oldCredsDir)) {
+      fs.mkdirSync(newCredsDir, { recursive: true });
+      let moved = 0;
+      for (const entry of fs.readdirSync(oldCredsDir)) {
+        const to = path.join(newCredsDir, entry);
+        if (!fs.existsSync(to)) {
+          fs.renameSync(path.join(oldCredsDir, entry), to);
+          moved++;
+        }
+      }
+      try {
+        if (fs.readdirSync(oldCredsDir).length === 0) fs.rmdirSync(oldCredsDir);
+      } catch {
+        /* leave non-empty old dir in place */
+      }
+      if (moved > 0) log.info('Migrated per-user provider creds', { moved, to: newCredsDir });
     }
   }
 

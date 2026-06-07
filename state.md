@@ -120,36 +120,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (15 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (16 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
  M .claude/scheduled_tasks.lock
-M  src/channels/playground/api/models-tab-state.test.ts
-M  src/channels/playground/api/models-tab-state.ts
-M  src/channels/playground/api/models.test.ts
-M  src/channels/playground/api/models.ts
-M  src/channels/playground/api/provider-auth.test.ts
-M  src/channels/playground/api/provider-auth.ts
-M  src/channels/playground/api/usage.ts
-M  src/codex-auth-json.test.ts
-M  src/codex-auth-json.ts
-M  src/credential-proxy.test.ts
-M  src/credential-proxy.ts
-M  src/env-to-owner-migration.test.ts
-M  src/env-to-owner-migration.ts
 M  src/index.ts
-M  src/integration/x7-end-to-end.test.ts
-M  src/owner-creds-ready.ts
-M  src/providers/pi.ts
-M  src/student-creds-paths.ts
+?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+9dd7feb refactor(controlled-access): rename credential/auth layer student→user (Phase 1, slice 1)
 9d90083 docs: record trunk+branch decision + classroom pilot status
 bde2813 docs(plan): Phase 0 findings — validate controlled-access layer vs 3 consumers
 9b20fdd docs(plan): reframe classroom extraction as controlled-access core
@@ -164,9 +149,8 @@ e0a8f58 docs(state): decision-log entries for the 2026-05-28/29 arc
 6ecf75a catalog(anthropic): align tier chips/notes with the OpenAI 5-tier voice
 7668e30 chore(playground-seats): add Pi Test seat as owner
 d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
-159cefc catalog(openai): retire 5.3-codex + 5.2; add 5.5-pro + 5.4-nano; move default to 5.4
 ```
 
 ### Last refresh
 
-2026-06-07T15:26:00Z
+2026-06-07T15:28:45Z
