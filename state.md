@@ -115,26 +115,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (10 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (11 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
  M .claude/scheduled_tasks.lock
-M  src/channels/playground/adapter.ts
-M  src/channels/playground/api-routes.ts
-M  src/channels/playground/server.ts
-M  src/channels/playground/sse.ts
-M  src/credential-proxy.ts
-M  src/knowledge/pipeline.ts
-M  src/knowledge/stages/embed.ts
+A  docs/how-it-works.html
+A  plans/trunk-classroom-extraction.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+bd823d2 harden(playground+proxy): pre-launch security & stability fixes
 936eef3 docs(spec): ingestion & retrieval pipeline explorer (knobs on Sources/Retrieval)
 cda5d5d ops(omlx): upgrade 0.3.8 → 0.4.0 (smoke-verified)
 2433ff8 feat(skills): rag-pdf-ingest — wrap remote markdown-extraction endpoint
@@ -149,9 +145,8 @@ d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
 3434c91 feat(models-tab): live discovery for Anthropic + OpenAI sections
 7d8ada8 feat(hf-metadata): fetch contextSize from repo config.json (incl. nested text_config)
 ff4105b feat(chat-tab): provider dropdown reads PROVIDER_GROUPS; server resolves group on PUT (Phase C-5)
-2495a8c feat(class-controls): grey out Provided when owner has no cred (Phase C-3)
 ```
 
 ### Last refresh
 
-2026-06-07T05:17:45Z
+2026-06-07T13:05:52Z
