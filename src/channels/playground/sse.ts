@@ -30,7 +30,9 @@ export function pushToAll(eventName: string, data: unknown): void {
       client.res.write(`event: ${eventName}\n`);
       client.res.write(`data: ${JSON.stringify(data)}\n\n`);
     } catch {
-      /* dropped connection */
+      // write failed before the 'close' cleanup fired — drop it now so the
+      // set doesn't accumulate dead connections.
+      sseClients.delete(client);
     }
   }
 }
@@ -43,7 +45,8 @@ export function pushToDraft(draftFolder: string, eventName: string, data: unknow
       client.res.write(`event: ${eventName}\n`);
       client.res.write(`data: ${JSON.stringify(data)}\n\n`);
     } catch {
-      // dropped connection — sweep on next iteration
+      // write failed before the 'close' cleanup fired — drop it now.
+      sseClients.delete(client);
     }
   }
 }

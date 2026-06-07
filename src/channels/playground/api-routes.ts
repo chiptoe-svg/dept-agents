@@ -147,9 +147,12 @@ export async function route(
   method: string,
   session: PlaygroundSession,
 ): Promise<void> {
-  // GET /api/groups — list non-draft agent groups
+  // GET /api/groups — list non-draft agent groups the caller may access.
   if (method === 'GET' && url.pathname === '/api/groups') {
-    return send(res, 200, listAgentGroups());
+    const groups = listAgentGroups().filter(
+      (ag) => !!session.userId && canAccessAgentGroup(session.userId, ag.id).allowed,
+    );
+    return send(res, 200, groups);
   }
 
   // GET /api/drafts — list drafts with target reference
@@ -268,7 +271,12 @@ export async function route(
           fileErrors.push(`file[${i}]: image processing failed — ${(err as Error).message}`);
         }
       } else if (f.mimeType === 'application/pdf') {
-        const safeName = (f.name || `playground_${messageId}_${i}.pdf`).replace(/[^A-Za-z0-9._-]/g, '_');
+        const fallbackName = `playground_${messageId}_${i}.pdf`;
+        let safeName = (f.name || fallbackName).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
+        // Reject anything that still isn't a safe single-segment name (e.g.
+        // empty after stripping, or dotfile-shaped) — fall back to a known-safe
+        // generated name rather than writing an attacker-influenced path.
+        if (!isSafeAttachmentName(safeName)) safeName = fallbackName;
         const savePath = path.join(attachDir, safeName);
         try {
           fs.writeFileSync(savePath, buffer);
@@ -715,6 +723,13 @@ export async function route(
   // credential proxy. Used by the Chat tab's "Chat (no agent)" mode.
   if (method === 'POST' && url.pathname === '/api/direct-chat') {
     const body = await readJsonBody(req, { maxBytes: 1_000_000 });
+    const agentFolder =
+      typeof (body as { agentFolder?: unknown }).agentFolder === 'string'
+        ? (body as { agentFolder: string }).agentFolder
+        : '';
+    if (agentFolder && !canReadDraft(agentFolder, session.userId)) {
+      return send(res, 403, { error: 'Forbidden' });
+    }
     const r = await handleDirectChat(body);
     return send(res, r.status, r.body);
   }
@@ -723,6 +738,7 @@ export async function route(
   // to anyone authenticated (the agent's own home wants this too).
   const usageMatch = url.pathname.match(/^\/api\/usage\/([A-Za-z0-9_-]+)$/);
   if (method === 'GET' && usageMatch) {
+    if (!canReadDraft(usageMatch[1]!, session.userId)) return send(res, 403, { error: 'Forbidden' });
     const providersParam = url.searchParams.get('providers');
     const providers = providersParam ? providersParam.split(',').filter(Boolean) : undefined;
     const r = handleGetUsage(usageMatch[1]!, providers);

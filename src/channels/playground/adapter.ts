@@ -42,6 +42,43 @@ export function playgroundOutboxDir(draftFolder: string, messageId: string): str
   return path.join(DATA_DIR, 'playground-outbox', draftFolder, messageId);
 }
 
+/**
+ * Delete staged outbox message dirs older than maxAgeMs. The download links
+ * point at these files, so we keep them for a TTL rather than deleting on
+ * delivery; this sweep bounds the dir from growing unbounded across a class.
+ * Best-effort: any fs error on one entry is logged-as-skip, never thrown.
+ */
+export function cleanupStaleOutbox(maxAgeMs: number): void {
+  const root = path.join(DATA_DIR, 'playground-outbox');
+  if (!fs.existsSync(root)) return;
+  const cutoff = Date.now() - maxAgeMs;
+  for (const folder of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!folder.isDirectory()) continue;
+    const folderPath = path.join(root, folder.name);
+    let removedAll = true;
+    for (const msg of fs.readdirSync(folderPath, { withFileTypes: true })) {
+      const msgPath = path.join(folderPath, msg.name);
+      try {
+        if (fs.statSync(msgPath).mtimeMs < cutoff) {
+          fs.rmSync(msgPath, { recursive: true, force: true });
+        } else {
+          removedAll = false;
+        }
+      } catch {
+        removedAll = false;
+      }
+    }
+    // Drop the now-empty folder dir too.
+    if (removedAll) {
+      try {
+        fs.rmdirSync(folderPath);
+      } catch {
+        /* not empty / race — leave it */
+      }
+    }
+  }
+}
+
 function stageOutboundFiles(
   draftFolder: string,
   messageId: string | undefined,

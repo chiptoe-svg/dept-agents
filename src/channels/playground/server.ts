@@ -22,7 +22,7 @@ import path from 'path';
 import { PLAYGROUND_AUTH_BYPASS, PLAYGROUND_BIND_HOST, PLAYGROUND_ENABLED, PLAYGROUND_PORT } from '../../config.js';
 import { log } from '../../log.js';
 import { route } from './api-routes.js';
-import { getSetupConfig } from './adapter.js';
+import { cleanupStaleOutbox, getSetupConfig } from './adapter.js';
 import {
   COOKIE_NAME,
   createSessionFromMagicToken,
@@ -62,6 +62,8 @@ import { handleOmlxReachability } from './api/omlx-reachability.js';
 // ── classroom-provider-auth:imports END ────────────────────────────────────
 
 let server: http.Server | null = null;
+let outboxSweepTimer: NodeJS.Timeout | null = null;
+const OUTBOX_TTL_MS = 24 * 60 * 60 * 1000;
 
 // ── Auth bypass (PLAYGROUND_AUTH_BYPASS=1) ─────────────────────────────────
 // Seat is carried in the URL (?seat=<folder>), not in a cookie, so multiple
@@ -144,6 +146,21 @@ export async function startPlaygroundServer(
       'PLAYGROUND_ENABLED is not set in env. Add PLAYGROUND_ENABLED=1 to .env or systemd unit and restart.',
     );
   }
+
+  // Guardrail: auth-bypass modes mint an owner session for any caller, so they
+  // must never run on a network-reachable bind. Refuse to start if a bypass is
+  // on while bound to a non-loopback host — this makes "forgot to flip the dev
+  // toggle before go-live" a hard failure instead of a silent exposure.
+  const benchMode = (process.env.BENCH_MODE ?? readEnvFile(['BENCH_MODE']).BENCH_MODE) === '1';
+  const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1', '::ffff:127.0.0.1']);
+  if ((PLAYGROUND_AUTH_BYPASS || benchMode) && !loopbackHosts.has(PLAYGROUND_BIND_HOST)) {
+    throw new Error(
+      `Refusing to start: ${PLAYGROUND_AUTH_BYPASS ? 'PLAYGROUND_AUTH_BYPASS' : 'BENCH_MODE'} is enabled ` +
+        `while PLAYGROUND_BIND_HOST=${PLAYGROUND_BIND_HOST} (non-loopback). A bypass mode mints an owner ` +
+        `session for every request — it must only run on 127.0.0.1. Set the bind host to 127.0.0.1, or ` +
+        `disable the bypass before exposing the playground.`,
+    );
+  }
   // Mint a fresh single-use magic token bound to the requesting user.
   // Existing sessions from earlier /playground invocations stay valid —
   // we no longer rotate the global cookie out from under other users.
@@ -165,6 +182,11 @@ export async function startPlaygroundServer(
     httpServer.listen(PLAYGROUND_PORT, PLAYGROUND_BIND_HOST, () => {
       server = httpServer;
       startIdleSweep();
+      // Sweep staged agent-file downloads hourly, dropping anything older than
+      // 24h so data/playground-outbox/ doesn't grow unbounded.
+      cleanupStaleOutbox(OUTBOX_TTL_MS);
+      outboxSweepTimer = setInterval(() => cleanupStaleOutbox(OUTBOX_TTL_MS), 60 * 60 * 1000);
+      outboxSweepTimer.unref?.();
       const url = urlFor(PLAYGROUND_BIND_HOST, token);
       log.info('Playground server started', { bind: PLAYGROUND_BIND_HOST, authMode: 'magic-link' });
       resolve({ url, alreadyRunning: false });
@@ -176,6 +198,10 @@ export async function stopPlaygroundServer(): Promise<void> {
   // Clear all session state defensively even if the listener is gone.
   revokeAllSessions('server-stop');
   stopIdleSweep();
+  if (outboxSweepTimer) {
+    clearInterval(outboxSweepTimer);
+    outboxSweepTimer = null;
+  }
   if (!server) return;
   await new Promise<void>((resolve) => server!.close(() => resolve()));
   server = null;
@@ -356,14 +382,16 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   if (method === 'GET' && url.pathname === '/login.js') {
     return serveStatic(res, 'login.js', 'application/javascript; charset=utf-8');
   }
-  // Seat picker — only active in bypass mode; accessible before auth.
-  if (method === 'GET' && url.pathname === '/seat-picker') {
+  // Seat picker — only active in bypass mode (the seat in the URL is only
+  // honored by getBypassSession; real auth ignores it). Gated so the seat
+  // list isn't disclosed when bypass is off.
+  if (PLAYGROUND_AUTH_BYPASS && method === 'GET' && url.pathname === '/seat-picker') {
     return serveStatic(res, 'seat-picker.html', 'text/html; charset=utf-8');
   }
-  if (method === 'GET' && url.pathname === '/seat-picker.js') {
+  if (PLAYGROUND_AUTH_BYPASS && method === 'GET' && url.pathname === '/seat-picker.js') {
     return serveStatic(res, 'seat-picker.js', 'application/javascript; charset=utf-8');
   }
-  if (method === 'GET' && url.pathname === '/api/seats') {
+  if (PLAYGROUND_AUTH_BYPASS && method === 'GET' && url.pathname === '/api/seats') {
     const sc = readSeatsConfig();
     send(res, 200, {
       seats: sc.seats.map((s) => ({ label: s.label, slug: s.slug ?? s.folder })),
@@ -371,7 +399,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     });
     return;
   }
-  if (method === 'POST' && url.pathname === '/pick-seat') {
+  if (PLAYGROUND_AUTH_BYPASS && method === 'POST' && url.pathname === '/pick-seat') {
     void (async () => {
       try {
         const body = (await readJsonBody(req)) as { slug?: string; password?: string };

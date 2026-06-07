@@ -3,6 +3,29 @@ import type { Chunk } from '../types.js';
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const DEFAULT_BATCH_SIZE = 100;
 
+// Global cap on embedding requests in flight across ALL corpora. Within one
+// corpus batches are already sequential; this bounds cross-corpus fan-out when
+// several students trigger ingestion at once, so we don't hammer the
+// embeddings API into rate-limit 429s. Small, dependency-free semaphore.
+const MAX_CONCURRENT_EMBED_REQUESTS = 4;
+let inFlight = 0;
+const waiters: Array<() => void> = [];
+
+async function acquireEmbedSlot(): Promise<void> {
+  if (inFlight < MAX_CONCURRENT_EMBED_REQUESTS) {
+    inFlight++;
+    return;
+  }
+  await new Promise<void>((resolve) => waiters.push(resolve));
+  inFlight++;
+}
+
+function releaseEmbedSlot(): void {
+  inFlight--;
+  const next = waiters.shift();
+  if (next) next();
+}
+
 /**
  * Call the OpenAI embeddings API (via the credential proxy) for all chunks.
  * Returns a map from chunk.id to the embedding Float32Array.
@@ -25,14 +48,20 @@ export async function embedChunks(
 
   for (let i = 0; i < chunks.length; i += batchSize) {
     const batch = chunks.slice(i, i + batchSize);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: batch.map((c) => c.text),
-      }),
-    });
+    await acquireEmbedSlot();
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: EMBEDDING_MODEL,
+          input: batch.map((c) => c.text),
+        }),
+      });
+    } finally {
+      releaseEmbedSlot();
+    }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
