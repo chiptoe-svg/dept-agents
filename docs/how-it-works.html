@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NanoClaw — How It Works (Behind the Scenes)</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --ink:#e6e9ef; --muted:#9aa4b2;
+    --accent:#5b8def; --accent2:#3fb37f; --warn:#e0a23f; --danger:#e06c75; --line:#2a2f3a;
+    --host:#1f2d44; --container:#2a2438; --db:#143028; --ext:#3a2a1a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 96px}
+  h1{font-size:30px;margin:0 0 4px}
+  h2{font-size:22px;margin:48px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+  h3{font-size:17px;margin:24px 0 6px;color:#cdd6e4}
+  p{margin:8px 0}
+  code{background:#11141a;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+  .sub{color:var(--muted);font-size:14px}
+  .lead{font-size:16px;color:#cdd6e4;max-width:760px}
+  a{color:var(--accent)}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:20px 0;columns:2;column-gap:32px}
+  .toc a{display:block;padding:3px 0;text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:16px 0}
+  .note{border-left:3px solid var(--accent);background:var(--panel2);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+  .warn{border-left:3px solid var(--warn);background:#241f16;padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+  .danger{border-left:3px solid var(--danger);background:#241719;padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch}
+  .box{flex:1;min-width:200px;border-radius:10px;padding:14px 16px;border:1px solid var(--line)}
+  .box h4{margin:0 0 6px;font-size:14px;letter-spacing:.02em;text-transform:uppercase;color:var(--muted)}
+  .box.host{background:var(--host)} .box.container{background:var(--container)}
+  .box.db{background:var(--db)} .box.ext{background:var(--ext)}
+  .flow{font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.9;background:#0c0e13;border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow-x:auto;white-space:pre}
+  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);background:#11141a;color:var(--muted);margin:2px 4px 2px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  .tag-host{color:#9cc0ff} .tag-cont{color:#caa6ff} .tag-db{color:#84e0b8} .tag-ext{color:#e6c388}
+  ul{margin:8px 0 8px 0;padding-left:22px} li{margin:4px 0}
+  .small{font-size:13px;color:var(--muted)}
+  .legend span{margin-right:16px;font-size:13px}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>NanoClaw — How It Works</h1>
+<p class="sub">Behind the scenes: components, data flow, and the security model. Generated 2026-06-07. Companion to the diagram view in <code>docs/architecture.html</code>, the prose in <code>docs/architecture.md</code>, and <code>state.md</code>.</p>
+
+<p class="lead">NanoClaw is a self-hosted personal-Claude assistant. A single Node host process orchestrates one short-lived agent container per conversation session. The host and containers never share memory, sockets, or files directly — they communicate through <strong>two SQLite files per session</strong>, and nothing else. Real API credentials never enter a container; a local proxy substitutes them on the wire.</p>
+
+<div class="legend panel">
+  <span><span class="dot" style="background:var(--host)"></span>Host (Node, trusted)</span>
+  <span><span class="dot" style="background:var(--container)"></span>Container (Bun, sandboxed)</span>
+  <span><span class="dot" style="background:var(--db)"></span>SQLite (the only IO surface)</span>
+  <span><span class="dot" style="background:var(--ext)"></span>External (LLM APIs, platforms)</span>
+</div>
+
+<div class="toc">
+  <a href="#bigpicture">1 · The big picture</a>
+  <a href="#entities">2 · Entity model</a>
+  <a href="#lifecycle">3 · A message, end to end</a>
+  <a href="#twodb">4 · The two-DB session model</a>
+  <a href="#proxy">5 · Credentials &amp; the proxy</a>
+  <a href="#containers">6 · Container lifecycle</a>
+  <a href="#branches">7 · Trunk, channels &amp; providers</a>
+  <a href="#knowledge">8 · Knowledge &amp; retrieval (RAG)</a>
+  <a href="#playground">9 · The playground UI</a>
+  <a href="#security">10 · Security strategy (summary)</a>
+</div>
+
+<h2 id="bigpicture">1 · The big picture</h2>
+<p>Everything is a message. A platform message arrives through a <em>channel adapter</em>, is routed to the right session, written into that session's inbound database, and a container is woken. The agent inside the container polls its inbound DB, calls the model, and writes replies to its outbound DB. The host polls the outbound DB and delivers replies back through the same adapter.</p>
+
+<div class="row">
+  <div class="box ext"><h4>External</h4>Chat platforms (Discord, Slack, Telegram, …) &amp; the web <strong>playground</strong>. LLM APIs (Anthropic, OpenAI, local OMLX, Clemson RCD).</div>
+  <div class="box host"><h4>Host process (Node)</h4>Channel adapters · <code>router</code> · <code>delivery</code> · <code>host-sweep</code> · <code>session-manager</code> · <code>container-runner</code> · <strong>credential-proxy</strong> · central DB.</div>
+  <div class="box container"><h4>Per-session container (Bun)</h4>The <code>agent-runner</code>: poll loop → <code>pi</code> harness → model call → MCP tools (send_message, send_file, knowledge_search, …).</div>
+</div>
+
+<div class="flow">
+ platform / playground
+        │  inbound
+        ▼
+ ┌──────────────────────── HOST (Node) ────────────────────────┐
+ │  channel adapter → router → <span class="tag-db">inbound.db</span> → wake container       │
+ │                                                ▲             │
+ │  adapter ← delivery ← <span class="tag-db">outbound.db</span> ←────────────┘ (poll)      │
+ │            ▲                                                 │
+ │     credential-proxy (127.0.0.1:3001)  ──► <span class="tag-ext">LLM APIs</span>            │
+ └─────────────────────────│──────────────────▲────────────────┘
+        mounts <span class="tag-db">inbound.db</span> (ro) │  <span class="tag-db">outbound.db</span> (rw) │ placeholder creds
+                            ▼                  │
+ ┌──────────────── CONTAINER (Bun, --rm) ──────────────────────┐
+ │  poll <span class="tag-db">inbound.db</span> → pi harness → model via proxy → write       │
+ │  <span class="tag-db">outbound.db</span>; MCP tools for messages, files, retrieval        │
+ └─────────────────────────────────────────────────────────────┘
+</div>
+
+<div class="note">The container only ever talks to two local SQLite files and the local proxy. It has no platform tokens, no real API keys, and no direct network trust. That isolation is the backbone of the security model (§5, §10).</div>
+
+<h2 id="entities">2 · Entity model</h2>
+<p>Routing and permissions are built on a small set of entities in the central DB (<code>data/v2.db</code>):</p>
+<div class="flow">
+ users  ("&lt;channel&gt;:&lt;handle&gt;", kind, display_name)
+   │
+   ├── user_roles            owner | admin   (global or scoped to an agent group)
+   ├── agent_group_members   unprivileged access gate
+   └── user_dms              cold-DM cache
+
+ agent_groups   (workspace, memory, CLAUDE.md, personality, container config)
+       ▲  many-to-many via messaging_group_agents (session_mode, triggers)
+       ▼
+ messaging_groups   (one chat/channel on one platform; unknown_sender_policy)
+
+ sessions = agent_group  ×  messaging_group  ×  thread_id   → one container
+</div>
+<ul>
+  <li><strong>Privilege is user-level</strong> (owner / admin), not group-level. An <em>owner</em> can do anything; an <em>admin</em> may be scoped to specific agent groups; <em>members</em> get access without privilege.</li>
+  <li>A <strong>session</strong> is the unit of execution — each one gets its own container and its own pair of databases.</li>
+  <li>Three isolation levels (<code>agent-shared</code>, <code>shared</code>, separate agents) control how much state different chats share. See <code>docs/isolation-model.md</code>.</li>
+</ul>
+
+<h2 id="lifecycle">3 · A message, end to end</h2>
+<table>
+<tr><th>#</th><th>Where</th><th>What happens</th></tr>
+<tr><td>1</td><td class="tag-ext">platform</td><td>A user sends a message; the channel adapter receives it and calls the router.</td></tr>
+<tr><td>2</td><td class="tag-host">router</td><td>Resolves user → messaging group → agent group → session. Applies <code>unknown_sender_policy</code> and the command gate (admin commands checked against <code>user_roles</code>).</td></tr>
+<tr><td>3</td><td class="tag-db">inbound.db</td><td>The message is written to <code>messages_in</code> with routing + destinations. Host uses <strong>even</strong> seq numbers.</td></tr>
+<tr><td>4</td><td class="tag-host">container-runner</td><td>If no container is running for the session, one is spawned with the two DBs + outbox mounted and the proxy env vars injected.</td></tr>
+<tr><td>5</td><td class="tag-cont">poll loop</td><td>The agent-runner polls <code>inbound.db</code>, sees the new row, builds the prompt, and runs the <code>pi</code> harness.</td></tr>
+<tr><td>6</td><td class="tag-cont">pi → proxy</td><td>The model call goes to <code>http://host.docker.internal:3001</code> with a <em>placeholder</em> credential. The proxy swaps in the real key/token and forwards to the LLM API.</td></tr>
+<tr><td>7</td><td class="tag-cont">MCP tools</td><td>The agent may call tools: <code>send_message</code>, <code>send_file</code>, <code>knowledge_search</code>, scheduling, agent-to-agent. Tool handlers run in a <em>separate process</em> from the poll loop — they communicate only through the DB.</td></tr>
+<tr><td>8</td><td class="tag-db">outbound.db</td><td>Replies are written to <code>messages_out</code> (container uses <strong>odd</strong> seq). Files land in the session <code>outbox/</code>.</td></tr>
+<tr><td>9</td><td class="tag-host">delivery</td><td>The host polls <code>outbound.db</code>, reads any outbox files, and delivers through the originating adapter. System actions (schedule, approvals) are handled here.</td></tr>
+<tr><td>10</td><td class="tag-host">host-sweep</td><td>Every 60s: syncs <code>processing_ack</code>, detects stale/crashed containers, wakes due (scheduled) messages, handles recurrence.</td></tr>
+</table>
+
+<h2 id="twodb">4 · The two-DB session model</h2>
+<p>Each session has two SQLite files under <code>data/v2-sessions/&lt;session&gt;/</code>:</p>
+<div class="row">
+  <div class="box db"><h4>inbound.db</h4><strong>Host writes, container reads.</strong> <code>messages_in</code>, routing, destinations, pending_questions, processing_ack.</div>
+  <div class="box db"><h4>outbound.db</h4><strong>Container writes, host reads.</strong> <code>messages_out</code>, session_state. Host opens it read-only except for sweep claim-cleanup.</div>
+</div>
+<h3>Invariants that must never break</h3>
+<ul>
+  <li><strong>Exactly one writer per file.</strong> No cross-mount lock contention; this is why the split exists.</li>
+  <li><strong><code>journal_mode = DELETE</code>, not WAL.</strong> Cross-mount visibility (host ↔ container over a bind mount) depends on it. WAL's shared-memory file isn't visible across the mount boundary.</li>
+  <li><strong>Seq parity:</strong> host writes even seq, container writes odd — so the two writers never collide on an id.</li>
+  <li><strong>Stale-journal recovery:</strong> a <code>SIGKILL</code> mid-write can leave a <code>-journal</code> that makes read-only opens fail; the host runs <code>recoverStaleOutboundJournals</code> at startup to clean them.</li>
+  <li><strong>Heartbeat is a file touch</strong> at <code>/workspace/.heartbeat</code>, not a DB row — keeps liveness off the IO surface.</li>
+</ul>
+<p class="small">A third database, the central <code>data/v2.db</code>, holds everything that isn't per-session: users, roles, agent/messaging groups, wiring, approvals, schema version, migrations.</p>
+
+<h2 id="proxy">5 · Credentials &amp; the proxy — the heart of the security model</h2>
+<p>Real secrets live only on the host, in <code>.env</code> and the OS keychain. Containers receive <strong>placeholder</strong> values. The local credential proxy at <code>127.0.0.1:3001</code> substitutes the real credential at request time and forwards upstream.</p>
+<div class="flow">
+ container sets:  ANTHROPIC_BASE_URL = http://host.docker.internal:3001
+                  ANTHROPIC_API_KEY  = "placeholder"   (or CLAUDE_CODE_OAUTH_TOKEN)
+                  OPENAI_BASE_URL    = .../3001/openai/v1   →  multiplexed by path prefix
+
+   container ──(placeholder)──► <span class="tag-host">proxy</span> ──(real key / OAuth bearer)──► <span class="tag-ext">api.anthropic.com</span>
+                                   │                                     <span class="tag-ext">api.openai.com</span>
+                                   ├─ rewrites x-api-key / Authorization   <span class="tag-ext">chatgpt.com (codex OAuth)</span>
+                                   ├─ refreshes OAuth tokens on expiry      <span class="tag-ext">OMLX / Clemson RCD</span>
+                                   └─ per-student / class-pool resolver
+</div>
+<ul>
+  <li><strong>Nothing sensitive is ever in container env or chat context.</strong> Even the agent can't read the real key — it only holds the placeholder.</li>
+  <li><strong>Provider multiplexing</strong> is by path prefix: <code>/openai/</code>, <code>/openai-platform/</code>, <code>/omlx/</code>, <code>/clemson/</code>, default = Anthropic.</li>
+  <li><strong>OAuth landmines</strong> (load-bearing, see <code>credential-proxy.ts</code>): the <code>sk-ant-oat-</code> prefix, the <code>anthropic-beta: oauth-2025-04-20</code> header, the Claude Code system-prompt preamble, and a <code>model.baseUrl</code> override must all be present in OAuth mode.</li>
+  <li><strong>Per-student / class-pool resolver</strong> (classroom): the proxy can resolve a student's own connected credential first, then fall back to the instructor's class pool, then deny — without the student ever seeing a key.</li>
+</ul>
+<h3>Recent hardening (2026-06-07)</h3>
+<ul>
+  <li>Keychain reads are non-blocking with a timeout (no event-loop stall under load).</li>
+  <li>Upstream requests have a 120s timeout and are torn down if the container disconnects (no leaked sockets / wasted quota).</li>
+  <li>The per-session payload-log handle map is LRU-capped (no FD leak across a long day).</li>
+</ul>
+
+<h2 id="containers">6 · Container lifecycle</h2>
+<ul>
+  <li><strong>Spawn on demand:</strong> <code>container-runner</code> starts a container per agent group/session, mounting the session DBs + outbox and injecting proxy env vars. Runtime is Docker or Apple Containers (<code>container-runtime.ts</code>).</li>
+  <li><strong>Liveness:</strong> the agent touches <code>/workspace/.heartbeat</code>; the host sweep detects stale containers.</li>
+  <li><strong><code>--rm</code>:</strong> containers are removed on exit, so <em>stdout/stderr is lost</em>. Anything needed for post-hoc diagnosis must be written to the session DB — the DB is the source of truth.</li>
+  <li><strong>Orphan cleanup</strong> reaps containers left behind by a host crash.</li>
+</ul>
+
+<h2 id="branches">7 · Trunk, channels &amp; providers (small-trunk-with-skills)</h2>
+<p>Trunk (the <code>main</code> branch) is meant to be <strong>only the infrastructure every install needs</strong>. Optional capabilities live on long-lived sibling branches and are copied in by <code>/add-&lt;x&gt;</code> skills:</p>
+<div class="row">
+  <div class="box"><h4>trunk (main)</h4>routing, two-DB model, container orchestration, credential proxy, permissions, the playground shell.</div>
+  <div class="box"><h4>channels branch</h4>Discord, Slack, Telegram, WhatsApp, Teams, Linear, GitHub, iMessage, … — installed via <code>/add-&lt;channel&gt;</code>.</div>
+  <div class="box"><h4>providers branch</h4>Non-default agent providers (e.g. OpenCode) — installed via <code>/add-opencode</code>.</div>
+</div>
+<div class="warn">Known debt + planned re-architecture: the "classroom" code (~40 files) is really a general <strong>controlled-access agent layer</strong> (per-user provisioning, end-user onboarding/auth, BYO + pooled credentials, member policy) plus a thin teaching veneer plus a Google integration. With three real consumers (classroom, department agents, an agent-optimization class) it's being extracted as a reusable core + per-profile skills. Plan: <code>plans/controlled-access-core.md</code>. It works today; this is post-term hygiene, not a bug.</div>
+
+<h2 id="knowledge">8 · Knowledge &amp; retrieval (RAG)</h2>
+<p>Documents are ingested into per-corpus indexes the agent can search at conversation time.</p>
+<div class="flow">
+ raw files ─► extract text ─► chunk (sentence | fixed, size + overlap)
+                                  │
+                       ┌──────────┴───────────┐
+                       ▼                       ▼
+                 BM25 index             dense index
+                 (SQLite FTS5)          (OpenAI embeddings → cosine)
+                       │                       │
+                       └─────── query ─────────┘
+                  Retrieval tab: BM25 / dense / hybrid blend
+</div>
+<div class="warn">Capability seam to know about: the <em>host-side</em> Retrieval/Benchmark tabs support BM25, dense, and hybrid — but the <em>agent's</em> <code>knowledge_search</code> MCP tool is <strong>BM25-only</strong>. A dense-only corpus is therefore invisible to the agent at chat time. A planned "pipeline explorer" feature (<code>docs/superpowers/specs/2026-06-06-pipeline-explorer-knobs-design.md</code>) surfaces this and lets students compare strategies live.</div>
+
+<h2 id="playground">9 · The playground UI</h2>
+<p>A web app (<code>src/channels/playground/</code>) that is itself a channel adapter. Tabs: <span class="pill">home</span><span class="pill">chat</span><span class="pill">persona</span><span class="pill">skills</span><span class="pill">models</span><span class="pill">agents</span><span class="pill">sources</span><span class="pill">retrieval</span><span class="pill">benchmarks</span></p>
+<ul>
+  <li><strong>Chat</strong> rides the same two-DB pipeline as any other channel; replies stream to the browser over <strong>SSE</strong>, with a <code>/recent</code> backfill so a dropped connection doesn't lose a reply.</li>
+  <li><strong>Auth:</strong> magic-link sessions in production. A dev <em>bypass</em> mode exists for local setup but is now fenced (see §10).</li>
+  <li><strong>Per-folder authorization:</strong> read/mutation of an agent group's drafts, persona, skills, usage, and files is gated by <code>canReadDraft</code> / <code>checkDraftMutation</code> against the caller's identity.</li>
+</ul>
+
+<h2 id="security">10 · Security strategy (summary)</h2>
+<table>
+<tr><th>Layer</th><th>Strategy</th></tr>
+<tr><td>Credential isolation</td><td>Real keys/tokens never leave the host. Containers hold placeholders; the proxy substitutes on the wire. Secrets are never in container env, chat context, or logs.</td></tr>
+<tr><td>Execution isolation</td><td>Containers are sandboxed and talk only to two local SQLite files + the local proxy. No platform tokens, no direct outbound trust. <code>--rm</code> so nothing persists.</td></tr>
+<tr><td>Authentication</td><td>Playground uses magic-link sessions. A dev auth-bypass mode exists; a startup <strong>guardrail now refuses to run a bypass on a non-loopback bind</strong>, so it can't be left on accidentally when exposed.</td></tr>
+<tr><td>Authorization</td><td>User-level roles (owner/admin/member) + per-agent-group access checks. Per-folder read/mutation gates on the playground API. Admin commands are checked router-side against <code>user_roles</code>.</td></tr>
+<tr><td>Input safety</td><td>Path-traversal guards on every file route (<code>isSafeAttachmentName</code>); parameterized SQL throughout; uploaded filenames sanitized + validated.</td></tr>
+<tr><td>Supply chain</td><td>pnpm <code>minimumReleaseAge</code> (3 days) so new dependency versions must age before they resolve; build-script execution is allow-listed.</td></tr>
+<tr><td>Resource safety</td><td>Upstream timeouts + disconnect teardown in the proxy; LRU-capped handle maps; TTL sweeps for staged files; bounded embedding concurrency.</td></tr>
+</table>
+
+<div class="note">For deeper detail: <code>docs/architecture.html</code> (diagram view), <code>docs/architecture.md</code> (prose), <code>docs/db.md</code> / <code>docs/db-session.md</code> (databases), <code>docs/isolation-model.md</code> (isolation levels), <code>state.md</code> (current arc + decision log), and <code>CLAUDE.md</code> (the trunk/branch rules).</div>
+
+<p class="small" style="margin-top:40px;color:#5b6472">NanoClaw · how it works · self-contained · open in any browser.</p>
+
+</div>
+</body>
+</html>

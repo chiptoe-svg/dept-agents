@@ -81,6 +81,7 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-06-04** — OMLX upgraded 0.3.8 → 0.4.0 (native Swift macOS app replaces PyObjC menubar). Why: predictive prefill throttling + per-engine MLX threads + memory guard tuning improve stability under concurrent student load. Existing `~/.omlx/settings.json` carried over → no manual onboarding. Smoke: NanoClaw `/omlx/v1/chat/completions` path verified at 28.8 tok/s warm + 2 concurrent requests at ~18 tok/s each, no OOM/stalls. Model list lost `whisper-large-v3-turbo` (kept `-asr-fp16` variant; not used by NanoClaw text path). Backup of 0.3.8 .app at `~/Downloads/oMLX-0.3.8.app.bak`. Plan: `plans/omlx-0.4.0-upgrade.md`.
 - **2026-05-29** — Anthropic catalog tier chips/notes normalised to match OpenAI Option-B voice (frontier / ⚖ balanced / ⚡ fast). Why: chat dropdown reads consistently across providers; no catalog scope change (haiku/sonnet/opus already cover 3 of the 5 tiers cleanly). Commit: `6ecf75a`.
 - **2026-05-28** — `OPENAI_CATALOG` extracted to `src/providers/openai-catalog.ts`; `codex-spec.ts` + `openai-platform-spec.ts` map from it; `CODEX_WHITELIST` + `STATIC_FALLBACK` derive from it via `LEGACY_CODEX_IDS` for retired ids. Why: adding the next OpenAI model is a one-file edit; structural drift between codex and platform spec files is gone. Pricing remains manual (no OpenAI pricing API). Commit: `d169b4c`.
 - **2026-05-28** — OpenAI catalog tier ladder (Option B from 2026-05-28 review): gpt-5.5-pro / gpt-5.5 / gpt-5.4 ★ default / gpt-5.4-mini / gpt-5.4-nano. Why: wider cost/performance spread (1000× top-to-bottom); `-pro` and `-nano` ship with no pricing (not on OpenAI's published page) — cost aggregator falls back to $0, surface a warning if billable usage appears. Retired ids (5.3-codex, 5.2) kept in `LEGACY_CODEX_IDS` so existing container_configs keep dispatching. Commit: `159cefc`.
@@ -114,20 +115,27 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (7 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (12 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-A  container/skills/rag-pdf-ingest/SKILL.md
-A  container/skills/rag-pdf-ingest/rag-ingest
+## main...origin/main
+ M .claude/scheduled_tasks.lock
+M  docs/how-it-works.html
+A  plans/controlled-access-core.md
+D  plans/trunk-classroom-extraction.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+d387304 docs: behind-the-scenes architecture HTML + trunk-extraction plan
+bd823d2 harden(playground+proxy): pre-launch security & stability fixes
+936eef3 docs(spec): ingestion & retrieval pipeline explorer (knobs on Sources/Retrieval)
+cda5d5d ops(omlx): upgrade 0.3.8 → 0.4.0 (smoke-verified)
+2433ff8 feat(skills): rag-pdf-ingest — wrap remote markdown-extraction endpoint
 40175a0 feat(playground): render agent-produced file downloads in chat
 be16b43 feat(pi/codex): per-student auth.json on the agent path
 e0a8f58 docs(state): decision-log entries for the 2026-05-28/29 arc
@@ -138,13 +146,8 @@ d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
 27c1de5 feat(playground/chat): /recent endpoint backfills dropped-SSE messages
 3434c91 feat(models-tab): live discovery for Anthropic + OpenAI sections
 7d8ada8 feat(hf-metadata): fetch contextSize from repo config.json (incl. nested text_config)
-ff4105b feat(chat-tab): provider dropdown reads PROVIDER_GROUPS; server resolves group on PUT (Phase C-5)
-2495a8c feat(class-controls): grey out Provided when owner has no cred (Phase C-3)
-fe7497f feat(models-tab): enrich discovered local + clemson models from HuggingFace
-1010fca feat(models-tab): live Clemson discovery + per-card ✕ hide + refresh clears hides
-a0da6e7 feat(playground/chat): latency in pi message-end stats + turn totals
 ```
 
 ### Last refresh
 
-2026-06-01T13:53:46Z
+2026-06-07T13:21:24Z

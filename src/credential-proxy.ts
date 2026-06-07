@@ -38,7 +38,7 @@
  * format with refresh_token). Proxy refreshes the access token on
  * demand and caches it in memory until ~5 min before expiry.
  */
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { createServer, Server } from 'http';
@@ -118,20 +118,49 @@ interface PayloadLogCtx {
   stores: Map<string, PayloadStore | null>;
 }
 
+// Cap on simultaneously-open payload stores. Each open store holds a
+// better-sqlite3 file handle; without a bound the map grows one entry per
+// (agentGroup, session) for the process lifetime, leaking FDs across a class
+// day. 64 comfortably covers ~14 students × a few concurrent sessions.
+const MAX_OPEN_STORES = 64;
+
 function getStore(ctx: PayloadLogCtx, agentGroupId: string, sessionId: string): PayloadStore | null {
   const key = `${agentGroupId}|${sessionId}`;
   if (ctx.stores.has(key)) {
-    // Either an opened store, or a memoized failure (null).
-    return ctx.stores.get(key) ?? null;
+    // Refresh LRU recency: delete + re-set moves the key to the end of the
+    // Map's insertion order so it's evicted last.
+    const existing = ctx.stores.get(key) ?? null;
+    ctx.stores.delete(key);
+    ctx.stores.set(key, existing);
+    return existing;
   }
   try {
     const s = openStore({ baseDir: ctx.baseDir, agentGroupId, sessionId });
     ctx.stores.set(key, s);
+    evictExcessStores(ctx);
     return s;
   } catch (err) {
     log.error('proxy-payload-log: openStore failed (will not retry this session)', { agentGroupId, sessionId, err });
     ctx.stores.set(key, null); // memoize failure
+    evictExcessStores(ctx);
     return null;
+  }
+}
+
+/** Evict the least-recently-used stores (Map insertion order) over the cap, closing each. */
+function evictExcessStores(ctx: PayloadLogCtx): void {
+  while (ctx.stores.size > MAX_OPEN_STORES) {
+    const oldestKey = ctx.stores.keys().next().value as string | undefined;
+    if (oldestKey === undefined) break;
+    const evicted = ctx.stores.get(oldestKey) ?? null;
+    ctx.stores.delete(oldestKey);
+    if (evicted) {
+      try {
+        evicted.close();
+      } catch {
+        // best-effort close
+      }
+    }
   }
 }
 
@@ -187,14 +216,19 @@ function readFullOAuthCredentials(): ClaudeCredentials['claudeAiOauth'] | null {
   // Fallback: macOS keychain. No-op on Linux.
   if (process.platform !== 'darwin') return null;
   try {
-    const raw = execSync('security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null', {
+    // execFileSync (no shell) + a hard timeout so a locked/busy keychain can't
+    // stall the proxy event loop indefinitely. This runs on OAuth refresh, not
+    // every request, but under concurrent load an unbounded stall here cascades
+    // into SQLite busy-timeouts on the host. 3s ceiling caps the worst case.
+    const raw = execFileSync('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000,
     }).trim();
     const data = JSON.parse(raw) as ClaudeCredentials;
     if (data.claudeAiOauth?.accessToken) return data.claudeAiOauth;
   } catch {
-    // keychain not available or no entry — silent fallthrough
+    // keychain not available, no entry, or timed out — silent fallthrough
   }
   return null;
 }
@@ -714,6 +748,20 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
             res.writeHead(502);
             res.end('Bad Gateway');
           }
+        });
+
+        // Bound a stalled upstream (TCP half-open, rate-limit queueing) so the
+        // container's turn doesn't hang for minutes. 120s covers slow frontier
+        // completions while still failing fast on a dead connection.
+        upstream.setTimeout(120_000, () => {
+          log.warn('Credential proxy upstream timeout — destroying request', { url: req.url });
+          upstream.destroy(new Error('upstream timeout'));
+        });
+
+        // If the container is killed mid-turn its socket closes; tear down the
+        // upstream so we stop consuming API quota and don't leak sockets.
+        res.on('close', () => {
+          if (!upstream.destroyed) upstream.destroy();
         });
 
         upstream.write(body);

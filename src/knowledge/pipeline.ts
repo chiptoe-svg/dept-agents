@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { log } from '../log.js';
 import { corpusDir, readMeta, updateStatus, writeMeta } from './corpus.js';
 import { extractText, extractPdf } from './stages/extract-text.js';
 import { chunkSentence, chunkFixed } from './stages/chunk.js';
@@ -54,6 +55,10 @@ export async function runTextPipeline(folder: string, id: string): Promise<void>
     meta.chunkCount = allChunks.length;
     writeMeta(folder, id, meta);
   } catch (err) {
+    // Surface the failure in the host log — otherwise a corpus silently goes
+    // to 'error' status with only a stringified message in a metadata file,
+    // and the instructor has no signal a student's ingest died.
+    log.error('knowledge pipeline failed', { folder, id, err });
     try {
       updateStatus(folder, id, 'error', String(err));
     } catch {
