@@ -1,7 +1,21 @@
 # Controlled-Access Agent Core — extract the reusable layer; "classroom" becomes one profile
 
-**Status:** Planned — DO NOT START before the current class term ends. Debt
-cleanup + a small re-architecture, not a fire. The code compiles and runs today.
+**Status:** Planned, and **cleared to start** — as of 2026-06-07 the classroom
+is a pilot/test (breakable, not live production), so the earlier
+"do-not-start-before-term-ends" gate is lifted. Still a deliberate
+re-architecture, not a fire: sequence it properly (Phases below), don't rush.
+
+**Why not a fork (decided 2026-06-07).** The goal is to expand to new use cases
+*and share new features back across them.* Forks diverge: a feature added in one
+fork doesn't reach the others without manual cherry-picks, which become hand-
+merged conflicts forever as the codebases drift (this repo's v1→v2 history is the
+cautionary tale — a fork that couldn't be merged back). A single codebase with a
+shared core + thin profile skills gives the sharing for free: core features reach
+every profile on update; profile features stay scoped. The cost is *boundary
+discipline* (every feature needs a "core vs profile" call) — the right trade when
+cross-use-case sharing is the explicit goal. Distribution model: **trunk +
+branch-installed profiles** (the existing channels/providers pattern), not a
+mono-repo that forces every install to carry every use case's code.
 
 **History:** This started as "extract classroom code to a branch" (2026-06-07).
 Revised the same day after the owner identified **three** consumers of the same

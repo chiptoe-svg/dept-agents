@@ -8,7 +8,9 @@
 
 ## Goal
 
-NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac Studio at `130.127.162.180:3002`) is a classroom production deployment that pairs an instructor agent with per-student agents over a shared messaging surface, plus a playground UI for direct chat and admin. **It is production, not dev** — the user is faculty running a real class.
+NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac Studio at `130.127.162.180:3002`) pairs per-person agents over a shared messaging surface with a playground UI for chat and admin. **As of 2026-06-07 the classroom is a PILOT/test with pilot users — breakable, not live production** (the prior "production, not dev" framing is paused until the owner says otherwise; no real FERPA data expected during the pilot).
+
+**Direction:** the classroom app is being generalized into a reusable **controlled-access agent core** (trunk + a `controlled-access` branch installed by skill) with each use case as a thin profile skill — classroom, department-agents, and an agent-optimization class. Chosen model: **trunk + branch-installed profiles, NOT forks** (forks would defeat the goal of sharing features across use cases). See `plans/controlled-access-core.md`.
 
 ## Current arc
 
@@ -81,6 +83,9 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-06-07** — Classroom status downgraded to PILOT/test (breakable, not live production) until the owner says otherwise; the "do not refactor before term ends" gate on the controlled-access extraction is lifted. Why: owner confirmed only pilot users, no real FERPA data — breaking changes are low-risk now.
+- **2026-06-07** — Multi-use-case expansion will use **trunk + branch-installed profiles, NOT forks.** The "classroom" code is really a reusable controlled-access agent core (provisioning, onboarding/auth, BYO+pooled creds, member policy, eval) + a thin teaching profile + a GWS integration. Three confirmed consumers (classroom, department-agents, agent-opt class); separate installs, one profile each; all share the core's four capabilities. Why fork was rejected: forks diverge and defeat the explicit goal of sharing new features across use cases (cf. the v1→v2 un-mergeable-fork history). Phase 0 requirements pass done. Plan: `plans/controlled-access-core.md`.
+- **2026-06-07** — Pre-launch security/stability hardening shipped (`bd823d2`): bypass↔bind guardrail, authz gaps on /api/usage,/api/direct-chat,/api/groups, credential-proxy timeouts + LRU handle cap, SSE/outbox/embedding hygiene. AUTH_BYPASS + BENCH_MODE flipped off on the host.
 - **2026-06-04** — OMLX upgraded 0.3.8 → 0.4.0 (native Swift macOS app replaces PyObjC menubar). Why: predictive prefill throttling + per-engine MLX threads + memory guard tuning improve stability under concurrent student load. Existing `~/.omlx/settings.json` carried over → no manual onboarding. Smoke: NanoClaw `/omlx/v1/chat/completions` path verified at 28.8 tok/s warm + 2 concurrent requests at ~18 tok/s each, no OOM/stalls. Model list lost `whisper-large-v3-turbo` (kept `-asr-fp16` variant; not used by NanoClaw text path). Backup of 0.3.8 .app at `~/Downloads/oMLX-0.3.8.app.bak`. Plan: `plans/omlx-0.4.0-upgrade.md`.
 - **2026-05-29** — Anthropic catalog tier chips/notes normalised to match OpenAI Option-B voice (frontier / ⚖ balanced / ⚡ fast). Why: chat dropdown reads consistently across providers; no catalog scope change (haiku/sonnet/opus already cover 3 of the 5 tiers cleanly). Commit: `6ecf75a`.
 - **2026-05-28** — `OPENAI_CATALOG` extracted to `src/providers/openai-catalog.ts`; `codex-spec.ts` + `openai-platform-spec.ts` map from it; `CODEX_WHITELIST` + `STATIC_FALLBACK` derive from it via `LEGACY_CODEX_IDS` for retired ids. Why: adding the next OpenAI model is a one-file edit; structural drift between codex and platform spec files is gone. Pricing remains manual (no OpenAI pricing API). Commit: `d169b4c`.
@@ -115,20 +120,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (13 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (14 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
  M .claude/scheduled_tasks.lock
 M  plans/controlled-access-core.md
+M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+bde2813 docs(plan): Phase 0 findings — validate controlled-access layer vs 3 consumers
 9b20fdd docs(plan): reframe classroom extraction as controlled-access core
 d387304 docs: behind-the-scenes architecture HTML + trunk-extraction plan
 bd823d2 harden(playground+proxy): pre-launch security & stability fixes
@@ -143,9 +150,8 @@ e0a8f58 docs(state): decision-log entries for the 2026-05-28/29 arc
 d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
 159cefc catalog(openai): retire 5.3-codex + 5.2; add 5.5-pro + 5.4-nano; move default to 5.4
 27c1de5 feat(playground/chat): /recent endpoint backfills dropped-SSE messages
-3434c91 feat(models-tab): live discovery for Anthropic + OpenAI sections
 ```
 
 ### Last refresh
 
-2026-06-07T13:48:30Z
+2026-06-07T14:12:51Z
