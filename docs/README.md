@@ -17,4 +17,4 @@ The files in this directory are original design documents and developer referenc
 
 | Project | Description |
 |---|---|
-| [critique-agent/](critique-agent/) | Build-Your-Own Photo-Critique Agent — planned course unit (Clemson ART/PHOT 3400). [Brief](critique-agent/lab-overview.html) · [Spec](critique-agent/design-spec.md) |
+| [critique-agent/](critique-agent/) | Build-Your-Own Photo-Critique Agent — planned unit for an upper-level photography course. [Brief (live)](https://chiptoe-svg.github.io/nanoclaw_gccourse/critique-agent/) · [Spec](critique-agent/design-spec.md) |

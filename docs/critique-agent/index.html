@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Build-Your-Own Photo-Critique Agent — ART/PHOT 3400</title>
+<title>Build-Your-Own Photo-Critique Agent</title>
 <style>
   :root{
     --ink:#1a1a1c;
@@ -255,11 +255,11 @@
 
 <header>
   <div class="wrap">
-    <div class="eyebrow">ART / PHOT 3400 &middot; Course Materials &middot; Instructional Design Brief</div>
+    <div class="eyebrow">Course Materials &middot; Instructional Design Brief</div>
     <h1>Build-Your-Own Photo-Critique Agent</h1>
     <p class="lede">An instructional design brief for an AI-assisted unit in which students construct, rather than merely operate, a photographic-critique agent. The instructor defines the constraints and the evaluative floor; each student authors the agent's identity, persona, and tool access, then applies it to their own photographs.</p>
     <div class="meta">
-      <span><b>Prepared for</b>Erica Walker</span>
+      <span><b>Audience</b>Course instructor</span>
       <span><b>Unit</b>Assignment 3 — Take Your Best Shot</span>
       <span><b>Duration</b>One week (two lab sessions)</span>
       <span><b>Platform</b>NanoClaw classroom &middot; Agent Playground</span>
@@ -301,7 +301,7 @@
     <figure class="fig">
       <div class="shot">
         <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">playground.local — instructor console</div></div>
-        <div class="appbar"><div class="b">NanoClaw &middot; Agent Playground</div><div class="who">Erica Walker &middot; instructor (global owner)</div></div>
+        <div class="appbar"><div class="b">NanoClaw &middot; Agent Playground</div><div class="who">Instructor &middot; global owner</div></div>
         <div class="apptabs"><span class="t on">Home</span><span class="t">Chat</span><span class="t">Persona</span><span class="t">Skills</span><span class="t">Models</span></div>
         <div class="appbody">
           <table class="roster">
@@ -404,20 +404,20 @@
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">§6</span><div class="eyebrow">Assignment 5 — studio reshoot</div></div>
     <h2>Image generation for previsualization: three approaches</h2>
-    <p class="lede">In the studio reshoot (Assignment 5), generated images serve as a <em>previsualization</em> aid — a way to study lighting, posing, framing, and mood before a live shoot — not as a final deliverable. For this purpose the relevant criteria are institutional access, the precision of lighting control, photorealism, the provenance of training data, and instructional value. The original brief specified Adobe Firefly; two further approaches merit consideration. The instructor's recent note that Clemson holds an OpenAI license with student credits is material to the comparison.</p>
+    <p class="lede">In the studio reshoot (Assignment 5), generated images serve as a <em>previsualization</em> aid — a way to study lighting, posing, framing, and mood before a live shoot — not as a final deliverable. For this purpose the relevant criteria are institutional access, the precision of lighting control, photorealism, the provenance of training data, and instructional value. The original brief specified Adobe Firefly; two further approaches merit consideration. The instructor's recent note that the university holds an OpenAI license with student credits is material to the comparison.</p>
 
     <div class="gen">
       <div class="gen-card">
         <h3>ChatGPT Images 2.0 <span class="by">(GPT Image 2) — OpenAI</span></h3>
         <div class="role-line">Proposed primary tool</div>
-        <p>Reported (April 2026) as a reasoning-based generator on the GPT-5.4 backbone, producing up to 4K output and accepting reference images, with photorealism rated at the top of independent comparison leaderboards. Because it can reason over a brief and a reference image, it pairs directly with the companion lighting agent (§7): the agent can produce a setup description and a ready-to-use generation prompt. Access at Clemson is via the existing OpenAI license and student credits, removing the cost and account friction of consumer alternatives.</p>
+        <p>Reported (April 2026) as a reasoning-based generator on the GPT-5.4 backbone, producing up to 4K output and accepting reference images, with photorealism rated at the top of independent comparison leaderboards. Because it can reason over a brief and a reference image, it pairs directly with the companion lighting agent (§7): the agent can produce a setup description and a ready-to-use generation prompt. Access on campus is via the institution's existing OpenAI license and student credits, removing the cost and account friction of consumer alternatives.</p>
         <p class="lim"><b>Considerations.</b> The model post-dates this author's training data; capability claims are drawn from the sources in §9 and should be confirmed (§8). Training-data provenance and commercial-use terms are less transparent than Firefly's. Lighting control is prompt- and reference-driven rather than physically parameterized, so it is well suited to mood and overall look but less precise for isolating a single lighting variable.</p>
       </div>
 
       <div class="gen-card">
         <h3>Adobe Firefly <span class="by">— Adobe</span></h3>
         <div class="role-line">Alternative — integrated and commercially safe</div>
-        <p>The original choice, and defensible on grounds independent of raw photorealism. Firefly is trained on Adobe Stock and licensed or public-domain material, which Adobe positions as commercially safe — a meaningful consideration for coursework. It is available to students through their <span class="mono">@clemson.edu</span> accounts and is integrated into Photoshop (generative fill and expand), a tool already taught in the course, so it introduces no new application. Localized edits give moderate control over discrete changes such as adding a rim light or altering a background.</p>
+        <p>The original choice, and defensible on grounds independent of raw photorealism. Firefly is trained on Adobe Stock and licensed or public-domain material, which Adobe positions as commercially safe — a meaningful consideration for coursework. It is available to students through their <span class="mono">university</span> accounts and is integrated into Photoshop (generative fill and expand), a tool already taught in the course, so it introduces no new application. Localized edits give moderate control over discrete changes such as adding a rim light or altering a background.</p>
         <p class="lim"><b>Considerations.</b> Photorealism is generally rated below the current OpenAI model and below dedicated photorealistic models. Lighting control is prompt- and edit-based, not true relighting.</p>
       </div>
 
@@ -477,7 +477,7 @@
         </thead>
         <tbody>
           <tr><td>Maker</td><td>OpenAI</td><td>Adobe</td><td>Stability AI; Zhang et al. (open source)</td></tr>
-          <tr><td>Access at Clemson</td><td>OpenAI license + student credits</td><td>Adobe via @clemson.edu</td><td>Self-hosted (Mac Studio) or browser demo</td></tr>
+          <tr><td>Access on campus</td><td>OpenAI license + student credits</td><td>Adobe via university SSO</td><td>Self-hosted (Mac Studio) or browser demo</td></tr>
           <tr><td>Photorealism (mid-2026)</td><td>State of the art, per leaderboards</td><td>Good</td><td>Good; depends on base model</td></tr>
           <tr><td>Lighting-control precision</td><td>Prompt + reference; not parameterized</td><td>Prompt + localized edits</td><td>High — relighting with a fixed subject</td></tr>
           <tr><td>Training-data provenance</td><td>Less transparent</td><td>Licensed; commercially safe</td><td>Varies by model; open weights</td></tr>

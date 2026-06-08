@@ -51,11 +51,11 @@ The **per-person classroom** mode (each student authorizes their own Google + LL
 
 Designs planned for this fork — drafts in review, not yet built.
 
-### Build-Your-Own Photo-Critique Agent (ART/PHOT 3400)
+### Build-Your-Own Photo-Critique Agent
 
-A one-week course unit where students don't *use* a critique bot — they **build** their own: they name it, author its persona in the Playground's Persona tab, and toggle skills, then run it on their own photographs for a Socratic critique. The instructor owns the instance and the locked "Class base" floor; each student owns their per-agent persona. A companion module reverse-engineers studio lighting from inspiration images, comparing Adobe Firefly, ChatGPT Images 2.0, and a local IC-Light + ControlNet relighting demo.
+A one-week course unit for an upper-level photography course where students don't *use* a critique bot — they **build** their own: they name it, author its persona in the Playground's Persona tab, and toggle skills, then run it on their own photographs for a Socratic critique. The instructor owns the instance and the locked "Class base" floor; each student owns their per-agent persona. A companion module reverse-engineers studio lighting from inspiration images, comparing Adobe Firefly, ChatGPT Images 2.0, and a local IC-Light + ControlNet relighting demo.
 
-- **Instructional brief (HTML):** [docs/critique-agent/lab-overview.html](docs/critique-agent/lab-overview.html) — instructor-facing overview with interface and lighting-tool mockups ([view rendered](https://htmlpreview.github.io/?https://github.com/chiptoe-svg/nanoclaw_gccourse/blob/main/docs/critique-agent/lab-overview.html)).
+- **Instructional brief:** **[view live](https://chiptoe-svg.github.io/nanoclaw_gccourse/critique-agent/)** — instructor-facing overview with interface and lighting-tool mockups ([source](docs/critique-agent/index.html)).
 - **Design spec (Markdown):** [docs/critique-agent/design-spec.md](docs/critique-agent/design-spec.md) — full design: the three-layer persona model, skills toggle-and-observe, the studio-lighting companion, and open questions.
 
 _Status: draft for instructor review._

@@ -1,15 +1,15 @@
 # Build-Your-Own Photo-Critique Agent — Design Spec
 
 **Date:** 2026-06-06
-**Author:** Chip Tonkin (with Claude Code)
-**For:** Erica Walker, ART/PHOT 3400
+**Author:** Course design draft
+**For:** an upper-level photography course
 **Status:** Draft for review
 
 ---
 
 ## 1. Context
 
-ART/PHOT 3400 is adding an AI-forward strand that pairs manual photography with
+An upper-level photography course is adding an AI-forward strand that pairs manual photography with
 AI-assisted critique. Two source assignments drive this work:
 
 - **`03a Take Your Best Shot.md`** — Assignment 3. Manual photojournalism on a
@@ -22,8 +22,8 @@ AI-assisted critique. Two source assignments drive this work:
   and lighting setup to achieve that look. Currently points only to Adobe
   Firefly for image generation; no setup-planning agent exists.
 
-The vehicle is **NanoClaw** (Ava's classroom fork,
-`chiptoe-svg/nanoclaw_gccourse`): a container-isolated, multi-role classroom
+The vehicle is **NanoClaw** (this classroom fork,
+`nanoclaw_gccourse`): a container-isolated, multi-role classroom
 agent platform. Each student gets their own agent group with an **editable
 persona**, edited through the **Agent Playground** (a five-tab web workbench:
 Home, Chat, Persona, Skills, Models). The classroom skill already provides a
@@ -32,7 +32,7 @@ propagates to every student.
 
 ## 2. Goal
 
-Give Erica a teaching package in which **students build and control their own
+Give the instructor a teaching package in which **students build and control their own
 photo-critique agent** (not just consume a finished one), use it to critique
 their own field photos, and learn core agent concepts (persona, skills,
 chatbot-vs-agent) along the way — all inside a single week (2 labs) in week 2 of
@@ -66,7 +66,7 @@ in full.
 reuses the same scaffold pattern; sketched in §12.
 
 **Platform capability (separate workstream):** **instructor-owned improvement**
-(§14) — Erica owns the instance and evolves it via **Claude Code/Codex + git Pull
+(§14) — the instructor owns the instance and evolves it via **Claude Code/Codex + git Pull
 Requests** (a chat-driven bridge is an optional later add-on). Small, independent
 setup; does not block Assignment 3.
 
@@ -76,7 +76,7 @@ setup; does not block Assignment 3.
 
 Maps onto NanoClaw's existing role-layered model (`global → role → per-agent`):
 
-1. **Instructor-locked floor** — `data/class-shared-students.md` (Erica edits
+1. **Instructor-locked floor** — `data/class-shared-students.md` (the instructor edits
    once; symlinked into every student folder; propagates automatically). Holds
    the **non-negotiables**:
    - Socratic stance: ask the question that leads the student to the fix; do not
@@ -147,13 +147,13 @@ photos (Chat tab) → iterate.** The iteration loop is the learning.
 ## 8. Component C — Instructor-locked floor file
 
 Concrete content for `data/class-shared-students.md` (the four non-negotiables
-in §5.1), written so Erica can adjust tone/strictness in one place and have it
+in §5.1), written so the instructor can adjust tone/strictness in one place and have it
 propagate to all students.
 
 ## 9. Component D — Instructor materials
 
 - **Exemplar "strong" persona** — a fully-built reference Critique-Bot. Serves as
-  Erica's north star and grading-calibration key. Released to students *after*
+  the instructor's north star and grading-calibration key. Released to students *after*
   the build (or instructor-only) to avoid copying.
 - **Instructor setup guide** — provision via `add-classroom`; place scaffold +
   worksheet in student folders; set the locked floor file; pre-install the
@@ -167,7 +167,7 @@ propagate to all students.
 
 Skills are **not authored** by students. Instead:
 
-- Erica/Chip pre-install 1–2 relevant skills at the class level (e.g., **web
+- The instructor pre-installs 1–2 relevant skills at the class level (e.g., **web
   search**, so the critique agent can pull a reference photographer or example
   image).
 - Students use the **Skills tab** to flip a skill **on/off** and observe the
@@ -204,10 +204,10 @@ clean, printable **submission block** in the Chat transcript:
 - The **concise feedback chart** for the reshoot candidates.
 
 The student pastes this into their PDF bundle alongside the Lightroom contact
-sheets. No NanoClaw skill is built for this (deferred — see §15; Erica can add it
+sheets. No NanoClaw skill is built for this (deferred — see §15; the instructor can add it
 later via Claude Code + a PR, §14).
 
-⚠️ **Gap only Erica/Chip can fill:** the MD says export the 10 JPGs *"WITH THESE
+⚠️ **Gap only the instructor can fill:** the MD says export the 10 JPGs *"WITH THESE
 SETTINGS"* but the settings are missing (color space? long-edge px? quality?).
 The rewrite will leave a clearly-marked placeholder rather than invent values.
 
@@ -223,7 +223,7 @@ offered when that module is specced.
 
 ### 12a. Image generation for previsualization (revises the original Firefly-only plan)
 
-The original `05_Reshoot Plan.md` specified Adobe Firefly. Given that Clemson
+The original `05_Reshoot Plan.md` specified Adobe Firefly. Given that the university
 holds an **OpenAI license with student credits**, three approaches are now
 compared (full treatment + comparison table in the HTML brief, §6):
 
@@ -278,7 +278,7 @@ shared/small-group resource, not a per-student service.
 
 ## 14. Instructor-owned improvement — evolving the tool (git + Pull Requests)
 
-**Premise.** Erica **owns this instance** (NanoClaw admin/owner role) and can
+**Premise.** The instructor **owns this instance** (NanoClaw admin/owner role) and can
 evolve it. **Decision:** the primary mechanism is using **Claude Code (or Codex)
 directly** against the fork, with every change landing through git —
 **branch → commit → push → Pull Request → merge.** Git history is the change log,
@@ -304,7 +304,7 @@ largely reinvent a worse PR review.
   config, the mount allowlist, sandbox / isolation code, auth) without explicit
   confirmation.
 - **GitHub remote + branch protection** — protect `main` (require a PR; use
-  `CODEOWNERS` to require Chip's review on security-relevant paths). This makes
+  `CODEOWNERS` to require a maintainer's review on security-relevant paths). This makes
   the audit trail and the approval gate *structural*, not just convention.
 
 **The workflow.**
@@ -312,14 +312,14 @@ largely reinvent a worse PR review.
    thumbnails as a submission PDF."*
 2. The CLI works on a **branch**, runs build/tests, and opens a **PR** with a
    summary + diff.
-3. **Review and approve/merge the PR** (Erica for routine changes; Chip for
+3. **Review and approve/merge the PR** (the instructor for routine changes; a maintainer for
    security-relevant ones via `CODEOWNERS`).
 4. **Deploy:** pull `main` on the host, rebuild, restart affected
    services/containers — a one-line `update` script or a CI-on-merge action can
    automate this.
 5. **Rollback** is `git revert` + redeploy.
 
-**Examples Erica could ask the CLI for:**
+**Examples the instructor could ask the CLI for:**
 - *"Add a skill that exports a student's critique conversation and their 10 photo
   thumbnails as a single submission PDF."* (builds the deferred export skill, §15)
 - *"Add a new persona to the class library: a studio-lighting reverse-engineer
@@ -341,11 +341,11 @@ largely reinvent a worse PR review.
 independent of the Assignment-3 materials (Components A–F), which do not depend on
 it. The setup is small (guardrail `CLAUDE.md` + branch protection). Once in place,
 the "deferred" items (PDF-export skill, lighting persona, integrations) become
-things Erica can add via Claude Code + a PR rather than work Chip must hand-build.
+things the instructor can add via Claude Code + a PR rather than work a maintainer must hand-build.
 
 ### 14a. Optional later — chat dev-bridge
 
-If Erica later wants to drive changes from **chat/phone** without the desktop
+If the instructor later wants to drive changes from **chat/phone** without the desktop
 app, a gated chat bridge can be layered on the **same** git/PR pipeline: an
 **owner-only** host action (`request_improvement`, never on `student_*`/`ta_*`)
 → a **background Claude Code** on the host works on a branch and opens a PR →
@@ -358,7 +358,7 @@ security-sensitive add-on (owner-only, branch-only, build/test gate, audit log).
 ## 15. Out of scope (YAGNI)
 
 - **PDF-export skill** (chat + thumbnails → submission PDF) — deferred; export
-  stays low-tech. (Erica can add it later via the §14 improvement workflow.)
+  stays low-tech. (the instructor can add it later via the §14 improvement workflow.)
 - **Students authoring skills** — they toggle-and-observe only.
 - **Sources / Retrieval (RAG), deep Models/Bench work** — exist in the platform
   but not used in week 2.
@@ -366,8 +366,8 @@ security-sensitive add-on (owner-only, branch-only, build/test gate, audit log).
 
 ## 16. Deliverables & file layout
 
-Authored into the `erica_project` working directory (final home: a NanoClaw fork
-and/or Erica's course materials):
+Authored into the the project working directory (final home: a NanoClaw fork
+and/or the instructor's course materials):
 
 - `critique-bot-scaffold.md` — Component A (student-filled persona scaffold).
 - `critique-bot-worksheet.md` — Component B (decision worksheet).
@@ -393,7 +393,7 @@ and/or Erica's course materials):
    (`update`) script. Small; independent of Components A–F. The optional chat
    dev-bridge (§14a) is deferred until/unless wanted.
 
-## 18. Open questions for Erica / Chip
+## 18. Open questions for the instructor / maintainer
 
 1. **JPG export settings** for the 10-image export (§11) — exact values.
 2. **Skills lockdown** — confirm students can toggle instructor-installed skills
@@ -408,12 +408,12 @@ and/or Erica's course materials):
    training cutoff.
 6. **Lab timing** — confirm the two-session A/B sequence matches actual lab
    scheduling.
-7. **Improvement ownership & review policy (§14)** — confirm Erica is the
+7. **Improvement ownership & review policy (§14)** — confirm the instructor is the
    instance owner/admin and comfortable with the Claude Code desktop app + PR
-   approval; agree the `CODEOWNERS` rules (which paths require Chip's review) and
+   approval; agree the `CODEOWNERS` rules (which paths require a maintainer's review) and
    the protected-paths list.
 8. **Deploy & staging (§14)** — automate deploy-on-merge or keep it a manual
    `update` step; decide whether changes run against a staging instance before
    the live classroom.
 9. **Chat dev-bridge (§14a)** — whether/when to build it (only if the desktop-app
-   path proves a barrier for Erica).
+   path proves a barrier for the instructor).
