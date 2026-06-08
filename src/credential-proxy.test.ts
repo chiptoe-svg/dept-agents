@@ -22,8 +22,8 @@ vi.mock('./log.js', () => ({
 
 import {
   startCredentialProxy,
-  setStudentCredsHook,
-  studentCredsHook,
+  setUserCredsHook,
+  userCredsHook,
   serializeResolvedCredsError,
   resolveOmlxKey,
 } from './credential-proxy.js';
@@ -273,22 +273,22 @@ describe('credential-proxy', () => {
   });
 });
 
-describe('studentCredsHook', () => {
+describe('userCredsHook', () => {
   afterEach(() => {
-    setStudentCredsHook(async () => null);
+    setUserCredsHook(async () => null);
   });
 
   it('default hook returns null (no-op for solo installs)', async () => {
-    const result = await studentCredsHook('any-gid', 'claude');
+    const result = await userCredsHook('any-gid', 'claude');
     expect(result).toBeNull();
   });
 
-  it('setStudentCredsHook installs a new hook globally', async () => {
-    setStudentCredsHook(async (gid, provider) => ({
+  it('setUserCredsHook installs a new hook globally', async () => {
+    setUserCredsHook(async (gid, provider) => ({
       kind: 'apiKey',
       value: `key-for-${gid}-${provider}`,
     }));
-    const result = await studentCredsHook('g1', 'claude');
+    const result = await userCredsHook('g1', 'claude');
     expect(result).toEqual({ kind: 'apiKey', value: 'key-for-g1-claude' });
   });
 

@@ -245,8 +245,8 @@ describe('models API', () => {
     // 'anthropic' is BOTH a group id and the catalog modelProvider name —
     // the resolver finds it as a group, sees user-1 has claude apiKey, and
     // resolves to the same 'anthropic' string. End-state is unchanged.
-    vi.doMock('../../../student-provider-auth.js', () => ({
-      loadStudentProviderCreds: (userId: string, specId: string) =>
+    vi.doMock('../../../user-provider-auth.js', () => ({
+      loadUserProviderCreds: (userId: string, specId: string) =>
         userId === 'user-1' && specId === 'claude' ? { apiKey: { value: 'sk-ant-fake' }, active: 'apiKey' } : null,
     }));
     vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
@@ -282,8 +282,8 @@ describe('models API', () => {
       },
     }));
     // user-1 has codex creds (e.g. ChatGPT OAuth pasted).
-    vi.doMock('../../../student-provider-auth.js', () => ({
-      loadStudentProviderCreds: (userId: string, specId: string) => {
+    vi.doMock('../../../user-provider-auth.js', () => ({
+      loadUserProviderCreds: (userId: string, specId: string) => {
         if (userId === 'user-1' && specId === 'codex') {
           return {
             apiKey: undefined,
@@ -320,8 +320,8 @@ describe('models API', () => {
     vi.doMock('../../../model-provider-switch.js', () => ({
       setModelProviderAndModel: vi.fn(async () => {}),
     }));
-    vi.doMock('../../../student-provider-auth.js', () => ({
-      loadStudentProviderCreds: () => null,
+    vi.doMock('../../../user-provider-auth.js', () => ({
+      loadUserProviderCreds: () => null,
     }));
     vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
       getOwnerUserId: () => null,

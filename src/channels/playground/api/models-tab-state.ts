@@ -95,7 +95,7 @@ export function deriveProviderState(input: {
 
 import { listProviderSpecs } from '../../../providers/auth-registry.js';
 import { DEFAULT_CLASS_ID, readClassControls } from './class-controls.js';
-import { loadStudentProviderCreds } from '../../../student-provider-auth.js';
+import { loadUserProviderCreds } from '../../../user-provider-auth.js';
 import { getOwnerUserId } from '../../../modules/permissions/db/user-roles.js';
 import { listAllForProvider, resetCacheForProvider } from '../../../model-discovery.js';
 import { fetchHfMetadata } from '../../../hf-metadata.js';
@@ -340,7 +340,7 @@ export async function handleGetModelsTabState(input: {
   const providers = await Promise.all(
     specs.map(async (spec) => {
       const policy = policies[spec.id] ?? { allow: false, provideDefault: false, allowByo: false };
-      const credsRaw = loadStudentProviderCreds(input.userId, spec.id);
+      const credsRaw = loadUserProviderCreds(input.userId, spec.id);
       const creds: CredState = credsRaw
         ? { hasOAuth: !!credsRaw.oauth, hasApiKey: !!credsRaw.apiKey }
         : { hasOAuth: false, hasApiKey: false };
@@ -425,7 +425,7 @@ export async function computeProviderAvailability(input: {
   const entries = await Promise.all(
     specs.map(async (spec) => {
       const policy = policies[spec.id] ?? { allow: false, provideDefault: false, allowByo: false };
-      const credsRaw = loadStudentProviderCreds(input.userId, spec.id);
+      const credsRaw = loadUserProviderCreds(input.userId, spec.id);
       const creds: CredState = credsRaw
         ? { hasOAuth: !!credsRaw.oauth, hasApiKey: !!credsRaw.apiKey }
         : { hasOAuth: false, hasApiKey: false };

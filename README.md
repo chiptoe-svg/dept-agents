@@ -47,6 +47,19 @@ This fork supports two classroom deployment shapes. For most teaching scenarios,
 
 The **per-person classroom** mode (each student authorizes their own Google + LLM provider) is more setup-heavy and lands incrementally — see [plans/master.md](plans/master.md) Phase 2.
 
+## Future projects
+
+Designs planned for this fork — drafts in review, not yet built.
+
+### Build-Your-Own Photo-Critique Agent
+
+A one-week course unit for an upper-level photography course where students don't *use* a critique bot — they **build** their own: they name it, author its persona in the Playground's Persona tab, and toggle skills, then run it on their own photographs for a Socratic critique. The instructor owns the instance and the locked "Class base" floor; each student owns their per-agent persona. A companion module reverse-engineers studio lighting from inspiration images, comparing Adobe Firefly, ChatGPT Images 2.0, and a local IC-Light + ControlNet relighting demo.
+
+- **Instructional brief:** **[view live](https://chiptoe-svg.github.io/nanoclaw_gccourse/critique-agent/)** — instructor-facing overview with interface and lighting-tool mockups ([source](docs/critique-agent/index.html)).
+- **Design spec (Markdown):** [docs/critique-agent/design-spec.md](docs/critique-agent/design-spec.md) — full design: the three-layer persona model, skills toggle-and-observe, the studio-lighting companion, and open questions.
+
+_Status: draft for instructor review._
+
 ## Philosophy
 
 **Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask your AI-coding-CLI (Claude Code or Codex) to walk you through it.

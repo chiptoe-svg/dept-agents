@@ -35,15 +35,15 @@ describe('env-to-owner migration', () => {
     writeEnv('ANTHROPIC_API_KEY=sk-ant\nOPENAI_API_KEY=sk-oai\n');
     await mockOwner('instructor@x.edu');
     const { runEnvToOwnerMigration } = await import('./env-to-owner-migration.js');
-    const { loadStudentProviderCreds } = await import('./student-provider-auth.js');
+    const { loadUserProviderCreds } = await import('./user-provider-auth.js');
 
     const result = runEnvToOwnerMigration();
 
     expect(result.ran).toBe(true);
     expect(result.migrated.sort()).toEqual(['claude', 'codex']);
     expect(result.skipped).toEqual([]);
-    expect(loadStudentProviderCreds('instructor@x.edu', 'claude')?.apiKey?.value).toBe('sk-ant');
-    expect(loadStudentProviderCreds('instructor@x.edu', 'codex')?.apiKey?.value).toBe('sk-oai');
+    expect(loadUserProviderCreds('instructor@x.edu', 'claude')?.apiKey?.value).toBe('sk-ant');
+    expect(loadUserProviderCreds('instructor@x.edu', 'codex')?.apiKey?.value).toBe('sk-oai');
     expect(fs.existsSync(path.join(tmpRoot, 'data', '.env-to-owner-migration-done'))).toBe(true);
   });
 
@@ -51,14 +51,14 @@ describe('env-to-owner migration', () => {
     writeEnv('ANTHROPIC_API_KEY=sk-env\n');
     await mockOwner('instructor@x.edu');
     const { runEnvToOwnerMigration } = await import('./env-to-owner-migration.js');
-    const { addApiKey, loadStudentProviderCreds } = await import('./student-provider-auth.js');
+    const { addApiKey, loadUserProviderCreds } = await import('./user-provider-auth.js');
     addApiKey('instructor@x.edu', 'claude', 'sk-card-set'); // already-connected via card
 
     const result = runEnvToOwnerMigration();
 
     expect(result.migrated).toEqual([]);
     expect(result.skipped).toEqual(['claude']);
-    expect(loadStudentProviderCreds('instructor@x.edu', 'claude')?.apiKey?.value).toBe('sk-card-set');
+    expect(loadUserProviderCreds('instructor@x.edu', 'claude')?.apiKey?.value).toBe('sk-card-set');
   });
 
   it('is a no-op on second run (marker present)', async () => {
@@ -88,11 +88,11 @@ describe('env-to-owner migration', () => {
     writeEnv('CLAUDE_CODE_OAUTH_TOKEN=oauth-token\n');
     await mockOwner('instructor@x.edu');
     const { runEnvToOwnerMigration } = await import('./env-to-owner-migration.js');
-    const { loadStudentProviderCreds } = await import('./student-provider-auth.js');
+    const { loadUserProviderCreds } = await import('./user-provider-auth.js');
 
     const result = runEnvToOwnerMigration();
 
     expect(result.migrated).toEqual([]);
-    expect(loadStudentProviderCreds('instructor@x.edu', 'claude')).toBeNull();
+    expect(loadUserProviderCreds('instructor@x.edu', 'claude')).toBeNull();
   });
 });

@@ -10,7 +10,7 @@ import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
 import { listAllForProvider } from '../../../model-discovery.js';
 import { setModelProviderAndModel } from '../../../model-provider-switch.js';
 import { PROVIDER_GROUPS, findGroupById } from '../../../provider-groups.js';
-import { loadStudentProviderCreds } from '../../../student-provider-auth.js';
+import { loadUserProviderCreds } from '../../../user-provider-auth.js';
 import { getOwnerUserId } from '../../../modules/permissions/db/user-roles.js';
 import { DEFAULT_CLASS_ID } from './class-controls.js';
 import { computeProviderAvailability } from './models-tab-state.js';
@@ -168,14 +168,14 @@ function resolveGroupToModelProvider(groupId: string, userId: string): string | 
   if (!group) return null;
   // Try the requesting user's own creds first.
   for (const m of group.members) {
-    const creds = loadStudentProviderCreds(userId, m.specId);
+    const creds = loadUserProviderCreds(userId, m.specId);
     if (creds?.apiKey?.value || creds?.oauth?.accessToken) return m.modelProvider;
   }
   // Fall back to the install owner (= class pool).
   const ownerId = getOwnerUserId();
   if (ownerId && ownerId !== userId) {
     for (const m of group.members) {
-      const creds = loadStudentProviderCreds(ownerId, m.specId);
+      const creds = loadUserProviderCreds(ownerId, m.specId);
       if (creds?.apiKey?.value || creds?.oauth?.accessToken) return m.modelProvider;
     }
   }

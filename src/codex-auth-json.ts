@@ -1,11 +1,11 @@
 /**
  * Codex CLI auth.json bridge — translates between per-student creds
- * (`student-provider-auth.ts` shape) and the on-disk auth.json that pi-ai's
+ * (`user-provider-auth.ts` shape) and the on-disk auth.json that pi-ai's
  * openai-codex provider reads from `/workspace/.pi-auth/auth.json`.
  *
  * Two directions:
  *
- *   studentCredsToCodexAuthJson  — at session-spawn time, write a per-student
+ *   userCredsToCodexAuthJson  — at session-spawn time, write a per-student
  *                                  auth.json into the session's pi-auth dir
  *                                  so the container's pi-ai sees the student's
  *                                  ChatGPT tokens (not the owner's).
@@ -24,7 +24,7 @@
  * (see provider-auth.ts), so initial student auth.jsons omit it; pi
  * tolerates that.
  */
-import type { StudentProviderCreds } from './student-provider-auth.js';
+import type { UserProviderCreds } from './user-provider-auth.js';
 
 /**
  * Translate a per-student creds record into the codex CLI auth.json shape
@@ -33,7 +33,7 @@ import type { StudentProviderCreds } from './student-provider-auth.js';
  * openai-platform API key cannot be used here because chatgpt.com is not
  * an API-key endpoint).
  */
-export function studentCredsToCodexAuthJson(creds: StudentProviderCreds | null): Record<string, unknown> | null {
+export function userCredsToCodexAuthJson(creds: UserProviderCreds | null): Record<string, unknown> | null {
   if (!creds?.oauth) return null;
   if (creds.active !== 'oauth') return null;
   return {

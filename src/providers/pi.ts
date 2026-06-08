@@ -41,10 +41,10 @@ import fs from 'fs';
 import path from 'path';
 
 import { readClassControls } from '../channels/playground/api/class-controls.js';
-import { extractRefreshedFromAuthJson, studentCredsToCodexAuthJson } from '../codex-auth-json.js';
+import { extractRefreshedFromAuthJson, userCredsToCodexAuthJson } from '../codex-auth-json.js';
 import { lookupRosterByAgentGroupId } from '../db/classroom-roster.js';
 import { readEnvFile } from '../env.js';
-import { addOAuth, loadStudentProviderCreds } from '../student-provider-auth.js';
+import { addOAuth, loadUserProviderCreds } from '../user-provider-auth.js';
 import { registerProviderContainerConfig } from './provider-container-registry.js';
 
 // Direct-API providers pi can route to that classroom does NOT intercept via
@@ -115,7 +115,7 @@ function provisionPiAuth(piAuthDir: string, agentGroupId: string, hostHome: stri
       try {
         const raw = JSON.parse(fs.readFileSync(targetFile, 'utf-8')) as unknown;
         const refreshed = extractRefreshedFromAuthJson(raw);
-        const stored = loadStudentProviderCreds(rosterEntry.user_id, 'codex');
+        const stored = loadUserProviderCreds(rosterEntry.user_id, 'codex');
         if (refreshed && stored?.oauth && refreshed.refreshToken !== stored.oauth.refreshToken) {
           addOAuth(rosterEntry.user_id, 'codex', {
             accessToken: refreshed.accessToken,
@@ -129,8 +129,8 @@ function provisionPiAuth(piAuthDir: string, agentGroupId: string, hostHome: stri
       }
     }
 
-    const studentCreds = loadStudentProviderCreds(rosterEntry.user_id, 'codex');
-    const studentAuth = studentCredsToCodexAuthJson(studentCreds);
+    const studentCreds = loadUserProviderCreds(rosterEntry.user_id, 'codex');
+    const studentAuth = userCredsToCodexAuthJson(studentCreds);
     if (studentAuth) {
       fs.writeFileSync(targetFile, JSON.stringify(studentAuth, null, 2), { mode: 0o600 });
       return;

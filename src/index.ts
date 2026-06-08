@@ -4,6 +4,7 @@
  * Thin orchestrator: init DB, run migrations, start channel adapters,
  * start delivery polls, start sweep, handle shutdown.
  */
+import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, CREDENTIAL_PROXY_PORT, GWS_MCP_RELAY_PORT } from './config.js';
@@ -16,9 +17,9 @@ import { backfillContainerConfigs } from './backfill-container-configs.js';
 import { getActiveSessions } from './db/sessions.js';
 import { recoverStaleOutboundJournals } from './session-manager.js';
 import { ensureContainerRuntimeRunning, cleanupOrphans, PROXY_BIND_HOST } from './container-runtime.js';
-import { startCredentialProxy, setStudentCredsHook } from './credential-proxy.js';
+import { startCredentialProxy, setUserCredsHook } from './credential-proxy.js';
 // ── classroom-provider-auth:hook-registration START ───────────────────────
-import { resolveStudentCreds } from './classroom-provider-resolver.js';
+import { resolveUserCreds } from './user-provider-resolver.js';
 import './providers/claude-spec.js'; // registers claude
 import './providers/codex-spec.js'; // registers codex
 // ── classroom-provider-auth:hook-registration END ─────────────────────────
@@ -71,13 +72,14 @@ import './modules/index.js';
 // Each skill appends its own imports here for the registries it
 // registers against (codex auth resolver, container env contributor,
 // playground draft gate, pair consumer, telegram command).
-import './class-pair-greeting.js';
-import './class-pair-instructor.js';
-import './class-pair-ta.js';
-import './class-playground-gate.js';
-import './class-container-env.js';
-import './class-login-tokens.js';
-import './class-telegram-pair.js';
+// Platform pieces the classroom scenario builds on (shared by all scenarios):
+import './class-pair-greeting.js'; // base pairing mechanism
+import './class-playground-gate.js'; // member policy
+import './class-container-env.js'; // member git identity
+import './class-login-tokens.js'; // onboarding
+import './class-telegram-pair.js'; // onboarding
+// Scenario profiles (teaching-specific roles/personas live here, not in trunk):
+import './scenarios/index.js';
 
 // CLI command barrel — populates the `ncl` registry before the CLI server
 // accepts connections.
@@ -122,6 +124,32 @@ async function main(): Promise<void> {
     });
   }
 
+  // 1d. One-time migration from the controlled-access vocabulary sweep:
+  // data/student-provider-creds → data/user-provider-creds. Merges per-user
+  // subdirs (robust even if an empty new dir was created first by another
+  // startup path) and removes the old dir once drained. Idempotent.
+  {
+    const oldCredsDir = path.join(DATA_DIR, 'student-provider-creds');
+    const newCredsDir = path.join(DATA_DIR, 'user-provider-creds');
+    if (fs.existsSync(oldCredsDir)) {
+      fs.mkdirSync(newCredsDir, { recursive: true });
+      let moved = 0;
+      for (const entry of fs.readdirSync(oldCredsDir)) {
+        const to = path.join(newCredsDir, entry);
+        if (!fs.existsSync(to)) {
+          fs.renameSync(path.join(oldCredsDir, entry), to);
+          moved++;
+        }
+      }
+      try {
+        if (fs.readdirSync(oldCredsDir).length === 0) fs.rmdirSync(oldCredsDir);
+      } catch {
+        /* leave non-empty old dir in place */
+      }
+      if (moved > 0) log.info('Migrated per-user provider creds', { moved, to: newCredsDir });
+    }
+  }
+
   // 2. Container runtime
   ensureContainerRuntimeRunning();
   cleanupOrphans();
@@ -138,7 +166,7 @@ async function main(): Promise<void> {
     PROXY_BIND_HOST,
     path.join(DATA_DIR, 'proxy-payloads'),
   );
-  setStudentCredsHook(resolveStudentCreds);
+  setUserCredsHook(resolveUserCreds);
 
   // 2c. GWS MCP relay — host-side Google Workspace tools. Containers reach
   // it via the same host-gateway pattern as the credential proxy; per-call

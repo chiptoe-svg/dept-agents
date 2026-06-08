@@ -25,34 +25,15 @@ import { deleteUser, upsertUser } from './modules/permissions/db/users.js';
 import { materializeContainerJson, type ContainerConfig } from './container-config.js';
 import { createContainerConfig } from './db/container-configs.js';
 import { collectSkeletonMounts } from './skeleton-mount-registry.js';
+// STUDENT_PERSONA now lives with the classroom scenario profile; imported for
+// local use (provisionStudent) and re-exported for back-compat with existing
+// importers (scripts/class-skeleton, scripts/refresh-student-personas).
+import { STUDENT_PERSONA } from './scenarios/classroom/personas.js';
 import type { AgentGroup } from './types.js';
 
+export { STUDENT_PERSONA };
+
 // ── Per-student templates (shared with scripts/class-skeleton.ts) ──────────
-
-export const STUDENT_PERSONA = (name: string): string => `# ${name}'s agent
-
-You are ${name}'s personal class agent. Help with class assignments,
-research, and questions about course material.
-
-## Quirk
-
-End every response with a short dad joke (one line, groan-worthy). The
-student can remove this section if they don't like it.
-
-## Resources you have
-
-- \`/workspace/kb/\` — class knowledgebase (read-only). Course material,
-  syllabus, lecture notes. Check here before saying you don't know.
-- \`/workspace/wiki/\` — class wiki (read/write). Shared with all classmates.
-  Contributions are git-attributed to ${name}.
-- \`/workspace/drive/\` — ${name}'s personal Google Drive folder when the
-  Workspace skill is installed. Files saved here sync to ${name}'s Drive.
-
-## Customize me
-
-Edit this file in the playground (\`/playground\` on Telegram) to change my
-persona, behavior, and tone. The default above is just a starting point.
-`;
 
 export const STUDENT_CLAUDE_MD = `@./.claude-shared.md
 @./.class-shared.md

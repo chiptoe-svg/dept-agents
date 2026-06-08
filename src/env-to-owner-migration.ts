@@ -26,7 +26,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { readEnvFile } from './env.js';
-import { addApiKey, loadStudentProviderCreds } from './student-provider-auth.js';
+import { addApiKey, loadUserProviderCreds } from './user-provider-auth.js';
 import { getOwnerUserId } from './modules/permissions/db/user-roles.js';
 
 const MARKER_FILENAME = '.env-to-owner-migration-done';
@@ -69,7 +69,7 @@ export function runEnvToOwnerMigration(): MigrationResult {
   for (const { envKey, specId } of MAPPINGS) {
     const value = env[envKey];
     if (!value) continue;
-    if (loadStudentProviderCreds(ownerId, specId)) {
+    if (loadUserProviderCreds(ownerId, specId)) {
       skipped.push(specId);
       continue;
     }

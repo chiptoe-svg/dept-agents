@@ -3,8 +3,8 @@
  *
  * Walks the full stack:
  *   registry → handleProviderAuthStart → handleProviderAuthExchange
- *   (mocked token exchanger) → storage → resolveStudentCreds
- *   → studentCredsHook → returns the student's OAuth access token.
+ *   (mocked token exchanger) → storage → resolveUserCreds
+ *   → userCredsHook → returns the student's OAuth access token.
  *
  * No network calls are made. Token exchanger and roster lookup are injected.
  */
@@ -18,16 +18,16 @@ import {
   handleProviderAuthExchange,
   setTokenExchangerForTests,
 } from '../channels/playground/api/provider-auth.js';
-import { setStudentCredsHook, studentCredsHook } from '../credential-proxy.js';
-import { resolveStudentCreds, setRosterLookupForTests } from '../classroom-provider-resolver.js';
-import { loadStudentProviderCreds } from '../student-provider-auth.js';
+import { setUserCredsHook, userCredsHook } from '../credential-proxy.js';
+import { resolveUserCreds, setRosterLookupForTests } from '../user-provider-resolver.js';
+import { loadUserProviderCreds } from '../user-provider-auth.js';
 
 // Sanitised path: alice@x.edu → alice_x_edu (sanitizeUserIdForPath squashes all non-alphanum to _)
-const CLEANUP_DIR = path.join(process.cwd(), 'data/student-provider-creds/alice_x_edu');
+const CLEANUP_DIR = path.join(process.cwd(), 'data/user-provider-creds/alice_x_edu');
 
 beforeAll(() => {
   setRosterLookupForTests((gid) => (gid === 'alice-gid' ? { userId: 'alice@x.edu', classId: 'default' } : null));
-  setStudentCredsHook(resolveStudentCreds);
+  setUserCredsHook(resolveUserCreds);
   setTokenExchangerForTests(async () => ({
     accessToken: 'integration-at',
     refreshToken: 'integration-rt',
@@ -52,10 +52,10 @@ describe('end-to-end provider auth', () => {
     expect(exchange.status).toBe(200);
 
     // Step 3: verify storage wrote the access token
-    expect(loadStudentProviderCreds('alice@x.edu', 'claude')?.oauth?.accessToken).toBe('integration-at');
+    expect(loadUserProviderCreds('alice@x.edu', 'claude')?.oauth?.accessToken).toBe('integration-at');
 
     // Step 4: verify the proxy hook returns the student's OAuth token
-    const result = await studentCredsHook('alice-gid', 'claude');
+    const result = await userCredsHook('alice-gid', 'claude');
     expect(result).toEqual({ kind: 'oauth', accessToken: 'integration-at' });
   });
 });

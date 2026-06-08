@@ -5,14 +5,14 @@
  *   - addApiKey/addOAuth auto-set active when adding to empty store
  *   - clearMethod removes the file entirely when both methods are gone
  *
- * Path: data/student-provider-creds/<sanitized_user_id>/<providerId>.json
+ * Path: data/user-provider-creds/<sanitized_user_id>/<providerId>.json
  * File mode 0o600, dir mode 0o700 (chmod after mkdir for existing-dir case).
  * Path sanitization shares student-creds-paths.ts with student-google-auth.ts.
  */
 import fs from 'fs';
 import path from 'path';
 
-import { studentProviderCredsPath } from './student-creds-paths.js';
+import { userProviderCredsPath } from './student-creds-paths.js';
 
 type ApiKeyCreds = { value: string; addedAt: number };
 type OAuthCreds = {
@@ -23,7 +23,7 @@ type OAuthCreds = {
   addedAt: number;
 };
 
-export type StudentProviderCreds = {
+export type UserProviderCreds = {
   apiKey?: ApiKeyCreds;
   oauth?: OAuthCreds;
   active: 'apiKey' | 'oauth';
@@ -42,24 +42,24 @@ function writeAtomic(file: string, data: object): void {
   fs.renameSync(tmp, file);
 }
 
-export function loadStudentProviderCreds(userId: string, providerId: string): StudentProviderCreds | null {
+export function loadUserProviderCreds(userId: string, providerId: string): UserProviderCreds | null {
   try {
-    const raw = fs.readFileSync(studentProviderCredsPath(userId, providerId), 'utf-8');
-    return JSON.parse(raw) as StudentProviderCreds;
+    const raw = fs.readFileSync(userProviderCredsPath(userId, providerId), 'utf-8');
+    return JSON.parse(raw) as UserProviderCreds;
   } catch {
     return null;
   }
 }
 
-export function hasStudentProviderCreds(userId: string, providerId: string): boolean {
-  return loadStudentProviderCreds(userId, providerId) !== null;
+export function hasUserProviderCreds(userId: string, providerId: string): boolean {
+  return loadUserProviderCreds(userId, providerId) !== null;
 }
 
 export function addApiKey(userId: string, providerId: string, apiKey: string): void {
-  const file = studentProviderCredsPath(userId, providerId);
+  const file = userProviderCredsPath(userId, providerId);
   ensureDir(file);
-  const existing = loadStudentProviderCreds(userId, providerId);
-  const next: StudentProviderCreds = existing
+  const existing = loadUserProviderCreds(userId, providerId);
+  const next: UserProviderCreds = existing
     ? { ...existing, apiKey: { value: apiKey, addedAt: Date.now() } }
     : { apiKey: { value: apiKey, addedAt: Date.now() }, active: 'apiKey' };
   writeAtomic(file, next);
@@ -70,30 +70,30 @@ export function addOAuth(
   providerId: string,
   tokens: { accessToken: string; refreshToken: string; expiresAt: number; account?: string },
 ): void {
-  const file = studentProviderCredsPath(userId, providerId);
+  const file = userProviderCredsPath(userId, providerId);
   ensureDir(file);
-  const existing = loadStudentProviderCreds(userId, providerId);
+  const existing = loadUserProviderCreds(userId, providerId);
   const oauthEntry: OAuthCreds = { ...tokens, addedAt: Date.now() };
-  const next: StudentProviderCreds = existing
+  const next: UserProviderCreds = existing
     ? { ...existing, oauth: oauthEntry }
     : { oauth: oauthEntry, active: 'oauth' };
   writeAtomic(file, next);
 }
 
 export function setActiveMethod(userId: string, providerId: string, active: 'apiKey' | 'oauth'): void {
-  const existing = loadStudentProviderCreds(userId, providerId);
+  const existing = loadUserProviderCreds(userId, providerId);
   if (!existing) throw new Error(`no creds for ${userId}/${providerId}`);
   if (active === 'apiKey' && !existing.apiKey) throw new Error('cannot activate apiKey: not set');
   if (active === 'oauth' && !existing.oauth) throw new Error('cannot activate oauth: not set');
-  writeAtomic(studentProviderCredsPath(userId, providerId), { ...existing, active });
+  writeAtomic(userProviderCredsPath(userId, providerId), { ...existing, active });
 }
 
 export function clearMethod(userId: string, providerId: string, which: 'apiKey' | 'oauth'): void {
-  const existing = loadStudentProviderCreds(userId, providerId);
+  const existing = loadUserProviderCreds(userId, providerId);
   if (!existing) return;
-  const remaining: StudentProviderCreds = { ...existing };
+  const remaining: UserProviderCreds = { ...existing };
   delete remaining[which];
-  const file = studentProviderCredsPath(userId, providerId);
+  const file = userProviderCredsPath(userId, providerId);
   if (!remaining.apiKey && !remaining.oauth) {
     try {
       fs.unlinkSync(file);

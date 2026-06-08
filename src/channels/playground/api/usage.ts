@@ -332,9 +332,9 @@ export async function handleGetStudentDetail(folder: string): Promise<
   // Providers: check optional module
   const providers: Record<string, { hasApiKey: boolean; hasOAuth: boolean; active: string | null }> = {};
   try {
-    const { loadStudentProviderCreds } = await import('../../../student-provider-auth.js');
+    const { loadUserProviderCreds } = await import('../../../user-provider-auth.js');
     for (const pid of ['claude', 'codex']) {
-      const creds = loadStudentProviderCreds(userId, pid);
+      const creds = loadUserProviderCreds(userId, pid);
       providers[pid] = {
         hasApiKey: (creds as { apiKey?: unknown } | null)?.apiKey != null,
         hasOAuth: (creds as { oauth?: unknown } | null)?.oauth != null,

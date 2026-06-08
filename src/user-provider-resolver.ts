@@ -1,11 +1,11 @@
 /**
  * Classroom-side per-student credential resolver. Installed as the
- * trunk studentCredsHook by the classroom skill at startup.
+ * trunk userCredsHook by the classroom skill at startup.
  *
  * Resolution priority (per request):
  *   1. classroom_roster lookup: agentGroupId → (userId, classId)
  *      If no row → null (solo-install path; trunk falls back to .env)
- *   2. loadStudentProviderCreds(userId, providerId)
+ *   2. loadUserProviderCreds(userId, providerId)
  *      If present: branch on creds.active. Refresh OAuth if expiry near.
  *   3. Class Controls policy for classId.providers[providerId]:
  *      provideDefault=true  → owner's per-user creds (the "class pool" =
@@ -21,7 +21,7 @@
 import { request as httpsRequest } from 'https';
 
 import type { ResolvedCreds } from './credential-proxy.js';
-import { loadStudentProviderCreds, addOAuth } from './student-provider-auth.js';
+import { loadUserProviderCreds, addOAuth } from './user-provider-auth.js';
 import { DEFAULT_CLASS_ID, readClassControls } from './channels/playground/api/class-controls.js';
 import { lookupRosterByAgentGroupId } from './db/classroom-roster.js';
 import { getProviderSpec } from './providers/auth-registry.js';
@@ -114,12 +114,12 @@ const SIBLING_API_KEY_SPECS: Record<string, string[]> = {
 
 // Class-pool credentials reader. Per Phase C-1: the class pool *is* the
 // owner's per-user credential store — same shape as student creds, looked
-// up via the same loadStudentProviderCreds helper. When the owner has
+// up via the same loadUserProviderCreds helper. When the owner has
 // nothing connected for a provider this returns null and the proxy 502s
 // with "instructor hasn't connected …" (caller's responsibility — see
 // credential-proxy serializeResolvedCredsError).
 //
-// Sync overrides still work: the await in resolveStudentCreds accepts
+// Sync overrides still work: the await in resolveUserCreds accepts
 // both Promise<ResolvedCreds> and ResolvedCreds. Test injections that
 // returned the resolved value directly continue to compile.
 let classPoolCreds: (classId: string, providerId: string) => Promise<ResolvedCreds> | ResolvedCreds = async (
@@ -128,12 +128,12 @@ let classPoolCreds: (classId: string, providerId: string) => Promise<ResolvedCre
 ) => {
   const ownerId = ownerLookup();
   if (!ownerId) return null;
-  let creds = loadStudentProviderCreds(ownerId, providerId);
+  let creds = loadUserProviderCreds(ownerId, providerId);
   // Sibling fallback: try a paired spec when the requested one is empty
   // (OpenAI's two routes share API keys; see SIBLING_API_KEY_SPECS).
   if (!creds || (!creds.apiKey && !creds.oauth)) {
     for (const sib of SIBLING_API_KEY_SPECS[providerId] ?? []) {
-      const sibCreds = loadStudentProviderCreds(ownerId, sib);
+      const sibCreds = loadUserProviderCreds(ownerId, sib);
       if (sibCreds?.apiKey?.value) {
         return { kind: 'apiKey', value: sibCreds.apiKey.value };
       }
@@ -162,11 +162,11 @@ export function setClassPoolCredsForTests(
   classPoolCreds = fn;
 }
 
-export async function resolveStudentCreds(agentGroupId: string, providerId: string): Promise<ResolvedCreds> {
+export async function resolveUserCreds(agentGroupId: string, providerId: string): Promise<ResolvedCreds> {
   const ident = rosterLookup(agentGroupId);
   if (!ident) return null;
 
-  const creds = loadStudentProviderCreds(ident.userId, providerId);
+  const creds = loadUserProviderCreds(ident.userId, providerId);
   if (creds) {
     if (creds.active === 'apiKey' && creds.apiKey) {
       return { kind: 'apiKey', value: creds.apiKey.value };

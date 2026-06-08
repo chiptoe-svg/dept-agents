@@ -170,7 +170,7 @@ describe('handleGetModelsTabState — integration', () => {
     vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
       getOwnerUserId: () => 'owner:test',
     }));
-    const { addApiKey } = await import('../../../student-provider-auth.js');
+    const { addApiKey } = await import('../../../user-provider-auth.js');
     addApiKey('owner:test', 'claude', 'sk-ant-instructor');
 
     // Student has no personal creds (no cred files in tmpRoot/data/).

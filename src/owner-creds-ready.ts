@@ -11,9 +11,9 @@
  *
  * Sibling fallback (codex ↔ openai-platform) mirrors the resolver's
  * SIBLING_API_KEY_SPECS map so the answer matches what
- * resolveStudentCreds will actually return at request time.
+ * resolveUserCreds will actually return at request time.
  */
-import { loadStudentProviderCreds } from './student-provider-auth.js';
+import { loadUserProviderCreds } from './user-provider-auth.js';
 import { getOwnerUserId } from './modules/permissions/db/user-roles.js';
 
 const SIBLING_API_KEY_SPECS: Record<string, string[]> = {
@@ -24,10 +24,10 @@ const SIBLING_API_KEY_SPECS: Record<string, string[]> = {
 export function ownerHasCredsForSpec(specId: string, ownerId?: string | null): boolean {
   const id = ownerId === undefined ? getOwnerUserId() : ownerId;
   if (!id) return false;
-  const direct = loadStudentProviderCreds(id, specId);
+  const direct = loadUserProviderCreds(id, specId);
   if (direct?.apiKey?.value || direct?.oauth?.accessToken) return true;
   for (const sib of SIBLING_API_KEY_SPECS[specId] ?? []) {
-    const sibCreds = loadStudentProviderCreds(id, sib);
+    const sibCreds = loadUserProviderCreds(id, sib);
     if (sibCreds?.apiKey?.value) return true;
   }
   return false;

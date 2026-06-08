@@ -12,17 +12,17 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 let tmpDir = '';
 
 // Inline regex: can't import the real sanitizeUserIdForPath here (would defeat the mock).
-// Mirror: student-provider-auth.test.ts uses the same factory body.
+// Mirror: user-provider-auth.test.ts uses the same factory body.
 vi.mock('../../../student-creds-paths.js', () => ({
   sanitizeUserIdForPath: (userId: string) => userId.replace(/[^A-Za-z0-9_-]/g, '_'),
-  studentProviderCredsPath: (userId: string, providerId: string) => {
+  userProviderCredsPath: (userId: string, providerId: string) => {
     const sanitized = userId.replace(/[^A-Za-z0-9_-]/g, '_');
-    return path.join(tmpDir, 'student-provider-creds', sanitized, `${providerId}.json`);
+    return path.join(tmpDir, 'user-provider-creds', sanitized, `${providerId}.json`);
   },
 }));
 
 import { registerProvider, resetRegistryForTests } from '../../../providers/auth-registry.js';
-import { addOAuth, hasStudentProviderCreds, loadStudentProviderCreds } from '../../../student-provider-auth.js';
+import { addOAuth, hasUserProviderCreds, loadUserProviderCreds } from '../../../user-provider-auth.js';
 import {
   handleProviderAuthStart,
   handleProviderAuthExchange,
@@ -144,8 +144,8 @@ describe('handleProviderAuthExchange (paste-back)', () => {
     const r = await handleProviderAuthExchange('claude', { code: 'good-code', state }, { userId: 'alice@x.edu' });
     expect(r.status).toBe(200);
     expect((r.body as { ok: boolean }).ok).toBe(true);
-    expect(hasStudentProviderCreds('alice@x.edu', 'claude')).toBe(true);
-    const creds = loadStudentProviderCreds('alice@x.edu', 'claude');
+    expect(hasUserProviderCreds('alice@x.edu', 'claude')).toBe(true);
+    const creds = loadUserProviderCreds('alice@x.edu', 'claude');
     expect(creds?.active).toBe('oauth');
     expect(creds?.oauth?.accessToken).toBe('at-from-exchange');
   });

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-import { studentCredsToCodexAuthJson, extractRefreshedFromAuthJson } from './codex-auth-json.js';
+import { userCredsToCodexAuthJson, extractRefreshedFromAuthJson } from './codex-auth-json.js';
 
-describe('studentCredsToCodexAuthJson', () => {
+describe('userCredsToCodexAuthJson', () => {
   const baseOAuth = {
     accessToken: 'ya29.access',
     refreshToken: 'rt-refresh',
@@ -12,7 +12,7 @@ describe('studentCredsToCodexAuthJson', () => {
   };
 
   it('returns codex CLI auth.json shape for an active oauth student', () => {
-    const out = studentCredsToCodexAuthJson({ active: 'oauth', oauth: baseOAuth });
+    const out = userCredsToCodexAuthJson({ active: 'oauth', oauth: baseOAuth });
     expect(out).toEqual({
       OPENAI_API_KEY: null,
       tokens: {
@@ -24,7 +24,7 @@ describe('studentCredsToCodexAuthJson', () => {
   });
 
   it('returns null when student has only an apiKey (codex needs OAuth, not API key)', () => {
-    const out = studentCredsToCodexAuthJson({
+    const out = userCredsToCodexAuthJson({
       active: 'apiKey',
       apiKey: { value: 'sk-test', addedAt: 0 },
     });
@@ -32,7 +32,7 @@ describe('studentCredsToCodexAuthJson', () => {
   });
 
   it('returns null when active method is apiKey even if oauth is also stored', () => {
-    const out = studentCredsToCodexAuthJson({
+    const out = userCredsToCodexAuthJson({
       active: 'apiKey',
       apiKey: { value: 'sk-test', addedAt: 0 },
       oauth: baseOAuth,
@@ -41,7 +41,7 @@ describe('studentCredsToCodexAuthJson', () => {
   });
 
   it('returns null for empty creds', () => {
-    expect(studentCredsToCodexAuthJson(null)).toBeNull();
+    expect(userCredsToCodexAuthJson(null)).toBeNull();
   });
 });
 

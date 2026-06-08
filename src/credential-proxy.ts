@@ -52,7 +52,7 @@ import { openStore, type PayloadStore } from './proxy-payload-log/store.js';
 
 /**
  * Per-request credential resolution outcome returned by the
- * studentCredsHook. The trunk proxy understands four shapes:
+ * userCredsHook. The trunk proxy understands four shapes:
  *   - apiKey / oauth: real creds; proxy injects them
  *   - connect_required: 402 envelope (classroom-skill policy)
  *   - forbidden:       403 envelope (classroom-skill policy)
@@ -66,18 +66,18 @@ export type ResolvedCreds =
   | { kind: 'forbidden'; provider: string }
   | null;
 
-export type StudentCredsHook = (agentGroupId: string, providerId: string) => Promise<ResolvedCreds>;
+export type UserCredsHook = (agentGroupId: string, providerId: string) => Promise<ResolvedCreds>;
 
 /**
  * Trunk default — no-op. Solo installs see this and the proxy falls
  * through to existing .env / file / keychain resolution. The classroom
- * skill calls setStudentCredsHook() at startup to install its real
+ * skill calls setUserCredsHook() at startup to install its real
  * resolver.
  */
-export let studentCredsHook: StudentCredsHook = async () => null;
+export let userCredsHook: UserCredsHook = async () => null;
 
-export function setStudentCredsHook(fn: StudentCredsHook): void {
-  studentCredsHook = fn;
+export function setUserCredsHook(fn: UserCredsHook): void {
+  userCredsHook = fn;
 }
 
 /** Resolve the OMLX upstream auth token. Defaults to literal "godfrey"
@@ -537,7 +537,7 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         // Don't leak the session-id header upstream — it's a NanoClaw-internal hint.
         delete headers[SESSION_ID_HEADER];
 
-        // ── per-student-provider-auth:proxy-invocation START ──────────────────────
+        // ── per-user-provider-auth:proxy-invocation START ──────────────────────
         let studentCredsApplied = false;
         if (agentGroupId && (isOpenAI || isOpenAIPlatform || (!isGoogle && !isOmlx && !isClemson))) {
           // NOTE: 'codex'/'openai-platform'/'claude' here are AUTH provider IDs
@@ -546,7 +546,7 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
           // (agent_groups.agent_provider, now always 'pi').
           // These two namespaces share strings but are independent — do not merge.
           const providerId = isOpenAI ? 'codex' : isOpenAIPlatform ? 'openai-platform' : 'claude';
-          const resolved = await studentCredsHook(agentGroupId, providerId);
+          const resolved = await userCredsHook(agentGroupId, providerId);
           if (resolved) {
             if (resolved.kind === 'connect_required' || resolved.kind === 'forbidden') {
               const err = serializeResolvedCredsError(resolved);
@@ -565,7 +565,7 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
             studentCredsApplied = true;
           }
         }
-        // ── per-student-provider-auth:proxy-invocation END ────────────────────────
+        // ── per-user-provider-auth:proxy-invocation END ────────────────────────
 
         if (isGoogle) {
           // Google APIs: refresh access token if needed, inject as Bearer.

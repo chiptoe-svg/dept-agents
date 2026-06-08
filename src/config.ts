@@ -45,6 +45,10 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(process.env.CONTAINER_MAX_OUTP
 export const CREDENTIAL_PROXY_PORT = parseInt(process.env.CREDENTIAL_PROXY_PORT || '3001', 10);
 export const PLAYGROUND_PORT = parseInt(process.env.PLAYGROUND_PORT || '3002', 10);
 export const GWS_MCP_RELAY_PORT = parseInt(process.env.GWS_MCP_RELAY_PORT || '3007', 10);
+// Which scenario profile this install runs (src/scenarios/<name>/). Defaults to
+// classroom — the only scenario today. See plans/group-agent-platform.md.
+export const ACTIVE_SCENARIO =
+  process.env.ACTIVE_SCENARIO || readEnvFile(['ACTIVE_SCENARIO']).ACTIVE_SCENARIO || 'classroom';
 const playgroundEnv = readEnvFile([
   'PLAYGROUND_BIND_HOST',
   'PLAYGROUND_IDLE_MINUTES',

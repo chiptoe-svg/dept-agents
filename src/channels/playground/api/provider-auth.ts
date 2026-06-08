@@ -25,9 +25,9 @@ import {
   addApiKey,
   addOAuth,
   clearMethod,
-  loadStudentProviderCreds,
+  loadUserProviderCreds,
   setActiveMethod,
-} from '../../../student-provider-auth.js';
+} from '../../../user-provider-auth.js';
 import { TtlMap } from '../ttl-map.js';
 import type { ApiResult } from './me.js';
 
@@ -212,7 +212,7 @@ export async function handleProviderAuthExchange(
 
 export function handleGetProviderStatus(providerId: string, session: { userId: string }): ApiResult<unknown> {
   if (!getProviderSpec(providerId)) return { status: 404, body: { error: 'unknown provider' } };
-  const creds = loadStudentProviderCreds(session.userId, providerId);
+  const creds = loadUserProviderCreds(session.userId, providerId);
   if (!creds) return { status: 200, body: { hasApiKey: false, hasOAuth: false, active: null } };
   return {
     status: 200,

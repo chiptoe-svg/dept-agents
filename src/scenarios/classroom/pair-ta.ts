@@ -12,11 +12,11 @@
  * Returns `{}` for non-TA flows so the channel falls through to the
  * default confirmation.
  */
-import { classRoleForFolder, findClassTa, readClassConfig } from './class-config.js';
-import { registerPairConsumer, type PairContext, type PairResult } from './channels/pair-consumer-registry.js';
-import { getAgentGroupByFolder, setAgentGroupMetadataKey } from './db/agent-groups.js';
-import { grantRole } from './modules/permissions/db/user-roles.js';
-import { log } from './log.js';
+import { classRoleForFolder, findClassTa, readClassConfig } from '../../class-config.js';
+import { registerPairConsumer, type PairContext, type PairResult } from '../../channels/pair-consumer-registry.js';
+import { getAgentGroupByFolder, setAgentGroupMetadataKey } from '../../db/agent-groups.js';
+import { grantRole } from '../../modules/permissions/db/user-roles.js';
+import { log } from '../../log.js';
 
 async function classPairTa(ctx: PairContext): Promise<PairResult> {
   if (classRoleForFolder(ctx.targetFolder) !== 'ta') return {};
