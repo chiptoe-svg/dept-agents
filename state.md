@@ -120,20 +120,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (16 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (17 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
+## main...origin/main
  M .claude/scheduled_tasks.lock
-M  src/index.ts
+M  plans/controlled-access-core.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+91ece76 fix(controlled-access): make provider-creds dir migration merge-based
 9dd7feb refactor(controlled-access): rename credential/auth layer student→user (Phase 1, slice 1)
 9d90083 docs: record trunk+branch decision + classroom pilot status
 bde2813 docs(plan): Phase 0 findings — validate controlled-access layer vs 3 consumers
@@ -148,9 +149,8 @@ be16b43 feat(pi/codex): per-student auth.json on the agent path
 e0a8f58 docs(state): decision-log entries for the 2026-05-28/29 arc
 6ecf75a catalog(anthropic): align tier chips/notes with the OpenAI 5-tier voice
 7668e30 chore(playground-seats): add Pi Test seat as owner
-d169b4c refactor(openai): shared OPENAI_CATALOG; derive CODEX_WHITELIST from it
 ```
 
 ### Last refresh
 
-2026-06-07T15:28:45Z
+2026-06-08T03:26:29Z

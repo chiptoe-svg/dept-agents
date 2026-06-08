@@ -177,6 +177,50 @@ hardcoded into a lower tier:
 - **container env contributor** — replaces `container-runner`'s direct import of
   `class-container-env` (the one core→feature coupling to sever).
 
+## Phase 2 partition manifest (2026-06-07)
+
+Every candidate file classified: **L** = controlled-access layer (reusable core,
+own branch), **P** = classroom profile (teaching veneer), **G** = GWS
+integration (`/add-gws`), **T** = stays in trunk. This is the executable map for
+the branch move — Phase 2 moves L to the `controlled-access` branch, Phase 3
+moves P + G.
+
+**Headline:** the classroom *profile* is only **2 files**. ~90% of the
+"classroom" code is the general layer or the GWS integration — empirical proof
+that controlled multi-tenant access is the real core, not a classroom artifact.
+
+**L — controlled-access layer (→ `controlled-access` branch):**
+- Onboarding/auth: `class-login-tokens`, `class-login-pins`,
+  `class-enrollment-passcode`, `class-telegram-pair`; playground `api/login-pin`,
+  `api/enrollment`, `api/provider-auth`
+- Provisioning + access: `class-student-provision`, `class-pair-greeting` (base
+  pairing mechanism), `class-playground-gate` (member policy); playground
+  `api/class-controls` (policy), `api/class-base`
+- Credentials: `user-provider-auth`, `user-provider-resolver`,
+  `student-creds-paths` (provider-creds part), `codex-auth-json`,
+  `codex-auth-switch`, `env-to-owner-migration`, `owner-creds-ready`
+- Misc: `class-config` (cohort config), `class-container-env` (member git
+  identity), `class-tunnel` (guest access)
+
+**P — classroom profile (→ `/add-classroom`):**
+- `class-pair-instructor`, `class-pair-ta` (the instructor/TA teaching roles)
+
+**G — GWS integration (→ `/add-gws`):**
+- `gws-auth`, `gws-token`, `gws-mcp-relay`, `gws-mcp-server`, `gws-mcp-tools`,
+  `gmail-send`, `student-google-auth`; playground `api/google-auth`; the
+  Google-creds path in `student-creds-paths` (split out)
+
+**T — stays trunk (review):**
+- `provider-groups` (general LLM provider-grouping UX — not access-specific)
+
+**Borderline / flagged for confirmation when Phase 2 starts:**
+- `class-config` / `api/class-base` — cohort config; L unless they carry
+  teaching-only fields.
+- `student-creds-paths` — straddles L (provider creds) + G (google path); split
+  the two helpers when moving.
+- `codex-auth-switch`, `provider-groups` — could be plain trunk; decide at move
+  time.
+
 ## Phases
 
 0. **Requirements pass across all three consumers (GATE).** ✅ DONE 2026-06-07 —
