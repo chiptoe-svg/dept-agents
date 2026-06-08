@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build-Your-Own Photo-Critique Agent — ART/PHOT 3400</title>
+<style>
+  :root{
+    --ink:#1a1a1c;
+    --ink-soft:#4a4a50;
+    --ink-faint:#86868f;
+    --paper:#f7f6f3;
+    --card:#ffffff;
+    --line:#e3e0da;
+    --accent:#5a4632;       /* sepia, restrained */
+    --accent-soft:#efe9e1;
+    --slate:#2f3a42;
+    --slate-soft:#e6eaec;
+    --rule:#cfc9bf;
+    --shadow:0 1px 2px rgba(30,25,20,.04);
+    --radius:8px;
+    --maxw:980px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font:17px/1.65 ui-serif,Georgia,"Iowan Old Style",Palatino,serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+  h1,h2,h3,.eyebrow,.tabbar,.tag,.lab-h,.panel h3,.foot,.k,.role,th,.cap,.sec-no,.between,.refs{
+    font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  .eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+  h1{font-family:ui-serif,Georgia,serif;font-size:clamp(28px,4.4vw,42px);line-height:1.12;margin:.3em 0 .3em;letter-spacing:-.005em;font-weight:600}
+  h2{font-size:clamp(20px,2.6vw,25px);margin:0 0 .25em;letter-spacing:-.005em;font-weight:600}
+  h3{font-size:15px;margin:0 0 .35em;font-weight:650}
+  p{margin:.6em 0}
+  a{color:var(--accent)}
+  .lede{font-size:clamp(17px,2vw,19px);color:var(--ink-soft);max-width:66ch}
+  .sec-no{color:var(--ink-faint);font-weight:600;font-size:13px;letter-spacing:.04em}
+
+  header{padding:60px 0 38px;border-bottom:2px solid var(--ink)}
+  .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 24px;margin-top:24px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:13px;color:var(--ink-faint)}
+  .meta b{display:block;color:var(--ink-soft);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:1px}
+  .status{margin-top:18px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--ink-faint);font-style:normal}
+
+  section{padding:42px 0;border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:0}
+  .sec-head{display:flex;gap:14px;align-items:baseline;margin-bottom:6px}
+
+  .control{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch;margin-top:22px}
+  @media(max-width:740px){.control{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+  .panel .tag{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);display:block;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .panel.instr .tag{color:var(--slate)}
+  .panel.stud .tag{color:var(--accent)}
+  .panel ul{margin:.4em 0 0;padding-left:0;list-style:none}
+  .panel li{font-size:15px;color:var(--ink-soft);padding:7px 0;border-top:1px solid var(--line)}
+  .panel li:first-child{border-top:0}
+  .panel li b{color:var(--ink);font-weight:600;font-family:ui-sans-serif,system-ui,sans-serif}
+
+  .note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--slate);border-radius:6px;padding:14px 16px;font-size:15px;color:var(--ink-soft);margin-top:18px}
+  .note.accent{border-left-color:var(--accent)}
+  .note b{color:var(--ink)}
+
+  .layers{display:grid;gap:8px;margin-top:20px}
+  .layer{display:grid;grid-template-columns:170px 1fr;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--card);box-shadow:var(--shadow)}
+  @media(max-width:620px){.layer{grid-template-columns:1fr}}
+  .layer .who{padding:13px 16px;font-family:ui-sans-serif,system-ui,sans-serif;font-weight:600;font-size:13px;color:var(--ink);background:var(--accent-soft);display:flex;align-items:center}
+  .layer.l1 .who{background:var(--slate-soft)}
+  .layer .what{padding:13px 18px;font-size:15px;color:var(--ink-soft)}
+  .layer .what b{color:var(--ink);font-family:ui-sans-serif,system-ui,sans-serif}
+
+  .tabbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:20px}
+  .tab{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:15px 16px;box-shadow:var(--shadow)}
+  .tab .k{font-weight:650;font-size:14px}
+  .tab p{font-size:14px;color:var(--ink-soft);margin:.4em 0 0}
+  .tab .role{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);margin-top:8px}
+  .tab.off{opacity:.6}
+
+  .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:18px;counter-reset:slot}
+  .slot{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:15px;box-shadow:var(--shadow);position:relative}
+  .slot .sn{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--ink-faint);font-weight:600}
+  .slot.star{border-left:3px solid var(--accent)}
+  .slot h3{font-size:14px;margin-top:2px}
+  .slot p{font-size:13.5px;color:var(--ink-soft);margin:.3em 0 0}
+
+  .labs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
+  @media(max-width:680px){.labs{grid-template-columns:1fr}}
+  .lab{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+  .lab-h{font-weight:650;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .lab ol{margin:.7em 0 0;padding-left:1.2em}
+  .lab li{font-size:15px;color:var(--ink-soft);margin:.35em 0}
+  .between{text-align:center;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);margin:14px 0 0}
+
+  /* generators */
+  .gen{display:grid;gap:14px;margin-top:20px}
+  .gen-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+  .gen-card h3{font-size:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+  .gen-card .by{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--ink-faint);font-weight:500}
+  .gen-card .role-line{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin-top:2px}
+  .gen-card p{font-size:15px}
+  .gen-card .lim{font-size:14px;color:var(--ink-soft);border-top:1px dashed var(--line);margin-top:10px;padding-top:10px}
+  .gen-card .lim b{font-family:ui-sans-serif,system-ui,sans-serif}
+
+  .tablewrap{overflow-x:auto;margin-top:22px;border:1px solid var(--line);border-radius:var(--radius)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--card);min-width:640px}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;background:var(--paper)}
+  td:first-child,th:first-child{position:sticky;left:0;background:var(--card);font-family:ui-sans-serif,system-ui,sans-serif;font-weight:600;color:var(--ink)}
+  th:first-child{background:var(--paper)}
+  tr:last-child td{border-bottom:0}
+  td{color:var(--ink-soft)}
+  .cap{font-size:12px;color:var(--ink-faint);margin-top:8px;font-style:normal}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:18px}
+  .c{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:15px 16px;box-shadow:var(--shadow)}
+  .c h3{font-size:14px}
+  .c p{font-size:14px;color:var(--ink-soft);margin:.3em 0 0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--slate)}
+
+  ol.q{counter-reset:q;padding-left:0;list-style:none;margin-top:14px}
+  ol.q li{counter-increment:q;display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:15px;color:var(--ink-soft)}
+  ol.q li::before{content:counter(q,upper-alpha);flex:0 0 auto;font-family:ui-sans-serif,system-ui,sans-serif;font-weight:700;color:var(--ink-faint);width:22px}
+  ol.q b{color:var(--ink);font-family:ui-sans-serif,system-ui,sans-serif}
+
+  .refs{font-size:13px;color:var(--ink-soft);margin-top:14px}
+  .refs ol{padding-left:1.3em}
+  .refs li{margin:.45em 0}
+  .refs a{word-break:break-word}
+
+  .foot{padding:30px 0 56px;color:var(--ink-faint);font-size:12.5px}
+
+  /* interface mockups */
+  .fig{margin:0}
+  .figs2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px}
+  @media(max-width:720px){.figs2{grid-template-columns:1fr}}
+  .shot{border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:0 4px 18px rgba(30,25,20,.07);margin-top:18px}
+  .figs2 .shot{margin-top:0}
+  .shot .chrome{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#edeae4;border-bottom:1px solid var(--line)}
+  .shot .dots{display:flex;gap:5px;flex:0 0 auto}
+  .shot .dots i{width:9px;height:9px;border-radius:50%;background:#cfcabf;display:block}
+  .shot .url{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ink-faint);background:var(--card);border:1px solid var(--line);border-radius:5px;padding:3px 9px;flex:1}
+  .appbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line)}
+  .appbar .b{font-family:ui-sans-serif,system-ui,sans-serif;font-weight:700;font-size:12.5px}
+  .appbar .who{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--ink-faint)}
+  .apptabs{display:flex;gap:1px;padding:0 8px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .apptabs .t{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--ink-faint);padding:9px 10px;border-bottom:2px solid transparent;white-space:nowrap}
+  .apptabs .t.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+  .apptabs .t.dim{opacity:.38}
+  .appbody{padding:15px}
+  .dbanner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--accent-soft);border-bottom:1px solid var(--line);padding:7px 14px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11.5px;color:var(--accent)}
+  .dbanner .btns{display:flex;gap:6px;flex:0 0 auto}
+  .dbanner button{font:inherit;border:1px solid var(--rule);background:var(--card);border-radius:5px;padding:3px 10px;color:var(--ink-soft)}
+  .dbanner button.save{background:var(--slate);color:#fff;border-color:var(--slate)}
+  .player{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:9px}
+  .player:last-child{margin-bottom:0}
+  .player .lhead{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .player.lock .lhead{background:var(--slate-soft);color:var(--slate)}
+  .player.edit .lhead{background:var(--accent-soft);color:var(--accent)}
+  .player .ltext{padding:11px 13px;font-size:12.5px;line-height:1.5;color:var(--ink-soft)}
+  .player.lock .ltext{color:var(--ink-faint)}
+  .player .ltext b{color:var(--ink);font-family:ui-sans-serif,system-ui,sans-serif}
+  .player .ph{color:var(--ink-faint);font-style:italic}
+  .chat{display:flex;flex-direction:column;gap:8px}
+  .bub{max-width:84%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45}
+  .bub.a{background:var(--paper);border:1px solid var(--line);border-bottom-left-radius:3px;align-self:flex-start}
+  .bub.a b{color:var(--ink)}
+  .bub.u{background:var(--slate);color:#fff;border-bottom-right-radius:3px;align-self:flex-end}
+  .trace{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--ink-faint);align-self:flex-start;padding-left:2px}
+  .cinput{margin-top:11px;display:flex;gap:8px}
+  .cinput .box{flex:1;border:1px solid var(--rule);border-radius:8px;padding:8px 11px;font-size:12px;color:var(--ink-faint)}
+  .cinput .send{background:var(--accent);color:#fff;border-radius:8px;padding:8px 14px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:600}
+  .srow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px}
+  .srow .nm{font-family:ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:600}
+  .srow .ds{font-size:11.5px;color:var(--ink-faint);margin-top:2px}
+  .tog{flex:0 0 auto;width:42px;height:24px;border-radius:999px;background:var(--accent);position:relative}
+  .tog.off{background:var(--rule)}
+  .tog i{position:absolute;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;left:21px;transition:left .15s}
+  .tog.off i{left:3px}
+  .roster{width:100%;border-collapse:collapse;font-size:12.5px}
+  .roster th,.roster td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .roster th{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint)}
+  .roster tr:last-child td{border-bottom:0}
+  .roster td{color:var(--ink-soft)}
+  .roster td:first-child{font-family:ui-sans-serif,system-ui,sans-serif;color:var(--ink)}
+  .dot-ok{display:inline-block;width:7px;height:7px;border-radius:50%;background:#4a7a55;margin-right:6px}
+  .rfoot{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--ink-faint);margin-top:12px}
+  .shotcap{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11.5px;color:var(--ink-faint);margin-top:8px}
+  .mocknote{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--ink-faint);font-style:italic;margin-top:18px}
+  .p3{display:grid;grid-template-columns:148px 1fr 1.3fr;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  @media(max-width:720px){.p3{grid-template-columns:1fr}}
+  .p3 > div{padding:11px 12px}
+  .p3 .lib{border-right:1px solid var(--line);background:var(--paper)}
+  .p3 .prev{border-right:1px solid var(--line)}
+  @media(max-width:720px){.p3 .lib,.p3 .prev{border-right:0;border-bottom:1px solid var(--line)}}
+  .p3 h5{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);margin:10px 0 4px;font-weight:700}
+  .libfilter{width:100%;border:1px solid var(--rule);border-radius:5px;padding:4px 8px;font-size:11px;color:var(--ink-faint);margin-bottom:6px;font-family:ui-sans-serif,system-ui,sans-serif;background:var(--card)}
+  .libli{font-size:12px;color:var(--ink-soft);padding:3px 0}
+  .prevhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+  .prevhead .ti{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:600;color:var(--ink)}
+  .prevhead .hint{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;color:var(--ink-faint)}
+  .prevbody{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ink-faint);line-height:1.5;white-space:pre-wrap;margin:0}
+  .subtabs{display:flex;gap:11px;flex-wrap:wrap;margin-bottom:8px}
+  .subtab{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--ink-faint);padding:3px 0;border-bottom:2px solid transparent;white-space:nowrap}
+  .subtab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+  .ptext{border:1px solid var(--rule);border-radius:6px;background:var(--card);padding:10px 11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.55;color:var(--ink)}
+  .ptext b{font-family:ui-sans-serif,system-ui,sans-serif}
+  .ptext .ph{color:var(--ink-faint);white-space:pre-wrap}
+  .pfoot{display:flex;gap:16px;margin-top:8px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;color:var(--ink-faint);flex-wrap:wrap}
+  .pfoot .sel{border:1px solid var(--line);border-radius:5px;padding:2px 8px;color:var(--ink-soft);margin-left:4px}
+  .iclayout{display:grid;grid-template-columns:0.9fr 1.05fr 1.15fr}
+  @media(max-width:820px){.iclayout{grid-template-columns:1fr}}
+  .iccol{padding:13px 14px}
+  .iccol + .iccol{border-left:1px solid var(--line)}
+  @media(max-width:820px){.iccol + .iccol{border-left:0;border-top:1px solid var(--line)}}
+  .iccol h6{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);font-weight:700;margin:0 0 9px}
+  .portrait{position:relative;background:#34343a;border-radius:6px;overflow:hidden;aspect-ratio:4/5;display:grid;place-items:end center}
+  .portrait .head{position:absolute;top:15%;width:30%;aspect-ratio:1;border-radius:50%;background:#76767c}
+  .portrait .torso{width:62%;height:38%;background:#76767c;border-radius:46% 46% 0 0}
+  .portrait .light{position:absolute;inset:0;mix-blend-mode:screen}
+  .l-flat{background:radial-gradient(circle at 50% 38%,rgba(255,250,242,.26),transparent 70%)}
+  .l-left{background:linear-gradient(90deg,rgba(255,247,235,.62),transparent 55%)}
+  .l-right{background:linear-gradient(270deg,rgba(255,247,235,.62),transparent 55%)}
+  .l-top{background:linear-gradient(180deg,rgba(255,247,235,.6),transparent 52%)}
+  .l-rim{background:linear-gradient(270deg,rgba(150,190,255,.72),transparent 26%),linear-gradient(90deg,rgba(255,240,225,.22),transparent 60%)}
+  .iccol .icctrl{font-family:ui-sans-serif,system-ui,sans-serif}
+  .icfield{border:1px solid var(--rule);border-radius:6px;padding:7px 9px;font-size:12px;color:var(--ink-soft);background:var(--card);margin-bottom:11px}
+  .iclabel{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:600;color:var(--ink);display:block;margin:0 0 5px}
+  .dirbtns{display:flex;gap:6px;margin-bottom:11px;flex-wrap:wrap}
+  .dirbtn{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;padding:4px 11px;border:1px solid var(--rule);border-radius:6px;color:var(--ink-soft);background:var(--card)}
+  .dirbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .icrow{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;margin-bottom:10px;font-family:ui-sans-serif,system-ui,sans-serif;color:var(--ink-soft)}
+  .icrange{flex:1;height:4px;background:var(--rule);border-radius:3px;position:relative;margin-left:12px}
+  .icrange i{position:absolute;top:-4px;width:12px;height:12px;border-radius:50%;background:var(--accent)}
+  .chip{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;color:var(--ink-soft)}
+  .chip.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+  .relight{margin-top:4px;background:var(--accent);color:#fff;border-radius:7px;padding:8px 0;text-align:center;font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:600}
+  .outgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .outcell .cap2{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;color:var(--ink-faint);margin-top:4px;text-align:center}
+
+  @media print{
+    body{background:#fff;font-size:11pt}
+    .panel,.tab,.slot,.lab,.c,.layer,.gen-card,.tablewrap,.shot{box-shadow:none}
+    section{padding:20px 0;break-inside:avoid}
+    .tablewrap{overflow:visible}
+    table{min-width:0}
+    a{color:var(--ink)}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">ART / PHOT 3400 &middot; Course Materials &middot; Instructional Design Brief</div>
+    <h1>Build-Your-Own Photo-Critique Agent</h1>
+    <p class="lede">An instructional design brief for an AI-assisted unit in which students construct, rather than merely operate, a photographic-critique agent. The instructor defines the constraints and the evaluative floor; each student authors the agent's identity, persona, and tool access, then applies it to their own photographs.</p>
+    <div class="meta">
+      <span><b>Prepared for</b>Erica Walker</span>
+      <span><b>Unit</b>Assignment 3 — Take Your Best Shot</span>
+      <span><b>Duration</b>One week (two lab sessions)</span>
+      <span><b>Platform</b>NanoClaw classroom &middot; Agent Playground</span>
+    </div>
+    <p class="status">Status: draft for instructor review. Figures and tool claims dated mid-2026; items marked for verification appear in §8.</p>
+  </div>
+</header>
+
+<!-- 1. RATIONALE -->
+<section id="rationale">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§1</span><div class="eyebrow">Pedagogical rationale</div></div>
+    <h2>Instructor-defined constraints; student-authored agents</h2>
+    <p class="lede">The unit's premise is constructionist: students learn the elements of critique by having to specify them. Authoring an agent requires converting tacit visual judgment into explicit criteria and questions. Control is divided into two clearly bounded roles.</p>
+
+    <div class="control">
+      <div class="panel instr">
+        <span class="tag">Instructor defines</span>
+        <ul>
+          <li><b>The evaluative floor</b> — a Socratic critique stance, tone expectations, photojournalism ethics, and the required submission format. Authored once and propagated to every student.</li>
+          <li><b>The available tools</b> — which skills students are permitted to enable (for example, web search).</li>
+          <li><b>Assessment</b> — the rubric and a reference exemplar defining a strong build.</li>
+          <li><b>Administration</b> — roster, per-student accounts, model and cost settings.</li>
+        </ul>
+      </div>
+      <div class="panel stud">
+        <span class="tag">Each student authors</span>
+        <ul>
+          <li><b>Identity</b> — the agent's name, and a brief statement of its character and voice.</li>
+          <li><b>Persona</b> — its critique stance, the visual elements it prioritizes, and a bank of Socratic questions written in the student's own words.</li>
+          <li><b>Tool access</b> — enabling or disabling the available skills and observing the effect on the agent's behavior.</li>
+          <li><b>Evaluation in use</b> — running the agent on their own photographs and revising it until its critique is useful.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note accent"><b>Why construction rather than consumption.</b> Specifying what an agent should ask forces a student to define what good critique consists of. The exercise externalizes the student's developing critical vocabulary; the agent functions as an instrument for examining their own judgment, not as an authority that supplies answers.</div>
+
+    <figure class="fig">
+      <div class="shot">
+        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">playground.local — instructor console</div></div>
+        <div class="appbar"><div class="b">NanoClaw &middot; Agent Playground</div><div class="who">Erica Walker &middot; instructor (global owner)</div></div>
+        <div class="apptabs"><span class="t on">Home</span><span class="t">Chat</span><span class="t">Persona</span><span class="t">Skills</span><span class="t">Models</span></div>
+        <div class="appbody">
+          <table class="roster">
+            <thead><tr><th>Student agent</th><th>Status</th><th>Messages</th><th>Cost to date</th></tr></thead>
+            <tbody>
+              <tr><td>student_01 &middot; &ldquo;Aperture&rdquo;</td><td><span class="dot-ok"></span>Active</td><td>34</td><td>$0.42</td></tr>
+              <tr><td>student_02 &middot; &ldquo;The Editor&rdquo;</td><td><span class="dot-ok"></span>Active</td><td>28</td><td>$0.31</td></tr>
+              <tr><td>student_03 &middot; &ldquo;Lumen&rdquo;</td><td><span class="dot-ok"></span>Active</td><td>41</td><td>$0.55</td></tr>
+              <tr><td>student_04 &middot; (unnamed)</td><td>Idle</td><td>3</td><td>$0.04</td></tr>
+            </tbody>
+          </table>
+          <p class="rfoot">Provider: Claude (Anthropic API) &middot; Instructor floor applied to all student agents &middot; Class-wide skill installed: Web search</p>
+        </div>
+      </div>
+      <figcaption class="shotcap">Figure 1. Instructor console (Home tab): roster, usage, cost, and class-wide controls. Representative interface mockup following the NanoClaw Agent Playground — not a live screen capture.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 2. LAYERS -->
+<section id="layers">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§2</span><div class="eyebrow">Persona architecture</div></div>
+    <h2>A three-layer persona model</h2>
+    <p class="lede">The platform composes personas in the order <span class="mono">global → role → per-agent</span>. The instructor floor is inherited by every student agent, so a weak or incomplete student persona still operates within the required pedagogical and ethical bounds.</p>
+    <div class="layers">
+      <div class="layer l1"><div class="who">Instructor floor</div><div class="what"><b>Shared and locked.</b> Socratic-only critique, tone and conduct expectations, the photojournalism ethics rule, and the required submission format. A single file, propagated to all students.</div></div>
+      <div class="layer l2"><div class="who">Student persona</div><div class="what"><b>The student's work.</b> Identity, weighted visual criteria, and a Socratic question bank — entered in the Persona tab from a provided scaffold and worksheet.</div></div>
+      <div class="layer l3"><div class="who">Assignment handout</div><div class="what"><b>The wrapper.</b> The student-facing document guiding the full sequence: build, photograph, critique, reshoot.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. TABS -->
+<section id="interface">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§3</span><div class="eyebrow">Student interface</div></div>
+    <h2>Three Playground tabs</h2>
+    <p class="lede">Under the classroom configuration, the student workflow uses three tabs. The remaining tabs are administrative and instructor-facing.</p>
+    <div class="tabbar">
+      <div class="tab"><div class="k">Persona</div><p>Where the agent is authored. The scaffold's prompts are completed here.</p><div class="role">Student edits</div></div>
+      <div class="tab"><div class="k">Chat</div><p>Where the agent is tested and revised, and where the submission summary is produced.</p><div class="role">Student runs</div></div>
+      <div class="tab"><div class="k">Skills</div><p>Where an instructor-installed skill is enabled or disabled and its effect on the agent's reasoning is observed.</p><div class="role">Student toggles</div></div>
+      <div class="tab off"><div class="k">Home / Models</div><p>Roster, provider, and cost. Administrative.</p><div class="role">Instructor</div></div>
+    </div>
+    <div class="note">Students do not author skills; the learning objective is to understand what a skill changes — the capabilities an agent can draw on — by comparing behavior with the skill on and off. <b>To verify (§8):</b> confirm the student lockdown permits toggling instructor-installed skills.</div>
+
+  </div>
+</section>
+
+<!-- 4. SCAFFOLD -->
+<section id="scaffold">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§4</span><div class="eyebrow">The build</div></div>
+    <h2>A seven-part persona scaffold</h2>
+    <p class="lede">Authoring the agent is a writing task, completed in the Persona tab and prompted by a reflective worksheet. The seven components:</p>
+    <div class="slots">
+      <div class="slot"><div class="sn">i</div><h3>Identity</h3><p>Name, character, and voice.</p></div>
+      <div class="slot"><div class="sn">ii</div><h3>Critique stance</h3><p>Degree of directness; how far to question before offering a hint.</p></div>
+      <div class="slot"><div class="sn">iii</div><h3>Opening move</h3><p>Greeting and the required technical-or-creative branch.</p></div>
+      <div class="slot"><div class="sn">iv</div><h3>Weighted criteria</h3><p>Selecting and ranking composition, focus and depth of field, light, framing, moment, and background.</p></div>
+      <div class="slot star"><div class="sn">v</div><h3>Question bank</h3><p>The central task: two to three Socratic questions per criterion, posed rather than answered.</p></div>
+      <div class="slot"><div class="sn">vi</div><h3>Reshoot guidance</h3><p>Helping the student select images to reshoot; producing the feedback summary.</p></div>
+      <div class="slot"><div class="sn">vii</div><h3>Handoff</h3><p>Producing the submission summary the student retains.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. SEQUENCE -->
+<section id="sequence">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§5</span><div class="eyebrow">Course sequence</div></div>
+    <h2>Two lab sessions</h2>
+    <div class="labs">
+      <div class="lab">
+        <div class="lab-h">Lab A — Construct and plan</div>
+        <ol>
+          <li>Draw a campus building at random.</li>
+          <li>Introduction to the Playground; construct and test the critique agent on practice images.</li>
+          <li>Enable and disable a skill; compare agent and unaided-model behavior.</li>
+          <li>Prepare the fifty-image shot list.</li>
+        </ol>
+      </div>
+      <div class="lab">
+        <div class="lab-h">Lab B — Critique and reshoot plan</div>
+        <ol>
+          <li>Import and cull to ten images in Lightroom Classic.</li>
+          <li>Apply the student's own agent to the ten; work through the Socratic critique.</li>
+          <li>Produce the feedback summary and submission record.</li>
+          <li>Plan the four reshoots.</li>
+        </ol>
+      </div>
+    </div>
+    <p class="between">Between sessions: photograph the fifty images &middot; After Lab B: reshoot the selected four</p>
+  </div>
+</section>
+
+<!-- 6. IMAGE GENERATION -->
+<section id="generation">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§6</span><div class="eyebrow">Assignment 5 — studio reshoot</div></div>
+    <h2>Image generation for previsualization: three approaches</h2>
+    <p class="lede">In the studio reshoot (Assignment 5), generated images serve as a <em>previsualization</em> aid — a way to study lighting, posing, framing, and mood before a live shoot — not as a final deliverable. For this purpose the relevant criteria are institutional access, the precision of lighting control, photorealism, the provenance of training data, and instructional value. The original brief specified Adobe Firefly; two further approaches merit consideration. The instructor's recent note that Clemson holds an OpenAI license with student credits is material to the comparison.</p>
+
+    <div class="gen">
+      <div class="gen-card">
+        <h3>ChatGPT Images 2.0 <span class="by">(GPT Image 2) — OpenAI</span></h3>
+        <div class="role-line">Proposed primary tool</div>
+        <p>Reported (April 2026) as a reasoning-based generator on the GPT-5.4 backbone, producing up to 4K output and accepting reference images, with photorealism rated at the top of independent comparison leaderboards. Because it can reason over a brief and a reference image, it pairs directly with the companion lighting agent (§7): the agent can produce a setup description and a ready-to-use generation prompt. Access at Clemson is via the existing OpenAI license and student credits, removing the cost and account friction of consumer alternatives.</p>
+        <p class="lim"><b>Considerations.</b> The model post-dates this author's training data; capability claims are drawn from the sources in §9 and should be confirmed (§8). Training-data provenance and commercial-use terms are less transparent than Firefly's. Lighting control is prompt- and reference-driven rather than physically parameterized, so it is well suited to mood and overall look but less precise for isolating a single lighting variable.</p>
+      </div>
+
+      <div class="gen-card">
+        <h3>Adobe Firefly <span class="by">— Adobe</span></h3>
+        <div class="role-line">Alternative — integrated and commercially safe</div>
+        <p>The original choice, and defensible on grounds independent of raw photorealism. Firefly is trained on Adobe Stock and licensed or public-domain material, which Adobe positions as commercially safe — a meaningful consideration for coursework. It is available to students through their <span class="mono">@clemson.edu</span> accounts and is integrated into Photoshop (generative fill and expand), a tool already taught in the course, so it introduces no new application. Localized edits give moderate control over discrete changes such as adding a rim light or altering a background.</p>
+        <p class="lim"><b>Considerations.</b> Photorealism is generally rated below the current OpenAI model and below dedicated photorealistic models. Lighting control is prompt- and edit-based, not true relighting.</p>
+      </div>
+
+      <div class="gen-card">
+        <h3>IC-Light + ControlNet <span class="by">on Stable Diffusion</span></h3>
+        <div class="role-line">Advanced — instructor-led lighting demonstration</div>
+        <p><b>Makers.</b> Stable Diffusion is an open-weight model from Stability AI. ControlNet (Zhang, Rao &amp; Agrawala, ICCV 2023) is an open-source method that conditions the model on structural inputs — human pose, depth, surface normals, edges — so subject and scene geometry can be fixed while other variables change. IC-Light ("Imposing Consistent Light," Lvmin Zhang, 2024) is an open-source relighting model from the same author.</p>
+        <p><b>Why it teaches lighting control.</b> Unlike prompt-driven generators, IC-Light lets a student hold the subject constant and vary only the illumination — specifying light direction, quality, color temperature, and an implied source or background, and producing a consistent relit result. This makes light an isolated, manipulable variable, which maps directly onto the studio-lighting curriculum: a single portrait can be re-rendered as key-left versus key-right, with and without fill, with and without a rim or hair light, at high versus low ratio, and under warm versus cool sources. Students can compare canonical patterns — split, loop, Rembrandt, butterfly, broad and short lighting — and three-point setups side by side, on the same face, observing cause and effect in a way a live studio rarely permits within one session. ControlNet adds the complementary control of fixing pose and framing so that only lighting differs between comparisons.</p>
+        <p class="lim"><b>Feasibility on available hardware.</b> The instructor has access to two candidate diffusion stations separate from the classroom host: an NVIDIA DGX Spark (GB10, 128&nbsp;GB) and a Mac Studio (M4 Max, 64&nbsp;GB). IC-Light v1 is based on the lightweight Stable Diffusion 1.5, well within either machine's capacity. The two trade off differently. The DGX Spark is <em>CUDA-native</em>, so the open-source toolchain (ComfyUI, the ControlNet preprocessors, the IC-Light nodes, and their optimizations) installs and runs without the occasional gaps encountered under Apple's Metal backend; its 128&nbsp;GB also allows substantially larger models (e.g.&nbsp;Flux) and heavy batching. Its memory bandwidth (273&nbsp;GB/s), however, is the limiting factor for single-image latency, which is bandwidth-bound; the M4 Max, at roughly double that bandwidth, may render an individual SD&nbsp;1.5 frame as quickly or quicker, at the cost of the Apple-Silicon toolchain caveats. With a dedicated station the principal constraints shift from compute to (1) toolchain setup and maintenance and (2) interactive throughput for a whole class at once. The practical role is therefore a <b>shared or small-group generation station</b> — by rotation, queue, or batch — rather than an instructor-only demonstration or a per-student tool. A no-install browser demonstration remains available as a fallback (§9).</p>
+      </div>
+    </div>
+
+    <figure class="fig" style="margin-top:20px">
+      <div class="shot">
+        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">IC-Light + ControlNet — relighting workbench (local / ComfyUI)</div></div>
+        <div class="appbar"><div class="b">IC-Light &middot; relight</div><div class="who">model: text-conditioned &middot; ControlNet: depth</div></div>
+        <div class="appbody" style="padding:0">
+          <div class="iclayout">
+            <div class="iccol">
+              <h6>Input — one capture</h6>
+              <div class="portrait"><div class="head"></div><div class="torso"></div><div class="light l-flat"></div></div>
+              <span class="iclabel" style="margin-top:11px">Subject lock (ControlNet)</span>
+              <div class="dirbtns"><span class="chip on">Depth</span><span class="chip">Pose</span></div>
+              <p class="icctrl" style="font-size:11px;color:var(--ink-faint);margin:0">Holds pose &amp; framing fixed, so only the light changes.</p>
+            </div>
+            <div class="iccol">
+              <h6>Lighting controls</h6>
+              <span class="iclabel">Prompt</span>
+              <div class="icfield">studio portrait, soft key light, dark background</div>
+              <span class="iclabel">Light direction (initial latent)</span>
+              <div class="dirbtns"><span class="dirbtn on">Left</span><span class="dirbtn">Right</span><span class="dirbtn">Top</span><span class="dirbtn">Bottom</span></div>
+              <span class="iclabel">Quick preset</span>
+              <div class="icfield">sunshine from window &#9662;</div>
+              <div class="icrow">Intensity <span class="icrange"><i style="left:62%"></i></span></div>
+              <div class="icrow">Color temp <span class="icrange"><i style="left:38%"></i></span></div>
+              <div class="relight">Relight</div>
+            </div>
+            <div class="iccol">
+              <h6>Output — same subject, light as the variable</h6>
+              <div class="outgrid">
+                <div class="outcell"><div class="portrait"><div class="head"></div><div class="torso"></div><div class="light l-left"></div></div><div class="cap2">Key: left</div></div>
+                <div class="outcell"><div class="portrait"><div class="head"></div><div class="torso"></div><div class="light l-right"></div></div><div class="cap2">Key: right</div></div>
+                <div class="outcell"><div class="portrait"><div class="head"></div><div class="torso"></div><div class="light l-top"></div></div><div class="cap2">Top (butterfly)</div></div>
+                <div class="outcell"><div class="portrait"><div class="head"></div><div class="torso"></div><div class="light l-rim"></div></div><div class="cap2">Add rim / back</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption class="shotcap">Figure 2. IC-Light + ControlNet relighting workbench (representative mockup of the open-source Gradio/ComfyUI tool, after lllyasviel/IC-Light). The student fixes one captured subject — ControlNet depth/pose holds pose and framing — then varies only the light: direction (left/right/top/bottom), a quick preset, intensity, and color temperature. The same face can be compared as key-left vs. key-right, butterfly, or with a rim added, making light an isolated, repeatable variable. Not a live screen capture.</figcaption>
+    </figure>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Criterion</th><th>ChatGPT Images 2.0</th><th>Adobe Firefly</th><th>IC-Light + ControlNet</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Maker</td><td>OpenAI</td><td>Adobe</td><td>Stability AI; Zhang et al. (open source)</td></tr>
+          <tr><td>Access at Clemson</td><td>OpenAI license + student credits</td><td>Adobe via @clemson.edu</td><td>Self-hosted (Mac Studio) or browser demo</td></tr>
+          <tr><td>Photorealism (mid-2026)</td><td>State of the art, per leaderboards</td><td>Good</td><td>Good; depends on base model</td></tr>
+          <tr><td>Lighting-control precision</td><td>Prompt + reference; not parameterized</td><td>Prompt + localized edits</td><td>High — relighting with a fixed subject</td></tr>
+          <tr><td>Training-data provenance</td><td>Less transparent</td><td>Licensed; commercially safe</td><td>Varies by model; open weights</td></tr>
+          <tr><td>Where it runs</td><td>Cloud</td><td>Cloud / Photoshop</td><td>Dedicated station (DGX Spark or M4 Max), or browser demo</td></tr>
+          <tr><td>Learning curve</td><td>Low</td><td>Low; already in curriculum</td><td>High</td></tr>
+          <tr><td>Suggested role</td><td>Primary previsualization tool</td><td>Integrated alternative</td><td>Instructor-led lighting demonstration</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cap">Comparison as of mid-2026. Photorealism rankings change frequently and the OpenAI model post-dates the author's training data; see §8 (verification) and §9 (sources).</p>
+
+    <div class="note"><b>Recommended configuration.</b> Adopt ChatGPT Images 2.0 as the primary previsualization tool, given institutional access and current image quality; retain Adobe Firefly as the integrated, commercially-safe alternative; and operate IC-Light with ControlNet on a dedicated diffusion station (the DGX Spark being the more compatible host) as a shared resource for controlled-relighting exercises. The three are complementary rather than competing, and the recommendation does not depend on any single vendor remaining ahead on image quality.</p></div>
+  </div>
+</section>
+
+<!-- 7. COMPANION AGENT -->
+<section id="companion">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§7</span><div class="eyebrow">Companion agent</div></div>
+    <h2>Studio lighting reverse-engineer (Assignment 5)</h2>
+    <p class="lede">A second agent, following the same construction pattern, takes an inspiration photograph and reverse-engineers a plausible production setup: a lighting diagram (key, fill, rim), modifiers and ratios, camera settings, lens, framing, and posing — a plan for the real studio shoot. Its text output complements the image-generation step: the agent produces the setup description and a generation prompt; the generator (§6) produces the visual reference. This module will be specified in full after Assignment 3 is complete.</p>
+  </div>
+</section>
+
+<!-- INFRA -->
+<section id="environment">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§8</span><div class="eyebrow">Computing environment &amp; open questions</div></div>
+    <h2>Environment, and items to verify</h2>
+    <div class="cards">
+      <div class="c"><h3>Host</h3><p>Mac Studio (M1 Ultra, 32&nbsp;GB). Orchestrates a short-lived container per chat message.</p></div>
+      <div class="c"><h3>Models</h3><p>Cloud-side (Claude via the Anthropic API) for the agents; the host does not run the language model.</p></div>
+      <div class="c"><h3>Local diffusion</h3><p>Optional dedicated station for §6: DGX Spark (128&nbsp;GB, CUDA-native) or M4 Max (64&nbsp;GB). Shared/small-group use, not a per-student service. No general-purpose local language model.</p></div>
+      <div class="c"><h3>Concurrency</h3><p>Monitor container spin-up when a full class uses the agent simultaneously; stagger if needed.</p></div>
+      <div class="c"><h3>Portability</h3><p>All materials are plain markdown; the exercise degrades to a self-built Claude Project if the platform is not deployed.</p></div>
+      <div class="c"><h3>Export</h3><p>Low-technology: the agent prints a submission summary in chat, which the student retains. No export skill is built at this stage.</p></div>
+    </div>
+    <ol class="q">
+      <li><span><b>JPEG export settings.</b> The handout references unspecified export settings (color space, long-edge dimension, quality); exact values are required.</span></li>
+      <li><span><b>Skill toggling.</b> Confirm the student lockdown permits enabling and disabling instructor-installed skills.</span></li>
+      <li><span><b>Skill selection.</b> Determine which skill(s) to pre-install for the comparison exercise (web search assumed).</span></li>
+      <li><span><b>Image-model claims.</b> Confirm current ChatGPT Images 2.0 capabilities, access terms, and standing, which post-date the author's training data.</span></li>
+      <li><span><b>Deployment.</b> NanoClaw classroom or the standalone Claude-Project fallback; affects only the setup guide, not the core materials.</span></li>
+      <li><span><b>Lab timing.</b> Confirm the two-session sequence matches actual lab scheduling.</span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- REFERENCES -->
+<section id="references">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§9</span><div class="eyebrow">Sources</div></div>
+    <h2>References</h2>
+    <div class="refs">
+      <ol>
+        <li>OpenAI. "Introducing ChatGPT Images 2.0." <a href="https://openai.com/index/introducing-chatgpt-images-2-0/">openai.com/index/introducing-chatgpt-images-2-0</a></li>
+        <li>"GPT Image." Wikipedia. <a href="https://en.wikipedia.org/wiki/GPT_Image">en.wikipedia.org/wiki/GPT_Image</a></li>
+        <li>Zhang, L., Rao, A., &amp; Agrawala, M. "Adding Conditional Control to Text-to-Image Diffusion Models" (ControlNet), ICCV 2023. <a href="https://arxiv.org/abs/2302.05543">arxiv.org/abs/2302.05543</a></li>
+        <li>Zhang, L. "IC-Light: Imposing Consistent Light." <a href="https://github.com/lllyasviel/IC-Light">github.com/lllyasviel/IC-Light</a></li>
+        <li>Stability AI — Stable Diffusion. <a href="https://stability.ai/">stability.ai</a></li>
+        <li>Draw Things (Apple-Silicon diffusion app). <a href="https://drawthings.ai/">drawthings.ai</a></li>
+        <li>Adobe Firefly. <a href="https://firefly.adobe.com/">firefly.adobe.com</a></li>
+        <li>NVIDIA DGX Spark (GB10 specifications, incl. 128&nbsp;GB / 273&nbsp;GB/s). <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/">nvidia.com/en-us/products/workstations/dgx-spark</a>; hardware overview: <a href="https://docs.nvidia.com/dgx/dgx-spark/hardware.html">docs.nvidia.com/dgx/dgx-spark/hardware.html</a></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<div class="foot wrap">
+  Instructional design brief &middot; 2026-06-06 &middot; companion to <span class="mono">2026-06-06-build-your-own-critique-agent-design.md</span>
+</div>
+
+</body>
+</html>
