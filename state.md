@@ -122,28 +122,27 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (20 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (23 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
- M .claude/scheduled_tasks.lock
-M  scripts/class-skeleton.ts
-M  src/class-student-provision.ts
-M  src/config.ts
-M  src/scenarios/classroom/index.ts
-A  src/scenarios/classroom/personas.ts
-A  src/scenarios/classroom/scenario.ts
-A  src/scenarios/registry.test.ts
-A  src/scenarios/registry.ts
-A  src/scenarios/types.ts
+D  .claude/scheduled_tasks.lock
+M  .gitignore
+M  src/scenarios/index.ts
+A  src/scenarios/industryai_seminar/index.ts
+A  src/scenarios/industryai_seminar/personas.ts
+A  src/scenarios/industryai_seminar/scenario.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+3dcd662 feat(scenarios): canonical-role scenario contract + classroom reference (Phase 2 increment 1)
+1362e95 docs: frame critique-agent as a future project
+5d4042e docs: add Build-Your-Own Photo-Critique Agent course project
 960d69a docs(state): record group-agent-platform direction + Phase 1 done + Phase 2 deferred
 dce8da2 refactor(scenarios): group-agent platform + scenario profiles (Phase 1)
 980091d docs(plan): Phase 2 partition manifest — classify every file L/P/G/T
@@ -156,11 +155,8 @@ d387304 docs: behind-the-scenes architecture HTML + trunk-extraction plan
 bd823d2 harden(playground+proxy): pre-launch security & stability fixes
 936eef3 docs(spec): ingestion & retrieval pipeline explorer (knobs on Sources/Retrieval)
 cda5d5d ops(omlx): upgrade 0.3.8 → 0.4.0 (smoke-verified)
-2433ff8 feat(skills): rag-pdf-ingest — wrap remote markdown-extraction endpoint
-40175a0 feat(playground): render agent-produced file downloads in chat
-be16b43 feat(pi/codex): per-student auth.json on the agent path
 ```
 
 ### Last refresh
 
-2026-06-08T16:01:31Z
+2026-06-08T16:22:22Z
