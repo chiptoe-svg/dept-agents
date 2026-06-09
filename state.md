@@ -12,6 +12,14 @@ NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac St
 
 **Direction (revised 2026-06-08):** this is a **group-agent platform**, not a classroom app — controlled, individuated agent access for a defined set of people, with "classroom" as one of ~5 scenarios (department, agent-optimization, +2 coming). **Model: ONE codebase + in-tree scenario profiles** under `src/scenarios/<name>/`, selected by config. This supersedes both prior attempts: lean-trunk+branch-install (too much sync ceremony) and fold-into-classroom-app (too narrow). Each scenario's code is tiny (~90% of "classroom" code is the general platform), so in-tree profiles beat branch-install ceremony. Separate installs run the same repo with different scenario config + data; platform features reach all installs on `git pull`. See `plans/group-agent-platform.md`. (The earlier `controlled-access` branch-extraction plan and the `classroom` sibling branch + `/add-classroom*` skills are superseded; branch/skills slated for retirement.)
 
+## Deployment / install map
+
+This Mac Studio runs **TWO independent nanoclaw installs** (different projects, NOT dev/prod of one):
+- **This one — Clemson/seminar:** `/Users/admin/projects/nanoclaw`, service `com.nanoclaw-v2-581fefa4`, ports proxy **3001** / playground **3002** / webhook **3020**, image `nanoclaw-agent-v2-581fefa4:latest`, `ACTIVE_SCENARIO=industryai_seminar`.
+- **Personal:** `/Users/admin/projects/nanoclaw_personal`, service `com.nanoclaw-v2-011e3c4e`, ports **301x** (webhook 3010 / playground 3012), separate bot token + DB + image.
+
+DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT touch the other. **⚠️ Footgun:** the global `ncl` (`~/.local/bin/ncl`) points at the PERSONAL install — drive THIS one with `./bin/ncl` or `ncl-clemson`. **Known fragile overlap:** both bind `:3020` (Clemson `*:3020` webhook vs personal `127.0.0.1:3020`); via `SO_REUSEADDR` they coexist but loopback `:3020` resolves to *personal* — eliminate by moving one off 3020 (Clemson has 3003 free). See memory `project-two-nanoclaw-installs`.
+
 ## Current arc
 
 **Active arc: the group-agent-platform restructure** (`plans/group-agent-platform.md`) — one codebase, in-tree scenario profiles under `src/scenarios/<name>/`, selected by `ACTIVE_SCENARIO`. Progress:
@@ -137,37 +145,37 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `scenario-contract-wiring`
-- **Last tag:** `phase-c-complete-2026-05-28` (31 commits ahead)
+- **Current:** `main`
+- **Last tag:** `phase-c-complete-2026-05-28` (36 commits ahead)
 
 ### Working tree
 
 ```
-## scenario-contract-wiring
-A  docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
+## main...origin/main
+M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+c98197f Merge scenario-contract-wiring: platform consumes the scenario contract (Phase 2 wiring)
+88e24e2 docs(plan): scenario-contract wiring execution plan
 74ecafd docs(state): record Phase 2 wiring landed (scenario contract now consumed)
 8e894cd test(scenarios): industryai_seminar pairing proves ACTIVE_SCENARIO drives behavior
 d7503e5 feat(scenarios): provision persona from the active scenario's user role
 61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
 d4052dc feat(scenarios): generic contract-driven pair consumer
 7606cf0 feat(scenarios): add memberName() to the scenario contract
+da76693 docs(critique-agent): drop platform clause from lede; number capability cards 01-08
+1becea9 docs(critique-agent): reframe brief around platform capabilities (tool-first), demote assignment to an applied example
+c0b785f docs(critique-agent): move hardware-feasibility note below the IC-Light interface mockup
 52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
 985ef7d docs(critique-agent): remove personal references; serve brief via GitHub Pages
 3dcd662 feat(scenarios): canonical-role scenario contract + classroom reference (Phase 2 increment 1)
 1362e95 docs: frame critique-agent as a future project
-5d4042e docs: add Build-Your-Own Photo-Critique Agent course project
-960d69a docs(state): record group-agent-platform direction + Phase 1 done + Phase 2 deferred
-dce8da2 refactor(scenarios): group-agent platform + scenario profiles (Phase 1)
-980091d docs(plan): Phase 2 partition manifest — classify every file L/P/G/T
-91ece76 fix(controlled-access): make provider-creds dir migration merge-based
 ```
 
 ### Last refresh
 
-2026-06-09T04:15:28Z
+2026-06-09T11:12:46Z
