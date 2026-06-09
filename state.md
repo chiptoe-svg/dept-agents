@@ -15,10 +15,10 @@ NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac St
 ## Deployment / install map
 
 This Mac Studio runs **TWO independent nanoclaw installs** (different projects, NOT dev/prod of one):
-- **This one — Clemson/seminar:** `/Users/admin/projects/nanoclaw`, service `com.nanoclaw-v2-581fefa4`, ports proxy **3001** / playground **3002** / webhook **3020**, image `nanoclaw-agent-v2-581fefa4:latest`, `ACTIVE_SCENARIO=industryai_seminar`.
-- **Personal:** `/Users/admin/projects/nanoclaw_personal`, service `com.nanoclaw-v2-011e3c4e`, ports **301x** (webhook 3010 / playground 3012), separate bot token + DB + image.
+- **This one — Clemson/seminar:** `/Users/admin/projects/nanoclaw`, service `com.nanoclaw-v2-581fefa4`, ports proxy **3001** / playground **3002** / webhook **3003**, image `nanoclaw-agent-v2-581fefa4:latest`, `ACTIVE_SCENARIO=industryai_seminar`. Ports pinned in `.env`; webhook port ALSO set in the plist `EnvironmentVariables` (plist wins — change both together).
+- **Personal:** `/Users/admin/projects/nanoclaw_personal`, service `com.nanoclaw-v2-011e3c4e`, ports webhook **3010** / playground **3012** / a localhost service on **3020**, separate bot token + DB + image.
 
-DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT touch the other. **⚠️ Footgun:** the global `ncl` (`~/.local/bin/ncl`) points at the PERSONAL install — drive THIS one with `./bin/ncl` or `ncl-clemson`. **Known fragile overlap:** both bind `:3020` (Clemson `*:3020` webhook vs personal `127.0.0.1:3020`); via `SO_REUSEADDR` they coexist but loopback `:3020` resolves to *personal* — eliminate by moving one off 3020 (Clemson has 3003 free). See memory `project-two-nanoclaw-installs`.
+DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT touch the other. **⚠️ Footgun:** the global `ncl` (`~/.local/bin/ncl`) points at the PERSONAL install — drive THIS one with `./bin/ncl` or `ncl-clemson` (per-install launchers: `ncl-clemson` / `ncl-personal`). The 2026-06-09 `:3020` overlap (Clemson webhook vs personal localhost) is **resolved** — Clemson webhook moved to 3003. Reloading a plist env change needs `launchctl bootout`+`bootstrap`, not just `kickstart`. See memory `project-two-nanoclaw-installs`.
 
 ## Current arc
 
@@ -146,12 +146,12 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (36 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (37 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
 M  state.md
 ?? .codegraph/
 ```
@@ -159,6 +159,7 @@ M  state.md
 ### Recent commits (last 15)
 
 ```
+5f4f851 docs(state): document two-install separation + ncl/port footguns
 c98197f Merge scenario-contract-wiring: platform consumes the scenario contract (Phase 2 wiring)
 88e24e2 docs(plan): scenario-contract wiring execution plan
 74ecafd docs(state): record Phase 2 wiring landed (scenario contract now consumed)
@@ -173,9 +174,8 @@ c0b785f docs(critique-agent): move hardware-feasibility note below the IC-Light 
 52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
 985ef7d docs(critique-agent): remove personal references; serve brief via GitHub Pages
 3dcd662 feat(scenarios): canonical-role scenario contract + classroom reference (Phase 2 increment 1)
-1362e95 docs: frame critique-agent as a future project
 ```
 
 ### Last refresh
 
-2026-06-09T11:12:46Z
+2026-06-09T11:16:32Z
