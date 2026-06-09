@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { _resetScenariosForTest, getActiveScenario, registerScenario, roleForFolder, roleProfile } from './registry.js';
+import {
+  _resetScenariosForTest,
+  getActiveScenario,
+  memberName,
+  registerScenario,
+  roleForFolder,
+  roleProfile,
+} from './registry.js';
 import type { Scenario } from './types.js';
 
 function fakeScenario(name: string): Scenario {
@@ -16,6 +23,7 @@ function fakeScenario(name: string): Scenario {
       user: { label: 'Member', permission: 'member', persona: (n) => `member ${n}`, greeting: (n) => `hi ${n}` },
     },
     roleForFolder: (folder) => (folder.startsWith('boss_') ? 'owner' : folder.startsWith('member_') ? 'user' : null),
+    memberName: (folder) => (folder === 'boss_01' ? 'Ada' : folder === 'member_07' ? 'Grace' : null),
   };
 }
 
@@ -54,5 +62,16 @@ describe('scenario registry', () => {
     expect(getActiveScenario()).toBeNull();
     expect(roleForFolder('boss_01')).toBeNull();
     expect(roleProfile('owner')).toBeNull();
+  });
+
+  it('resolves member names via the active scenario', () => {
+    registerScenario(fakeScenario('photo_lab'));
+    expect(memberName('boss_01')).toBe('Ada');
+    expect(memberName('member_07')).toBe('Grace');
+    expect(memberName('random_03')).toBeNull();
+  });
+
+  it('returns null member name when no scenario is registered', () => {
+    expect(memberName('boss_01')).toBeNull();
   });
 });

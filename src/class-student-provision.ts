@@ -29,6 +29,7 @@ import { collectSkeletonMounts } from './skeleton-mount-registry.js';
 // local use (provisionStudent) and re-exported for back-compat with existing
 // importers (scripts/class-skeleton, scripts/refresh-student-personas).
 import { STUDENT_PERSONA } from './scenarios/classroom/personas.js';
+import { roleProfile } from './scenarios/registry.js';
 import type { AgentGroup } from './types.js';
 
 export { STUDENT_PERSONA };
@@ -269,7 +270,12 @@ export function provisionStudent(opts: {
     const groupDir = path.join(GROUPS_DIR, folder);
     fs.mkdirSync(groupDir, { recursive: true });
     const personaPath = path.join(groupDir, 'CLAUDE.local.md');
-    if (!fs.existsSync(personaPath)) fs.writeFileSync(personaPath, STUDENT_PERSONA(opts.name));
+    // Persona comes from the active scenario's `user` role (canonical role,
+    // NOT roleForFolder(folder) — the folder isn't in class-config.json yet at
+    // provision time). Falls back to STUDENT_PERSONA when no scenario is
+    // registered (e.g. unit tests).
+    const persona = roleProfile('user')?.persona(opts.name) ?? STUDENT_PERSONA(opts.name);
+    if (!fs.existsSync(personaPath)) fs.writeFileSync(personaPath, persona);
     const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
     if (!fs.existsSync(claudeMdPath)) fs.writeFileSync(claudeMdPath, STUDENT_CLAUDE_MD);
 

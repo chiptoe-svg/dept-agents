@@ -6,7 +6,7 @@
 // New scenarios (photo_lab, seminar, …) mirror this file with their own
 // labels, personas, greetings, and folder convention.
 
-import { classRoleForFolder } from '../../class-config.js';
+import { classRoleForFolder, findClassInstructor, findClassStudent, findClassTa } from '../../class-config.js';
 import { registerScenario } from '../registry.js';
 import type { CanonicalRole, Scenario } from '../types.js';
 import { INSTRUCTOR_PERSONA, STUDENT_PERSONA, TA_PERSONA } from './personas.js';
@@ -36,6 +36,9 @@ const classroom: Scenario = {
         `Hi ${name}! Welcome to class. Send /playground any time to customize my personality and style.`,
     },
   },
+  // Classroom names come from the roster (class-config.json), regardless of role.
+  memberName: (folder): string | null =>
+    findClassStudent(folder)?.name ?? findClassTa(folder)?.name ?? findClassInstructor(folder)?.name ?? null,
   // Classroom folders are config-listed under students/tas/instructors; map
   // the classroom role onto the canonical role.
   roleForFolder: (folder): CanonicalRole | null => {

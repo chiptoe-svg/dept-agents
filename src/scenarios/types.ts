@@ -41,4 +41,10 @@ export interface Scenario {
   roles: Partial<Record<CanonicalRole, ScenarioRoleProfile>>;
   /** Map an agent-group folder to its canonical role (null if not a member). */
   roleForFolder: (folder: string) => CanonicalRole | null;
+  /**
+   * Resolve a member's display name from its folder, for greeting + persona.
+   * Classroom looks it up in the roster; other scenarios may derive it from
+   * the agent-group record or the folder. Null when unknown.
+   */
+  memberName: (folder: string) => string | null;
 }

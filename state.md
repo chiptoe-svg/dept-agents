@@ -14,9 +14,23 @@ NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac St
 
 ## Current arc
 
-Phase D shipped 2026-05-26 (tag `phase-d-complete-2026-05-26`): pi is now the sole agent harness; claude.ts and codex.ts deleted on both host and container; `container_configs.model_provider` column drives upstream API selection (anthropic / openai-codex / openai / local / …); host migrations 021–023 backfill old data. Live-verified across all 7 kept agents (instructor, ta_01, students 1–3, bench, pi-test).
+**Active arc: the group-agent-platform restructure** (`plans/group-agent-platform.md`) — one codebase, in-tree scenario profiles under `src/scenarios/<name>/`, selected by `ACTIVE_SCENARIO`. Progress:
+- **Phase 1 done** (`dce8da2`): `src/scenarios/` scaffold + registry + classroom profile; teaching-specific pair consumers moved in.
+- **Phase 2 increment 1 done** (`3dcd662`): a **canonical-role scenario contract** (`src/scenarios/types.ts`) — four fixed roles (`owner / it_admin / assistant / user`), each scenario supplies label + permission + persona + greeting + `roleForFolder`. Registry (`registry.ts`) + tests landed. This **un-defers** the Phase 2 that the 2026-06-08 decision log marked deferred (the forcing 2nd scenario arrived — see below).
+- **Second scenario added** (`52dc82a`): `industryai_seminar` profile (Organizer/IT Admin/Facilitator/Participant, all four canonical roles) + `ACTIVE_SCENARIO` env gating. This install's `.env` is set to `ACTIVE_SCENARIO=industryai_seminar`.
 
-**Next named arc is undecided.** Open candidates: per-student pi auth (plan exists at `docs/superpowers/plans/2026-05-17-per-student-provider-auth.md`), upstream PR to pi-ai for the codex-cost gap (now known to be a downstream nanoclaw issue, mostly fixed), or RAG Phase 7 continuation. Currently in **housekeeping mode** — small bug fixes between arcs (recent: messages_out usage backfill, stale-journal recovery at host startup).
+- **Phase 2 proper done** (branch `scenario-contract-wiring`, pending merge — commits `7606cf0`..`8e894cd`): the platform now **consumes** the contract. A single generic platform pair consumer (`src/scenario-pairing.ts`) drives all pairing from `roleForFolder()` + `roleProfile()` + the new `memberName()`; the three classroom-specific pair consumers (`class-pair-greeting`, `pair-instructor`, `pair-ta`) are deleted; provisioning reads its persona from `roleProfile('user')`. `ACTIVE_SCENARIO` now genuinely changes pairing/persona/permission/greeting behavior — verified by an integration test pairing a real `industryai_seminar` Participant (seminar greeting, no admin grant). Scoped-admin scope is derived from the contract (every other folder whose role is `user`/`assistant`), provably equivalent to the old class-config roster iteration. Metadata keys (`student_*`) kept as-is (downstream features read them; renaming is a deferred vocabulary pass). 1104 tests green; final holistic review approved.
+
+**Next:** merge the branch, then optionally Phase 4 (retire the `classroom` sibling branch + `/add-classroom*` skills) and Phase 5 (add more scenario profiles). The classroom profile still delegates `roleForFolder`/`memberName` to `classRoleForFolder` + the roster — `class-config.ts` is intentionally retained, not orphaned.
+
+(Prior completed arc: **Phase D**, tag `phase-d-complete-2026-05-26` — pi is the sole agent harness; claude.ts/codex.ts deleted host+container; `container_configs.model_provider` drives upstream API selection. Recorded in the decision log. Other still-open candidate arcs, not currently active: per-student pi auth `docs/superpowers/plans/2026-05-17-per-student-provider-auth.md`, the pi-ai codex-cost-gap PR, RAG Phase 7.)
+
+## Open follow-ups
+
+Append-only. Drained by the human, not by `refresh-state`.
+
+- **Wire the platform to the scenario contract (Phase 2 proper).** — DONE 2026-06-09 (branch `scenario-contract-wiring`, commits `7606cf0`..`8e894cd`; plan `docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md`). Generic contract-driven pair consumer + provisioning persona via `roleProfile('user')`; three classroom consumers deleted; `memberName()` added; verified by an `industryai_seminar` integration test. Turned out narrower than the ~30-file estimate — Phase 1 had already moved the pair consumers into the profile.
+- **Phase 4 (later):** retire the `classroom` sibling branch + `/add-classroom*` skills (superseded by in-tree scenarios).
 
 ## Invariants (don't break)
 
@@ -83,6 +97,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-06-09** — **Phase 2 wiring landed** (branch `scenario-contract-wiring`, `7606cf0`..`8e894cd`): platform pairing is now ONE generic contract-driven consumer (`src/scenario-pairing.ts`) reading `roleForFolder`/`roleProfile`/new `memberName`; the three classroom pair consumers (`class-pair-greeting`/`pair-instructor`/`pair-ta`) deleted; provisioning persona from `roleProfile('user')`. Why: `ACTIVE_SCENARIO` must actually drive behavior, not just register a façade — proven by an `industryai_seminar` integration test (Participant greeting, no admin). Decisions: Option A (one generic consumer, not per-role) + `memberName(folder)` added to the contract (classroom=roster, seminar=agent-group name) + scoped-admin scope derived from `roleForFolder` (user/assistant), no per-scenario hook. Metadata keys (`student_*`) kept; renaming deferred. NOTE: a mid-implementation attempt to modify `grantRole`/pair-consumer-registry to pass a test was caught in review and reverted — the fixes belonged in the test (create the FK user row; don't reset import-registered consumers). 1104 tests green.
+- **2026-06-08** — **Phase 2 resumed (un-deferred): canonical-role scenario contract shipped** (`3dcd662`) + **second scenario `industryai_seminar` added with `ACTIVE_SCENARIO` gating** (`52dc82a`). Why: the prior same-day entry deferred Phase 2 until a 2nd scenario forced the abstraction against real, different roles — `industryai_seminar` (Organizer/IT Admin/Facilitator/Participant, all four canonical roles) is that forcing function, so the contract (`src/scenarios/types.ts`: fixed `owner/it_admin/assistant/user` roles, each skinned with label+permission+persona+greeting+`roleForFolder`) was defined now rather than against classroom alone. Contract + registry are tested; **platform consumption is deferred to the next step** (no platform file calls `roleForFolder`/`roleProfile` yet — see Current arc + Open follow-ups). Classroom profile delegates to existing `classRoleForFolder` so it stays green.
 - **2026-06-08** — Reframed as a **group-agent platform with in-tree scenario profiles** (one codebase, `src/scenarios/<name>/`, config-selected), superseding the trunk+branch-install model (too much ceremony) and the classroom-app model (too narrow). Phase 1 done (commit `dce8da2`): `src/scenarios/classroom/` scaffolded; teaching-specific pair consumers moved there; platform pieces stay in `src/`. **Phase 2 (abstract role detection + personas out of the platform via a scenario hook) deliberately DEFERRED** — doing it with only classroom as a consumer would design the interface against one scenario (violates Phase 0 finding + YAGNI). Driver: the 2nd scenario (department) will force the abstraction with real, different roles. Plan: `plans/group-agent-platform.md`.
 - **2026-06-08** — Deployment reset to a clean demo (operational, not code): instructor (`dm-with-chiptonkin`) + 3 bare `student_01/02/03` agents on defaults, no roster, no `class:*` users, test agents (ta_01/bench/pi-test) removed. DB backup at `data/v2.db.bak-reset-20260607-212604`. All 3 students reachable via web UI (playground auto-wires on first message; external-channel wirings not required).
 - **2026-06-07** — Classroom status downgraded to PILOT/test (breakable, not live production) until the owner says otherwise; the "do not refactor before term ends" gate is lifted. Why: owner confirmed only pilot users, no real FERPA data — breaking changes are low-risk now.
@@ -121,46 +137,37 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (20 commits ahead)
+- **Current:** `scenario-contract-wiring`
+- **Last tag:** `phase-c-complete-2026-05-28` (31 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
- M .claude/scheduled_tasks.lock
-M  scripts/class-skeleton.ts
-M  src/class-student-provision.ts
-M  src/config.ts
-M  src/scenarios/classroom/index.ts
-A  src/scenarios/classroom/personas.ts
-A  src/scenarios/classroom/scenario.ts
-A  src/scenarios/registry.test.ts
-A  src/scenarios/registry.ts
-A  src/scenarios/types.ts
+## scenario-contract-wiring
+A  docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+74ecafd docs(state): record Phase 2 wiring landed (scenario contract now consumed)
+8e894cd test(scenarios): industryai_seminar pairing proves ACTIVE_SCENARIO drives behavior
+d7503e5 feat(scenarios): provision persona from the active scenario's user role
+61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
+d4052dc feat(scenarios): generic contract-driven pair consumer
+7606cf0 feat(scenarios): add memberName() to the scenario contract
+52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
+985ef7d docs(critique-agent): remove personal references; serve brief via GitHub Pages
+3dcd662 feat(scenarios): canonical-role scenario contract + classroom reference (Phase 2 increment 1)
+1362e95 docs: frame critique-agent as a future project
+5d4042e docs: add Build-Your-Own Photo-Critique Agent course project
 960d69a docs(state): record group-agent-platform direction + Phase 1 done + Phase 2 deferred
 dce8da2 refactor(scenarios): group-agent platform + scenario profiles (Phase 1)
 980091d docs(plan): Phase 2 partition manifest — classify every file L/P/G/T
 91ece76 fix(controlled-access): make provider-creds dir migration merge-based
-9dd7feb refactor(controlled-access): rename credential/auth layer student→user (Phase 1, slice 1)
-9d90083 docs: record trunk+branch decision + classroom pilot status
-bde2813 docs(plan): Phase 0 findings — validate controlled-access layer vs 3 consumers
-9b20fdd docs(plan): reframe classroom extraction as controlled-access core
-d387304 docs: behind-the-scenes architecture HTML + trunk-extraction plan
-bd823d2 harden(playground+proxy): pre-launch security & stability fixes
-936eef3 docs(spec): ingestion & retrieval pipeline explorer (knobs on Sources/Retrieval)
-cda5d5d ops(omlx): upgrade 0.3.8 → 0.4.0 (smoke-verified)
-2433ff8 feat(skills): rag-pdf-ingest — wrap remote markdown-extraction endpoint
-40175a0 feat(playground): render agent-produced file downloads in chat
-be16b43 feat(pi/codex): per-student auth.json on the agent path
 ```
 
 ### Last refresh
 
-2026-06-08T16:01:31Z
+2026-06-09T04:15:28Z

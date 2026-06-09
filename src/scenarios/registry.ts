@@ -39,6 +39,11 @@ export function roleProfile(role: CanonicalRole): ScenarioRoleProfile | null {
   return getActiveScenario()?.roles[role] ?? null;
 }
 
+/** The active scenario's display name for the member in `folder` (null if unknown). */
+export function memberName(folder: string): string | null {
+  return getActiveScenario()?.memberName(folder) ?? null;
+}
+
 export function listScenarios(): string[] {
   return [...scenarios.keys()];
 }

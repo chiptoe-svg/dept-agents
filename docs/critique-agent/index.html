@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Build-Your-Own Photo-Critique Agent</title>
+<title>Student-Built AI Agents — a classroom platform</title>
 <style>
   :root{
     --ink:#1a1a1c;
@@ -119,12 +119,18 @@
   .c{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:15px 16px;box-shadow:var(--shadow)}
   .c h3{font-size:14px}
   .c p{font-size:14px;color:var(--ink-soft);margin:.3em 0 0}
+  .c .sn{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.04em}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--slate)}
 
   ol.q{counter-reset:q;padding-left:0;list-style:none;margin-top:14px}
   ol.q li{counter-increment:q;display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:15px;color:var(--ink-soft)}
   ol.q li::before{content:counter(q,upper-alpha);flex:0 0 auto;font-family:ui-sans-serif,system-ui,sans-serif;font-weight:700;color:var(--ink-faint);width:22px}
   ol.q b{color:var(--ink);font-family:ui-sans-serif,system-ui,sans-serif}
+
+  .exlist{margin:.4em 0 0;padding-left:0;list-style:none}
+  .exlist li{font-size:14.5px;color:var(--ink-soft);padding:5px 0;border-top:1px solid var(--line)}
+  .exlist li:first-child{border-top:0}
+  .exlist em{color:var(--ink)}
 
   .refs{font-size:13px;color:var(--ink-soft);margin-top:14px}
   .refs ol{padding-left:1.3em}
@@ -151,35 +157,6 @@
   .apptabs .t.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
   .apptabs .t.dim{opacity:.38}
   .appbody{padding:15px}
-  .dbanner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--accent-soft);border-bottom:1px solid var(--line);padding:7px 14px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11.5px;color:var(--accent)}
-  .dbanner .btns{display:flex;gap:6px;flex:0 0 auto}
-  .dbanner button{font:inherit;border:1px solid var(--rule);background:var(--card);border-radius:5px;padding:3px 10px;color:var(--ink-soft)}
-  .dbanner button.save{background:var(--slate);color:#fff;border-color:var(--slate)}
-  .player{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:9px}
-  .player:last-child{margin-bottom:0}
-  .player .lhead{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
-  .player.lock .lhead{background:var(--slate-soft);color:var(--slate)}
-  .player.edit .lhead{background:var(--accent-soft);color:var(--accent)}
-  .player .ltext{padding:11px 13px;font-size:12.5px;line-height:1.5;color:var(--ink-soft)}
-  .player.lock .ltext{color:var(--ink-faint)}
-  .player .ltext b{color:var(--ink);font-family:ui-sans-serif,system-ui,sans-serif}
-  .player .ph{color:var(--ink-faint);font-style:italic}
-  .chat{display:flex;flex-direction:column;gap:8px}
-  .bub{max-width:84%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45}
-  .bub.a{background:var(--paper);border:1px solid var(--line);border-bottom-left-radius:3px;align-self:flex-start}
-  .bub.a b{color:var(--ink)}
-  .bub.u{background:var(--slate);color:#fff;border-bottom-right-radius:3px;align-self:flex-end}
-  .trace{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--ink-faint);align-self:flex-start;padding-left:2px}
-  .cinput{margin-top:11px;display:flex;gap:8px}
-  .cinput .box{flex:1;border:1px solid var(--rule);border-radius:8px;padding:8px 11px;font-size:12px;color:var(--ink-faint)}
-  .cinput .send{background:var(--accent);color:#fff;border-radius:8px;padding:8px 14px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:600}
-  .srow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px}
-  .srow .nm{font-family:ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:600}
-  .srow .ds{font-size:11.5px;color:var(--ink-faint);margin-top:2px}
-  .tog{flex:0 0 auto;width:42px;height:24px;border-radius:999px;background:var(--accent);position:relative}
-  .tog.off{background:var(--rule)}
-  .tog i{position:absolute;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;left:21px;transition:left .15s}
-  .tog.off i{left:3px}
   .roster{width:100%;border-collapse:collapse;font-size:12.5px}
   .roster th,.roster td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
   .roster th{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint)}
@@ -189,28 +166,6 @@
   .dot-ok{display:inline-block;width:7px;height:7px;border-radius:50%;background:#4a7a55;margin-right:6px}
   .rfoot{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--ink-faint);margin-top:12px}
   .shotcap{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11.5px;color:var(--ink-faint);margin-top:8px}
-  .mocknote{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--ink-faint);font-style:italic;margin-top:18px}
-  .p3{display:grid;grid-template-columns:148px 1fr 1.3fr;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  @media(max-width:720px){.p3{grid-template-columns:1fr}}
-  .p3 > div{padding:11px 12px}
-  .p3 .lib{border-right:1px solid var(--line);background:var(--paper)}
-  .p3 .prev{border-right:1px solid var(--line)}
-  @media(max-width:720px){.p3 .lib,.p3 .prev{border-right:0;border-bottom:1px solid var(--line)}}
-  .p3 h5{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);margin:10px 0 4px;font-weight:700}
-  .libfilter{width:100%;border:1px solid var(--rule);border-radius:5px;padding:4px 8px;font-size:11px;color:var(--ink-faint);margin-bottom:6px;font-family:ui-sans-serif,system-ui,sans-serif;background:var(--card)}
-  .libli{font-size:12px;color:var(--ink-soft);padding:3px 0}
-  .prevhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
-  .prevhead .ti{font-family:ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:600;color:var(--ink)}
-  .prevhead .hint{font-family:ui-sans-serif,system-ui,sans-serif;font-size:10px;color:var(--ink-faint)}
-  .prevbody{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ink-faint);line-height:1.5;white-space:pre-wrap;margin:0}
-  .subtabs{display:flex;gap:11px;flex-wrap:wrap;margin-bottom:8px}
-  .subtab{font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--ink-faint);padding:3px 0;border-bottom:2px solid transparent;white-space:nowrap}
-  .subtab.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
-  .ptext{border:1px solid var(--rule);border-radius:6px;background:var(--card);padding:10px 11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.55;color:var(--ink)}
-  .ptext b{font-family:ui-sans-serif,system-ui,sans-serif}
-  .ptext .ph{color:var(--ink-faint);white-space:pre-wrap}
-  .pfoot{display:flex;gap:16px;margin-top:8px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;color:var(--ink-faint);flex-wrap:wrap}
-  .pfoot .sel{border:1px solid var(--line);border-radius:5px;padding:2px 8px;color:var(--ink-soft);margin-left:4px}
   .iclayout{display:grid;grid-template-columns:0.9fr 1.05fr 1.15fr}
   @media(max-width:820px){.iclayout{grid-template-columns:1fr}}
   .iccol{padding:13px 14px}
@@ -255,48 +210,67 @@
 
 <header>
   <div class="wrap">
-    <div class="eyebrow">Course Materials &middot; Instructional Design Brief</div>
-    <h1>Build-Your-Own Photo-Critique Agent</h1>
-    <p class="lede">An instructional design brief for an AI-assisted unit in which students construct, rather than merely operate, a photographic-critique agent. The instructor defines the constraints and the evaluative floor; each student authors the agent's identity, persona, and tool access, then applies it to their own photographs.</p>
+    <div class="eyebrow">NanoClaw Classroom &middot; Platform Capability Brief</div>
+    <h1>A classroom where students build their own AI agents</h1>
+    <p class="lede">A teaching platform in which each student authors and runs their <em>own</em> AI agent inside guardrails the instructor owns. This brief describes what the platform lets instructors and students do. A photography-critique unit appears at the end as one applied example.</p>
     <div class="meta">
-      <span><b>Audience</b>Course instructor</span>
-      <span><b>Unit</b>Assignment 3 — Take Your Best Shot</span>
-      <span><b>Duration</b>One week (two lab sessions)</span>
-      <span><b>Platform</b>NanoClaw classroom &middot; Agent Playground</span>
+      <span><b>Built on</b>NanoClaw &middot; Agent Playground</span>
+      <span><b>Runtime</b>Per-student containers &middot; cloud models</span>
+      <span><b>Ownership</b>Instructor-owned &amp; self-evolving</span>
+      <span><b>Status</b>Draft for review</span>
     </div>
-    <p class="status">Status: draft for instructor review. Figures and tool claims dated mid-2026; items marked for verification appear in §8.</p>
+    <p class="status">Capability and tool claims dated mid-2026; items marked for verification appear in §10.</p>
   </div>
 </header>
 
-<!-- 1. RATIONALE -->
-<section id="rationale">
+<!-- 1. WHAT IT ENABLES -->
+<section id="enables">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§1</span><div class="eyebrow">Pedagogical rationale</div></div>
-    <h2>Instructor-defined constraints; student-authored agents</h2>
-    <p class="lede">The unit's premise is constructionist: students learn the elements of critique by having to specify them. Authoring an agent requires converting tacit visual judgment into explicit criteria and questions. Control is divided into two clearly bounded roles.</p>
+    <div class="sec-head"><span class="sec-no">§1</span><div class="eyebrow">Overview</div></div>
+    <h2>What the platform enables</h2>
+    <p class="lede">Eight capabilities define the tool. Each is expanded in the section noted.</p>
+    <div class="cards">
+      <div class="c"><div class="sn">01</div><h3>Students author their own agent</h3><p>Each student names, writes the persona for, and equips their own agent — not a shared bot. (§2)</p></div>
+      <div class="c"><div class="sn">02</div><h3>Instructor-owned guardrails</h3><p>A locked floor — stance, conduct rules, output format — is inherited by every student agent. (§3)</p></div>
+      <div class="c"><div class="sn">03</div><h3>Build &rarr; test &rarr; iterate</h3><p>A three-tab loop: write the persona, test it in chat, watch the reasoning trace, revise. (§4)</p></div>
+      <div class="c"><div class="sn">04</div><h3>Learn by contrast</h3><p>Toggle a skill on and off and watch behavior and trace change — chatbot vs. agent, made visible. (§4)</p></div>
+      <div class="c"><div class="sn">05</div><h3>Specialized companion agents</h3><p>The same build-your-own pattern produces task-specific agents on demand. (§5)</p></div>
+      <div class="c"><div class="sn">06</div><h3>Integrated image generation</h3><p>Agents hand off to image generators — cloud or local — for previsualization. (§6)</p></div>
+      <div class="c"><div class="sn">07</div><h3>The instructor evolves the tool</h3><p>The owner changes the platform itself in plain language, via reviewed Pull Requests. (§7)</p></div>
+      <div class="c"><div class="sn">08</div><h3>Runs on your hardware</h3><p>Per-student container isolation on a Mac Studio; cloud models; portable to plain Claude Projects. (§8)</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. ROLES -->
+<section id="control">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§2</span><div class="eyebrow">Roles &amp; control</div></div>
+    <h2>Two bounded roles: instructor sets the lines, student authors within them</h2>
+    <p class="lede">The platform divides control cleanly. The instructor defines what is possible and required; each student decides who their agent is inside those bounds.</p>
 
     <div class="control">
       <div class="panel instr">
-        <span class="tag">Instructor defines</span>
+        <span class="tag">Instructor controls</span>
         <ul>
-          <li><b>The evaluative floor</b> — a Socratic critique stance, tone expectations, photojournalism ethics, and the required submission format. Authored once and propagated to every student.</li>
-          <li><b>The available tools</b> — which skills students are permitted to enable (for example, web search).</li>
+          <li><b>The evaluative floor</b> — the agent's stance, tone, conduct rules, and required output format. Authored once and propagated to every student.</li>
+          <li><b>The available tools</b> — which skills students are permitted to enable.</li>
           <li><b>Assessment</b> — the rubric and a reference exemplar defining a strong build.</li>
-          <li><b>Administration</b> — roster, per-student accounts, model and cost settings.</li>
+          <li><b>Administration</b> — roster, per-student accounts, model and cost.</li>
         </ul>
       </div>
       <div class="panel stud">
         <span class="tag">Each student authors</span>
         <ul>
-          <li><b>Identity</b> — the agent's name, and a brief statement of its character and voice.</li>
-          <li><b>Persona</b> — its critique stance, the visual elements it prioritizes, and a bank of Socratic questions written in the student's own words.</li>
-          <li><b>Tool access</b> — enabling or disabling the available skills and observing the effect on the agent's behavior.</li>
-          <li><b>Evaluation in use</b> — running the agent on their own photographs and revising it until its critique is useful.</li>
+          <li><b>Identity</b> — the agent's name, character, and voice.</li>
+          <li><b>Persona</b> — how it works: its stance, what it prioritizes, and the questions it asks, in the student's own words.</li>
+          <li><b>Tool access</b> — enabling or disabling the available skills and observing the effect on behavior.</li>
+          <li><b>Evaluation in use</b> — running the agent on their own work and revising it until it is useful.</li>
         </ul>
       </div>
     </div>
 
-    <div class="note accent"><b>Why construction rather than consumption.</b> Specifying what an agent should ask forces a student to define what good critique consists of. The exercise externalizes the student's developing critical vocabulary; the agent functions as an instrument for examining their own judgment, not as an authority that supplies answers.</div>
+    <div class="note accent"><b>Why students build rather than consume.</b> Specifying what an agent should ask forces a student to define what good work consists of. The exercise externalizes a developing vocabulary; the agent becomes an instrument for examining one's own judgment, not an authority that supplies answers.</div>
 
     <figure class="fig">
       <div class="shot">
@@ -321,103 +295,64 @@
   </div>
 </section>
 
-<!-- 2. LAYERS -->
-<section id="layers">
+<!-- 3. PERSONA STACK -->
+<section id="stack">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§2</span><div class="eyebrow">Persona architecture</div></div>
-    <h2>A three-layer persona model</h2>
-    <p class="lede">The platform composes personas in the order <span class="mono">global → role → per-agent</span>. The instructor floor is inherited by every student agent, so a weak or incomplete student persona still operates within the required pedagogical and ethical bounds.</p>
+    <div class="sec-head"><span class="sec-no">§3</span><div class="eyebrow">Persona stack</div></div>
+    <h2>A locked floor, plus a layer that&rsquo;s yours</h2>
+    <p class="lede">The platform composes each agent&rsquo;s persona from stacked layers (<span class="mono">global &rarr; platform &rarr; class &rarr; per-agent</span>). Every student inherits the locked floor, so even a weak or incomplete student persona still operates within the required bounds.</p>
     <div class="layers">
-      <div class="layer l1"><div class="who">Instructor floor</div><div class="what"><b>Shared and locked.</b> Socratic-only critique, tone and conduct expectations, the photojournalism ethics rule, and the required submission format. A single file, propagated to all students.</div></div>
-      <div class="layer l2"><div class="who">Student persona</div><div class="what"><b>The student's work.</b> Identity, weighted visual criteria, and a Socratic question bank — entered in the Persona tab from a provided scaffold and worksheet.</div></div>
-      <div class="layer l3"><div class="who">Assignment handout</div><div class="what"><b>The wrapper.</b> The student-facing document guiding the full sequence: build, photograph, critique, reshoot.</div></div>
+      <div class="layer l1"><div class="who">Platform &amp; global</div><div class="what"><b>Locked.</b> Base behavior shipped with the platform; the same for everyone.</div></div>
+      <div class="layer l1"><div class="who">Class base</div><div class="what"><b>Instructor-owned; locked to students.</b> The evaluative floor — stance, conduct rules, required output format — edited once and propagated to every student agent.</div></div>
+      <div class="layer"><div class="who">My persona</div><div class="what"><b>Student-authored.</b> The one layer each student writes and controls, in the Persona tab. Everything else is read-only to them.</div></div>
     </div>
   </div>
 </section>
 
-<!-- 3. TABS -->
-<section id="interface">
+<!-- 4. BUILD LOOP -->
+<section id="loop">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§3</span><div class="eyebrow">Student interface</div></div>
-    <h2>Three Playground tabs</h2>
-    <p class="lede">Under the classroom configuration, the student workflow uses three tabs. The remaining tabs are administrative and instructor-facing.</p>
+    <div class="sec-head"><span class="sec-no">§4</span><div class="eyebrow">The build loop</div></div>
+    <h2>Write &middot; test &middot; observe — three tabs</h2>
+    <p class="lede">The student workflow uses three Playground tabs. Together they form a tight build &rarr; test &rarr; iterate loop; the remaining tabs are administrative.</p>
     <div class="tabbar">
-      <div class="tab"><div class="k">Persona</div><p>Where the agent is authored. The scaffold's prompts are completed here.</p><div class="role">Student edits</div></div>
-      <div class="tab"><div class="k">Chat</div><p>Where the agent is tested and revised, and where the submission summary is produced.</p><div class="role">Student runs</div></div>
-      <div class="tab"><div class="k">Skills</div><p>Where an instructor-installed skill is enabled or disabled and its effect on the agent's reasoning is observed.</p><div class="role">Student toggles</div></div>
+      <div class="tab"><div class="k">Persona</div><p>Where the agent is authored — the student&rsquo;s one editable layer.</p><div class="role">Student edits</div></div>
+      <div class="tab"><div class="k">Chat</div><p>Where the agent is tested and revised against real work; the reasoning trace is visible.</p><div class="role">Student runs</div></div>
+      <div class="tab"><div class="k">Skills</div><p>Where an instructor-installed skill is enabled or disabled and its effect on the agent is observed.</p><div class="role">Student toggles</div></div>
       <div class="tab off"><div class="k">Home / Models</div><p>Roster, provider, and cost. Administrative.</p><div class="role">Instructor</div></div>
     </div>
-    <div class="note">Students do not author skills; the learning objective is to understand what a skill changes — the capabilities an agent can draw on — by comparing behavior with the skill on and off. <b>To verify (§8):</b> confirm the student lockdown permits toggling instructor-installed skills.</div>
-
+    <div class="note"><b>Learn by contrast.</b> The platform&rsquo;s pedagogy is that the difference between asking a chatbot and running an agent should be <em>visible</em>. Students toggle a skill on and off and compare the answer and the trace — understanding what a skill changes (the capabilities an agent can reach) rather than authoring skills themselves. <b>To verify (§10):</b> confirm the student lockdown permits toggling instructor-installed skills.</div>
   </div>
 </section>
 
-<!-- 4. SCAFFOLD -->
-<section id="scaffold">
+<!-- 5. SPECIALIZED AGENTS -->
+<section id="companion">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§4</span><div class="eyebrow">The build</div></div>
-    <h2>A seven-part persona scaffold</h2>
-    <p class="lede">Authoring the agent is a writing task, completed in the Persona tab and prompted by a reflective worksheet. The seven components:</p>
-    <div class="slots">
-      <div class="slot"><div class="sn">i</div><h3>Identity</h3><p>Name, character, and voice.</p></div>
-      <div class="slot"><div class="sn">ii</div><h3>Critique stance</h3><p>Degree of directness; how far to question before offering a hint.</p></div>
-      <div class="slot"><div class="sn">iii</div><h3>Opening move</h3><p>Greeting and the required technical-or-creative branch.</p></div>
-      <div class="slot"><div class="sn">iv</div><h3>Weighted criteria</h3><p>Selecting and ranking composition, focus and depth of field, light, framing, moment, and background.</p></div>
-      <div class="slot star"><div class="sn">v</div><h3>Question bank</h3><p>The central task: two to three Socratic questions per criterion, posed rather than answered.</p></div>
-      <div class="slot"><div class="sn">vi</div><h3>Reshoot guidance</h3><p>Helping the student select images to reshoot; producing the feedback summary.</p></div>
-      <div class="slot"><div class="sn">vii</div><h3>Handoff</h3><p>Producing the submission summary the student retains.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- 5. SEQUENCE -->
-<section id="sequence">
-  <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§5</span><div class="eyebrow">Course sequence</div></div>
-    <h2>Two lab sessions</h2>
-    <div class="labs">
-      <div class="lab">
-        <div class="lab-h">Lab A — Construct and plan</div>
-        <ol>
-          <li>Draw a campus building at random.</li>
-          <li>Introduction to the Playground; construct and test the critique agent on practice images.</li>
-          <li>Enable and disable a skill; compare agent and unaided-model behavior.</li>
-          <li>Prepare the fifty-image shot list.</li>
-        </ol>
-      </div>
-      <div class="lab">
-        <div class="lab-h">Lab B — Critique and reshoot plan</div>
-        <ol>
-          <li>Import and cull to ten images in Lightroom Classic.</li>
-          <li>Apply the student's own agent to the ten; work through the Socratic critique.</li>
-          <li>Produce the feedback summary and submission record.</li>
-          <li>Plan the four reshoots.</li>
-        </ol>
-      </div>
-    </div>
-    <p class="between">Between sessions: photograph the fifty images &middot; After Lab B: reshoot the selected four</p>
+    <div class="sec-head"><span class="sec-no">§5</span><div class="eyebrow">Extensible</div></div>
+    <h2>Specialized companion agents</h2>
+    <p class="lede">The build-your-own pattern is not limited to one task. Any agent a course needs can be authored the same way and added to the class library. One example, planned next: a <b>studio-lighting reverse-engineer</b> that takes an inspiration photograph and reconstructs a plausible production setup — a lighting diagram (key, fill, rim), modifiers and ratios, camera settings, lens, framing, and posing. Its text output pairs with the image-generation step (§6): the agent writes the setup and a ready-to-use generation prompt; the generator produces the visual reference.</p>
   </div>
 </section>
 
 <!-- 6. IMAGE GENERATION -->
 <section id="generation">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§6</span><div class="eyebrow">Assignment 5 — studio reshoot</div></div>
-    <h2>Image generation for previsualization: three approaches</h2>
-    <p class="lede">In the studio reshoot (Assignment 5), generated images serve as a <em>previsualization</em> aid — a way to study lighting, posing, framing, and mood before a live shoot — not as a final deliverable. For this purpose the relevant criteria are institutional access, the precision of lighting control, photorealism, the provenance of training data, and instructional value. The original brief specified Adobe Firefly; two further approaches merit consideration. The instructor's recent note that the university holds an OpenAI license with student credits is material to the comparison.</p>
+    <div class="sec-head"><span class="sec-no">§6</span><div class="eyebrow">Image generation</div></div>
+    <h2>Integrated image generation for previsualization</h2>
+    <p class="lede">Agents can hand off to an image generator to previsualize a look — lighting, posing, framing, mood — before a live shoot. The platform is generator-agnostic; three options compared below trade off on access, lighting-control precision, photorealism, training-data provenance, and instructional value. Where an institution holds an OpenAI license with student credits, that materially shifts the comparison.</p>
 
     <div class="gen">
       <div class="gen-card">
         <h3>ChatGPT Images 2.0 <span class="by">(GPT Image 2) — OpenAI</span></h3>
         <div class="role-line">Proposed primary tool</div>
-        <p>Reported (April 2026) as a reasoning-based generator on the GPT-5.4 backbone, producing up to 4K output and accepting reference images, with photorealism rated at the top of independent comparison leaderboards. Because it can reason over a brief and a reference image, it pairs directly with the companion lighting agent (§7): the agent can produce a setup description and a ready-to-use generation prompt. Access on campus is via the institution's existing OpenAI license and student credits, removing the cost and account friction of consumer alternatives.</p>
-        <p class="lim"><b>Considerations.</b> The model post-dates this author's training data; capability claims are drawn from the sources in §9 and should be confirmed (§8). Training-data provenance and commercial-use terms are less transparent than Firefly's. Lighting control is prompt- and reference-driven rather than physically parameterized, so it is well suited to mood and overall look but less precise for isolating a single lighting variable.</p>
+        <p>Reported (April 2026) as a reasoning-based generator on the GPT-5.4 backbone, producing up to 4K output and accepting reference images, with photorealism rated at the top of independent comparison leaderboards. Because it can reason over a brief and a reference image, it pairs directly with the companion lighting agent (§5): the agent can produce a setup description and a ready-to-use generation prompt. Where access is provided through an institutional OpenAI license and student credits, it removes the cost and account friction of consumer alternatives.</p>
+        <p class="lim"><b>Considerations.</b> The model post-dates this author's training data; capability claims are drawn from the sources in §11 and should be confirmed (§10). Training-data provenance and commercial-use terms are less transparent than Firefly's. Lighting control is prompt- and reference-driven rather than physically parameterized, so it is well suited to mood and overall look but less precise for isolating a single lighting variable.</p>
       </div>
 
       <div class="gen-card">
         <h3>Adobe Firefly <span class="by">— Adobe</span></h3>
         <div class="role-line">Alternative — integrated and commercially safe</div>
-        <p>The original choice, and defensible on grounds independent of raw photorealism. Firefly is trained on Adobe Stock and licensed or public-domain material, which Adobe positions as commercially safe — a meaningful consideration for coursework. It is available to students through their <span class="mono">university</span> accounts and is integrated into Photoshop (generative fill and expand), a tool already taught in the course, so it introduces no new application. Localized edits give moderate control over discrete changes such as adding a rim light or altering a background.</p>
+        <p>Defensible on grounds independent of raw photorealism. Firefly is trained on Adobe Stock and licensed or public-domain material, which Adobe positions as commercially safe — a meaningful consideration for coursework. It is typically available to students through their institutional accounts and is integrated into Photoshop (generative fill and expand), often a tool already taught, so it introduces no new application. Localized edits give moderate control over discrete changes such as adding a rim light or altering a background.</p>
         <p class="lim"><b>Considerations.</b> Photorealism is generally rated below the current OpenAI model and below dedicated photorealistic models. Lighting control is prompt- and edit-based, not true relighting.</p>
       </div>
 
@@ -426,7 +361,6 @@
         <div class="role-line">Advanced — instructor-led lighting demonstration</div>
         <p><b>Makers.</b> Stable Diffusion is an open-weight model from Stability AI. ControlNet (Zhang, Rao &amp; Agrawala, ICCV 2023) is an open-source method that conditions the model on structural inputs — human pose, depth, surface normals, edges — so subject and scene geometry can be fixed while other variables change. IC-Light ("Imposing Consistent Light," Lvmin Zhang, 2024) is an open-source relighting model from the same author.</p>
         <p><b>Why it teaches lighting control.</b> Unlike prompt-driven generators, IC-Light lets a student hold the subject constant and vary only the illumination — specifying light direction, quality, color temperature, and an implied source or background, and producing a consistent relit result. This makes light an isolated, manipulable variable, which maps directly onto the studio-lighting curriculum: a single portrait can be re-rendered as key-left versus key-right, with and without fill, with and without a rim or hair light, at high versus low ratio, and under warm versus cool sources. Students can compare canonical patterns — split, loop, Rembrandt, butterfly, broad and short lighting — and three-point setups side by side, on the same face, observing cause and effect in a way a live studio rarely permits within one session. ControlNet adds the complementary control of fixing pose and framing so that only lighting differs between comparisons.</p>
-        <p class="lim"><b>Feasibility on available hardware.</b> The instructor has access to two candidate diffusion stations separate from the classroom host: an NVIDIA DGX Spark (GB10, 128&nbsp;GB) and a Mac Studio (M4 Max, 64&nbsp;GB). IC-Light v1 is based on the lightweight Stable Diffusion 1.5, well within either machine's capacity. The two trade off differently. The DGX Spark is <em>CUDA-native</em>, so the open-source toolchain (ComfyUI, the ControlNet preprocessors, the IC-Light nodes, and their optimizations) installs and runs without the occasional gaps encountered under Apple's Metal backend; its 128&nbsp;GB also allows substantially larger models (e.g.&nbsp;Flux) and heavy batching. Its memory bandwidth (273&nbsp;GB/s), however, is the limiting factor for single-image latency, which is bandwidth-bound; the M4 Max, at roughly double that bandwidth, may render an individual SD&nbsp;1.5 frame as quickly or quicker, at the cost of the Apple-Silicon toolchain caveats. With a dedicated station the principal constraints shift from compute to (1) toolchain setup and maintenance and (2) interactive throughput for a whole class at once. The practical role is therefore a <b>shared or small-group generation station</b> — by rotation, queue, or batch — rather than an instructor-only demonstration or a per-student tool. A no-install browser demonstration remains available as a fallback (§9).</p>
       </div>
     </div>
 
@@ -467,8 +401,10 @@
           </div>
         </div>
       </div>
-      <figcaption class="shotcap">Figure 2. IC-Light + ControlNet relighting workbench (representative mockup of the open-source Gradio/ComfyUI tool, after lllyasviel/IC-Light). The student fixes one captured subject — ControlNet depth/pose holds pose and framing — then varies only the light: direction (left/right/top/bottom), a quick preset, intensity, and color temperature. The same face can be compared as key-left vs. key-right, butterfly, or with a rim added, making light an isolated, repeatable variable. Not a live screen capture.</figcaption>
+      <figcaption class="shotcap">Figure 2. IC-Light + ControlNet relighting workbench (representative mockup of the open-source Gradio/ComfyUI tool, after lllyasviel/IC-Light). One captured subject is fixed — ControlNet depth/pose holds pose and framing — then only the light varies: direction (left/right/top/bottom), a quick preset, intensity, and color temperature. The same face can be compared as key-left vs. key-right, butterfly, or with a rim added, making light an isolated, repeatable variable. Not a live screen capture.</figcaption>
     </figure>
+
+    <div class="note"><b>Feasibility on available hardware.</b> A dedicated diffusion station, separate from the classroom host, makes IC-Light practical. Two candidates: an NVIDIA DGX Spark (GB10, 128&nbsp;GB) and a Mac Studio (M4 Max, 64&nbsp;GB). IC-Light v1 is based on the lightweight Stable Diffusion 1.5, well within either machine's capacity. The two trade off differently. The DGX Spark is <em>CUDA-native</em>, so the open-source toolchain (ComfyUI, the ControlNet preprocessors, the IC-Light nodes, and their optimizations) installs and runs without the occasional gaps encountered under Apple's Metal backend; its 128&nbsp;GB also allows substantially larger models (e.g.&nbsp;Flux) and heavy batching. Its memory bandwidth (273&nbsp;GB/s), however, is the limiting factor for single-image latency, which is bandwidth-bound; the M4 Max, at roughly double that bandwidth, may render an individual SD&nbsp;1.5 frame as quickly or quicker, at the cost of the Apple-Silicon toolchain caveats. With a dedicated station the principal constraints shift from compute to (1) toolchain setup and maintenance and (2) interactive throughput for a whole class at once. The practical role is therefore a <b>shared or small-group generation station</b> — by rotation, queue, or batch — rather than a per-student tool. A no-install browser demonstration remains available as a fallback (§11).</div>
 
     <div class="tablewrap">
       <table>
@@ -477,59 +413,127 @@
         </thead>
         <tbody>
           <tr><td>Maker</td><td>OpenAI</td><td>Adobe</td><td>Stability AI; Zhang et al. (open source)</td></tr>
-          <tr><td>Access on campus</td><td>OpenAI license + student credits</td><td>Adobe via university SSO</td><td>Self-hosted (Mac Studio) or browser demo</td></tr>
+          <tr><td>Access</td><td>OpenAI license + student credits</td><td>Adobe via institutional SSO</td><td>Self-hosted (dedicated station) or browser demo</td></tr>
           <tr><td>Photorealism (mid-2026)</td><td>State of the art, per leaderboards</td><td>Good</td><td>Good; depends on base model</td></tr>
           <tr><td>Lighting-control precision</td><td>Prompt + reference; not parameterized</td><td>Prompt + localized edits</td><td>High — relighting with a fixed subject</td></tr>
           <tr><td>Training-data provenance</td><td>Less transparent</td><td>Licensed; commercially safe</td><td>Varies by model; open weights</td></tr>
           <tr><td>Where it runs</td><td>Cloud</td><td>Cloud / Photoshop</td><td>Dedicated station (DGX Spark or M4 Max), or browser demo</td></tr>
-          <tr><td>Learning curve</td><td>Low</td><td>Low; already in curriculum</td><td>High</td></tr>
+          <tr><td>Learning curve</td><td>Low</td><td>Low; often already taught</td><td>High</td></tr>
           <tr><td>Suggested role</td><td>Primary previsualization tool</td><td>Integrated alternative</td><td>Instructor-led lighting demonstration</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="cap">Comparison as of mid-2026. Photorealism rankings change frequently and the OpenAI model post-dates the author's training data; see §8 (verification) and §9 (sources).</p>
+    <p class="cap">Comparison as of mid-2026. Photorealism rankings change frequently and the OpenAI model post-dates the author's training data; see §10 (verification) and §11 (sources).</p>
 
-    <div class="note"><b>Recommended configuration.</b> Adopt ChatGPT Images 2.0 as the primary previsualization tool, given institutional access and current image quality; retain Adobe Firefly as the integrated, commercially-safe alternative; and operate IC-Light with ControlNet on a dedicated diffusion station (the DGX Spark being the more compatible host) as a shared resource for controlled-relighting exercises. The three are complementary rather than competing, and the recommendation does not depend on any single vendor remaining ahead on image quality.</p></div>
+    <div class="note"><b>Recommended configuration.</b> Adopt ChatGPT Images 2.0 as the primary previsualization tool, given institutional access and current image quality; retain Adobe Firefly as the integrated, commercially-safe alternative; and operate IC-Light with ControlNet on a dedicated diffusion station (the DGX Spark being the more compatible host) as a shared resource for controlled-relighting exercises. The three are complementary rather than competing, and the recommendation does not depend on any single vendor remaining ahead on image quality.</div>
   </div>
 </section>
 
-<!-- 7. COMPANION AGENT -->
-<section id="companion">
+<!-- 7. INSTRUCTOR EVOLVES THE TOOL -->
+<section id="evolve">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§7</span><div class="eyebrow">Companion agent</div></div>
-    <h2>Studio lighting reverse-engineer (Assignment 5)</h2>
-    <p class="lede">A second agent, following the same construction pattern, takes an inspiration photograph and reverse-engineers a plausible production setup: a lighting diagram (key, fill, rim), modifiers and ratios, camera settings, lens, framing, and posing — a plan for the real studio shoot. Its text output complements the image-generation step: the agent produces the setup description and a generation prompt; the generator (§6) produces the visual reference. This module will be specified in full after Assignment 3 is complete.</p>
+    <div class="sec-head"><span class="sec-no">§7</span><div class="eyebrow">Ownership</div></div>
+    <h2>The instructor owns &mdash; and evolves &mdash; the platform</h2>
+    <p class="lede">Ownership is more than administrative. The instructor can change the platform itself in plain language, without writing code, and every change is logged and reviewable. The agent a student chats with never gains write access; it only requests, and a separate operator process does the work on a branch.</p>
+    <div class="cards">
+      <div class="c"><div class="sn">1 · Ask</div><h3>Describe it in plain language</h3><p>e.g. &ldquo;Add a skill that exports a critique conversation as a PDF.&rdquo;</p></div>
+      <div class="c"><div class="sn">2 · Branch</div><h3>An operator CLI makes the change</h3><p>Claude Code (or Codex) implements it on a git branch and runs the build and tests.</p></div>
+      <div class="c"><div class="sn">3 · Review</div><h3>Approve the diff as a Pull Request</h3><p>GitHub&rsquo;s PR view is the diff-review and approval gate; git history is the audit log.</p></div>
+      <div class="c"><div class="sn">4 · Deploy</div><h3>Merge &amp; redeploy; revert if needed</h3><p>Pull, rebuild, restart. Rollback is a single <span class="mono">git revert</span>.</p></div>
+    </div>
+    <div class="note accent"><b>What the owner can ask for.</b>
+      <ul class="exlist">
+        <li><em>&ldquo;Add a new persona to the class library: a studio-lighting reverse-engineer.&rdquo;</em></li>
+        <li><em>&ldquo;Let the lighting agent call the image generator from its setup prompt.&rdquo;</em></li>
+        <li><em>&ldquo;Tighten the class floor: never state exact settings — only ask the question that leads there.&rdquo;</em></li>
+        <li><em>&ldquo;Add a scheduled reminder to submit by Friday; raise the rate limit during the live lab.&rdquo;</em></li>
+        <li><em>&ldquo;Students on Safari can&rsquo;t open the Playground link — please fix.&rdquo;</em></li>
+      </ul>
+    </div>
+    <div class="note"><b>Guardrails.</b> Owner-only — never available to student or TA agents. Human approval of every diff before it lands; work happens on a branch, never the live read-only code; a build/test gate precedes redeploy; and security-critical paths (credentials, isolation, auth) are protected. A chat-driven trigger for the same pipeline is an optional later add-on.</div>
   </div>
 </section>
 
-<!-- INFRA -->
+<!-- 8. ENVIRONMENT -->
 <section id="environment">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§8</span><div class="eyebrow">Computing environment &amp; open questions</div></div>
-    <h2>Environment, and items to verify</h2>
+    <div class="sec-head"><span class="sec-no">§8</span><div class="eyebrow">Runtime</div></div>
+    <h2>Runs on your hardware</h2>
     <div class="cards">
       <div class="c"><h3>Host</h3><p>Mac Studio (M1 Ultra, 32&nbsp;GB). Orchestrates a short-lived container per chat message.</p></div>
       <div class="c"><h3>Models</h3><p>Cloud-side (Claude via the Anthropic API) for the agents; the host does not run the language model.</p></div>
-      <div class="c"><h3>Local diffusion</h3><p>Optional dedicated station for §6: DGX Spark (128&nbsp;GB, CUDA-native) or M4 Max (64&nbsp;GB). Shared/small-group use, not a per-student service. No general-purpose local language model.</p></div>
-      <div class="c"><h3>Concurrency</h3><p>Monitor container spin-up when a full class uses the agent simultaneously; stagger if needed.</p></div>
+      <div class="c"><h3>Isolation</h3><p>Each student agent runs in its own container; the project root is read-only to agents.</p></div>
+      <div class="c"><h3>Local diffusion</h3><p>Optional dedicated station for §6: DGX Spark (128&nbsp;GB, CUDA-native) or M4 Max (64&nbsp;GB). Shared/small-group use.</p></div>
       <div class="c"><h3>Portability</h3><p>All materials are plain markdown; the exercise degrades to a self-built Claude Project if the platform is not deployed.</p></div>
-      <div class="c"><h3>Export</h3><p>Low-technology: the agent prints a submission summary in chat, which the student retains. No export skill is built at this stage.</p></div>
+      <div class="c"><h3>Export</h3><p>Low-technology: the agent prints a summary in chat that the student retains. No export skill is built at this stage.</p></div>
     </div>
+  </div>
+</section>
+
+<!-- 9. IN PRACTICE -->
+<section id="practice">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§9</span><div class="eyebrow">In practice</div></div>
+    <h2>An applied example: a photo-critique unit</h2>
+    <p class="lede">One worked use of the platform — a one-week unit for an upper-level photography course. Students photograph a subject, then build a critique agent that questions their work Socratically rather than supplying fixes, and run it on their own images.</p>
+
+    <h3 style="margin-top:22px">Authoring is a writing task — a seven-part scaffold</h3>
+    <p class="lede" style="font-size:16px">The unit gives students a guided scaffold (completed in the Persona tab) and a reflective worksheet that produces its content:</p>
+    <div class="slots">
+      <div class="slot"><div class="sn">i</div><h3>Identity</h3><p>Name, character, and voice.</p></div>
+      <div class="slot"><div class="sn">ii</div><h3>Critique stance</h3><p>Degree of directness; how far to question before offering a hint.</p></div>
+      <div class="slot"><div class="sn">iii</div><h3>Opening move</h3><p>Greeting and the required technical-or-creative branch.</p></div>
+      <div class="slot"><div class="sn">iv</div><h3>Weighted criteria</h3><p>Selecting and ranking composition, focus and depth of field, light, framing, moment, and background.</p></div>
+      <div class="slot star"><div class="sn">v</div><h3>Question bank</h3><p>The central task: two to three Socratic questions per criterion, posed rather than answered.</p></div>
+      <div class="slot"><div class="sn">vi</div><h3>Reshoot guidance</h3><p>Helping the student select images to reshoot; producing the feedback summary.</p></div>
+      <div class="slot"><div class="sn">vii</div><h3>Handoff</h3><p>Producing the submission summary the student retains.</p></div>
+    </div>
+
+    <h3 style="margin-top:26px">Two lab sessions</h3>
+    <div class="labs">
+      <div class="lab">
+        <div class="lab-h">Lab A — Construct and plan</div>
+        <ol>
+          <li>Draw a campus building at random.</li>
+          <li>Introduction to the Playground; construct and test the critique agent on practice images.</li>
+          <li>Enable and disable a skill; compare agent and unaided-model behavior.</li>
+          <li>Prepare the fifty-image shot list.</li>
+        </ol>
+      </div>
+      <div class="lab">
+        <div class="lab-h">Lab B — Critique and reshoot plan</div>
+        <ol>
+          <li>Import and cull to ten images in Lightroom Classic.</li>
+          <li>Apply the student's own agent to the ten; work through the Socratic critique.</li>
+          <li>Produce the feedback summary and submission record.</li>
+          <li>Plan the four reshoots.</li>
+        </ol>
+      </div>
+    </div>
+    <p class="between">Between sessions: photograph the fifty images &middot; After Lab B: reshoot the selected four</p>
+  </div>
+</section>
+
+<!-- 10. OPEN QUESTIONS -->
+<section id="open">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">§10</span><div class="eyebrow">To verify</div></div>
+    <h2>Open questions</h2>
     <ol class="q">
-      <li><span><b>JPEG export settings.</b> The handout references unspecified export settings (color space, long-edge dimension, quality); exact values are required.</span></li>
-      <li><span><b>Skill toggling.</b> Confirm the student lockdown permits enabling and disabling instructor-installed skills.</span></li>
-      <li><span><b>Skill selection.</b> Determine which skill(s) to pre-install for the comparison exercise (web search assumed).</span></li>
-      <li><span><b>Image-model claims.</b> Confirm current ChatGPT Images 2.0 capabilities, access terms, and standing, which post-date the author's training data.</span></li>
-      <li><span><b>Deployment.</b> NanoClaw classroom or the standalone Claude-Project fallback; affects only the setup guide, not the core materials.</span></li>
-      <li><span><b>Lab timing.</b> Confirm the two-session sequence matches actual lab scheduling.</span></li>
+      <li><span><b>Skill toggling.</b> Confirm the student lockdown permits enabling and disabling instructor-installed skills (§4).</span></li>
+      <li><span><b>Skill selection.</b> Determine which skill(s) to pre-install for the toggle-and-observe exercise (web search assumed).</span></li>
+      <li><span><b>Image-model claims.</b> Confirm current ChatGPT Images 2.0 capabilities, access terms, and standing, which post-date the author's training data (§6).</span></li>
+      <li><span><b>Deployment.</b> NanoClaw classroom or the standalone Claude-Project fallback; affects only setup, not the core materials (§8).</span></li>
+      <li><span><b>Ownership &amp; review policy.</b> Confirm the instance owner and the review rules for security-relevant changes (§7).</span></li>
+      <li><span><b>Applied-unit specifics.</b> For the example unit: JPEG export settings, the rubric, and lab timing (§9).</span></li>
     </ol>
   </div>
 </section>
 
-<!-- REFERENCES -->
+<!-- 11. REFERENCES -->
 <section id="references">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">§9</span><div class="eyebrow">Sources</div></div>
+    <div class="sec-head"><span class="sec-no">§11</span><div class="eyebrow">Sources</div></div>
     <h2>References</h2>
     <div class="refs">
       <ol>
@@ -547,7 +551,7 @@
 </section>
 
 <div class="foot wrap">
-  Instructional design brief &middot; 2026-06-06 &middot; companion to <span class="mono">2026-06-06-build-your-own-critique-agent-design.md</span>
+  Platform capability brief &middot; 2026-06-08 &middot; companion to <span class="mono">design-spec.md</span>
 </div>
 
 </body>
