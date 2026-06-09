@@ -497,16 +497,11 @@ function renderDefaultParticipantForm(body, data) {
     <p class="muted small" id="dp-apply-result" hidden></p>
   `;
 
-  // Edit template: click the Persona tab button so the owner is taken to the
-  // persona editor. The owner's current session agent is the template when their
-  // assigned agent group is _default_participant; if not, a note is shown.
+  // Edit template: navigate to the playground with ?seat=<templateFolder> so
+  // the owner's session loads the template agent. The entire editor
+  // (persona/skills/models/agents tabs) then operates on that agent group.
   body.querySelector('#dp-edit-btn').addEventListener('click', () => {
-    const personaBtn = document.querySelector('[data-tab="persona"]');
-    if (personaBtn) {
-      personaBtn.click();
-    } else {
-      alert(`Open the Persona tab to edit the template agent (folder: ${templateFolder}).`);
-    }
+    window.location.href = '/playground/?seat=' + encodeURIComponent(templateFolder);
   });
 
   // Save as default
