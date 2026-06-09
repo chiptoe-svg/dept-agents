@@ -151,20 +151,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (57 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (58 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
  M config/playground-seats.json
-M  state.md
+M  src/channels/playground/api/direct-chat.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+e1e3f66 docs(state): record temporary no-auth campus demo mode + revert steps
 51d2ec5 docs(state): default-participant template deployed + live-verified
 209ef62 Merge default-participant-template: owner-defined Participant default + scenario-aware provisioning
 013409f docs(state): record default participant template feature + config-reversibility follow-up
@@ -179,9 +180,8 @@ c4e3bd0 fix(default): write meta for apply-to-all restore points so they're load
 825548f fix(provision): zero-pad nextFolderForRole to match existing _NN convention
 fb91e89 feat(provision): provisionMember reads default slot; drop owner-agent skill inheritance
 31e267d feat(default): default-participant slot module
-3da9b34 feat(provision): scenario-aware nextFolderForRole
 ```
 
 ### Last refresh
 
-2026-06-09T17:32:13Z
+2026-06-09T18:07:00Z
