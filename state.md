@@ -135,17 +135,13 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `scenario-contract-wiring`
-- **Last tag:** `phase-c-complete-2026-05-28` (27 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (28 commits ahead)
 
 ### Working tree
 
 ```
 ## scenario-contract-wiring
-D  src/class-pair-greeting.ts
-M  src/index.ts
-M  src/scenarios/classroom/index.ts
-D  src/scenarios/classroom/pair-instructor.ts
-D  src/scenarios/classroom/pair-ta.ts
+M  src/class-student-provision.ts
 ?? .codegraph/
 ?? docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
 ```
@@ -153,6 +149,7 @@ D  src/scenarios/classroom/pair-ta.ts
 ### Recent commits (last 15)
 
 ```
+61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
 d4052dc feat(scenarios): generic contract-driven pair consumer
 7606cf0 feat(scenarios): add memberName() to the scenario contract
 52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
@@ -167,9 +164,8 @@ dce8da2 refactor(scenarios): group-agent platform + scenario profiles (Phase 1)
 9dd7feb refactor(controlled-access): rename credential/auth layer student→user (Phase 1, slice 1)
 9d90083 docs: record trunk+branch decision + classroom pilot status
 bde2813 docs(plan): Phase 0 findings — validate controlled-access layer vs 3 consumers
-9b20fdd docs(plan): reframe classroom extraction as controlled-access core
 ```
 
 ### Last refresh
 
-2026-06-09T04:06:39Z
+2026-06-09T04:09:12Z
