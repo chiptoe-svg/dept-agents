@@ -148,19 +148,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (39 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (40 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-A  docs/superpowers/specs/2026-06-09-default-participant-template-design.md
+## main...origin/main [ahead 4]
+A  docs/superpowers/plans/2026-06-09-default-participant-template.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+6b40f99 docs(spec): default participant template + scenario-aware provisioning design
 fc94b18 docs(state): point port section at canonical ~/.dev-ports.yaml registry
 1f2d4ad docs(state): webhook moved to 3003; :3020 overlap resolved
 5f4f851 docs(state): document two-install separation + ncl/port footguns
@@ -175,9 +176,8 @@ d4052dc feat(scenarios): generic contract-driven pair consumer
 da76693 docs(critique-agent): drop platform clause from lede; number capability cards 01-08
 1becea9 docs(critique-agent): reframe brief around platform capabilities (tool-first), demote assignment to an applied example
 c0b785f docs(critique-agent): move hardware-feasibility note below the IC-Light interface mockup
-52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
 ```
 
 ### Last refresh
 
-2026-06-09T13:05:35Z
+2026-06-09T14:18:59Z
