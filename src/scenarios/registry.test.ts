@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   _resetScenariosForTest,
+  folderPrefix,
   getActiveScenario,
   memberName,
+  onMemberProvisioned,
   registerScenario,
   roleForFolder,
   roleProfile,
@@ -24,6 +26,7 @@ function fakeScenario(name: string): Scenario {
     },
     roleForFolder: (folder) => (folder.startsWith('boss_') ? 'owner' : folder.startsWith('member_') ? 'user' : null),
     memberName: (folder) => (folder === 'boss_01' ? 'Ada' : folder === 'member_07' ? 'Grace' : null),
+    folderPrefix: { owner: 'boss_', user: 'member_' },
   };
 }
 
@@ -73,5 +76,17 @@ describe('scenario registry', () => {
 
   it('returns null member name when no scenario is registered', () => {
     expect(memberName('boss_01')).toBeNull();
+  });
+
+  it('exposes the active scenario folder prefix per role', () => {
+    registerScenario(fakeScenario('photo_lab'));
+    expect(folderPrefix('user')).toBe('member_');
+    expect(folderPrefix('owner')).toBe('boss_');
+    expect(folderPrefix('it_admin')).toBeNull(); // not in this scenario
+  });
+
+  it('onMemberProvisioned is a safe no-op when the scenario omits it', () => {
+    registerScenario(fakeScenario('photo_lab'));
+    expect(() => onMemberProvisioned('member_01', { name: 'A', email: 'a@b.c', role: 'user' })).not.toThrow();
   });
 });

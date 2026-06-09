@@ -23,6 +23,7 @@ function stubScenario(): Scenario {
     roleForFolder: (f) =>
       f.startsWith('boss_') ? 'owner' : f.startsWith('lead_') ? 'assistant' : f.startsWith('member_') ? 'user' : null,
     memberName: (f) => `Name(${f})`,
+    folderPrefix: { owner: 'boss_', assistant: 'lead_', user: 'member_' },
   };
 }
 

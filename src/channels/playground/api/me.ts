@@ -51,6 +51,18 @@ export function handleGetMyAgent(session: PlaygroundSession, seatFolder?: string
       }
     }
   }
+  // Owner may load any agent group for editing (e.g. the default-participant template) via ?seat.
+  if (seatFolder && session.userId && isOwner(session.userId)) {
+    const group = getAgentGroupByFolder(seatFolder);
+    if (!group) return { status: 404, body: { error: 'seat agent group not found' } };
+    return {
+      status: 200,
+      body: {
+        user: { id: session.userId, role: 'owner' },
+        agent: { id: group.id, name: group.name, folder: group.folder },
+      },
+    };
+  }
   if (session.bypassFolder) {
     const group = getAgentGroupByFolder(session.bypassFolder);
     if (!group) return { status: 404, body: { error: 'seat agent group not found' } };
