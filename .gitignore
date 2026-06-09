@@ -66,3 +66,6 @@ scripts/switch-provider.ts
 class-roster.csv
 config/class-controls.json
 .superpowers/
+
+# Ephemeral scheduler lock — runtime state, not source
+.claude/scheduled_tasks.lock

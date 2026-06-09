@@ -73,7 +73,7 @@ import './modules/index.js';
 // registers against (codex auth resolver, container env contributor,
 // playground draft gate, pair consumer, telegram command).
 // Platform pieces the classroom scenario builds on (shared by all scenarios):
-import './class-pair-greeting.js'; // base pairing mechanism
+import './scenario-pairing.js'; // contract-driven pairing (role detection, grants, greeting)
 import './class-playground-gate.js'; // member policy
 import './class-container-env.js'; // member git identity
 import './class-login-tokens.js'; // onboarding
