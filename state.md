@@ -135,18 +135,15 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `scenario-contract-wiring`
-- **Last tag:** `phase-c-complete-2026-05-28` (25 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (27 commits ahead)
 
 ### Working tree
 
 ```
 ## scenario-contract-wiring
-M  src/scenarios/classroom/scenario.ts
-M  src/scenarios/industryai_seminar/scenario.ts
-M  src/scenarios/registry.test.ts
-M  src/scenarios/registry.ts
-M  src/scenarios/types.ts
- M state.md
+M  src/channels/pair-consumer-registry.ts
+M  src/modules/permissions/db/user-roles.ts
+M  src/scenario-pairing.test.ts
 ?? .codegraph/
 ?? docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
 ```
@@ -154,6 +151,8 @@ M  src/scenarios/types.ts
 ### Recent commits (last 15)
 
 ```
+27dcb08 feat(scenarios): generic contract-driven pair consumer
+7606cf0 feat(scenarios): add memberName() to the scenario contract
 52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
 985ef7d docs(critique-agent): remove personal references; serve brief via GitHub Pages
 3dcd662 feat(scenarios): canonical-role scenario contract + classroom reference (Phase 2 increment 1)
@@ -167,10 +166,8 @@ dce8da2 refactor(scenarios): group-agent platform + scenario profiles (Phase 1)
 9d90083 docs: record trunk+branch decision + classroom pilot status
 bde2813 docs(plan): Phase 0 findings — validate controlled-access layer vs 3 consumers
 9b20fdd docs(plan): reframe classroom extraction as controlled-access core
-d387304 docs: behind-the-scenes architecture HTML + trunk-extraction plan
-bd823d2 harden(playground+proxy): pre-launch security & stability fixes
 ```
 
 ### Last refresh
 
-2026-06-09T03:48:38Z
+2026-06-09T04:04:14Z
