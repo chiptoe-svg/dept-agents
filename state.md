@@ -138,20 +138,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `scenario-contract-wiring`
-- **Last tag:** `phase-c-complete-2026-05-28` (30 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (31 commits ahead)
 
 ### Working tree
 
 ```
 ## scenario-contract-wiring
-M  state.md
+A  docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
 ?? .codegraph/
-?? docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+74ecafd docs(state): record Phase 2 wiring landed (scenario contract now consumed)
 8e894cd test(scenarios): industryai_seminar pairing proves ACTIVE_SCENARIO drives behavior
 d7503e5 feat(scenarios): provision persona from the active scenario's user role
 61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
@@ -166,9 +166,8 @@ d4052dc feat(scenarios): generic contract-driven pair consumer
 dce8da2 refactor(scenarios): group-agent platform + scenario profiles (Phase 1)
 980091d docs(plan): Phase 2 partition manifest — classify every file L/P/G/T
 91ece76 fix(controlled-access): make provider-creds dir migration merge-based
-9dd7feb refactor(controlled-access): rename credential/auth layer student→user (Phase 1, slice 1)
 ```
 
 ### Last refresh
 
-2026-06-09T04:15:16Z
+2026-06-09T04:15:28Z
