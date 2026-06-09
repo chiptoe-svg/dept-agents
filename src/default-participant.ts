@@ -25,7 +25,7 @@ import {
   updateContainerConfigScalars,
 } from './db/container-configs.js';
 import { roleForFolder, roleProfile } from './scenarios/registry.js';
-import { copyDirRecursive, saveEntry } from './channels/playground/api/agent-library.js';
+import { copyDirRecursive, saveEntry, writeMeta } from './channels/playground/api/agent-library.js';
 import {
   slotDir,
   readSlotConfig,
@@ -129,6 +129,13 @@ export function applyDefaultToAllParticipants(): { affected: number; restorePoin
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const slug = `pre-default-reset-${ts}-${g.folder}`;
     saveEntry(g.folder, slug, true); // restore point (incl. persona)
+    const nowIso = new Date().toISOString();
+    writeMeta(g.folder, slug, {
+      name: 'Before default reset',
+      description: `Snapshot taken automatically before the owner applied the default participant template (${nowIso}). Load this to restore your previous agent.`,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
     restorePoints.push(slug);
 
     const gdir = path.join(GROUPS_DIR, g.folder);

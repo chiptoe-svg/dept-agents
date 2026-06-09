@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { listLibrary } from './channels/playground/api/agent-library.js';
 
 vi.mock('./config.js', async () => {
   const actual = await vi.importActual<typeof import('./config.js')>('./config.js');
@@ -63,6 +64,8 @@ describe('applyDefaultToAllParticipants', () => {
     expect(res.restorePoints).toHaveLength(1);
     expect(res.restorePoints[0]).toMatch(/^pre-default-reset-/);
     expect(fs.existsSync(path.join(GROUPS, 'user_01', 'library', res.restorePoints[0]!))).toBe(true);
+    const lib = listLibrary('user_01');
+    expect(lib.some((e) => e.slug === res.restorePoints[0])).toBe(true); // restore point is UI-visible (has meta)
   });
 
   it('throws when no default saved', () => {
