@@ -141,9 +141,11 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ```
 ## scenario-contract-wiring
-M  src/channels/pair-consumer-registry.ts
-M  src/modules/permissions/db/user-roles.ts
-M  src/scenario-pairing.test.ts
+D  src/class-pair-greeting.ts
+M  src/index.ts
+M  src/scenarios/classroom/index.ts
+D  src/scenarios/classroom/pair-instructor.ts
+D  src/scenarios/classroom/pair-ta.ts
 ?? .codegraph/
 ?? docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
 ```
@@ -151,7 +153,7 @@ M  src/scenario-pairing.test.ts
 ### Recent commits (last 15)
 
 ```
-27dcb08 feat(scenarios): generic contract-driven pair consumer
+d4052dc feat(scenarios): generic contract-driven pair consumer
 7606cf0 feat(scenarios): add memberName() to the scenario contract
 52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
 985ef7d docs(critique-agent): remove personal references; serve brief via GitHub Pages
@@ -170,4 +172,4 @@ bde2813 docs(plan): Phase 0 findings — validate controlled-access layer vs 3 c
 
 ### Last refresh
 
-2026-06-09T04:04:14Z
+2026-06-09T04:06:39Z
