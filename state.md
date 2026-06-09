@@ -148,20 +148,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `default-participant-template`
-- **Last tag:** `phase-c-complete-2026-05-28` (42 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (43 commits ahead)
 
 ### Working tree
 
 ```
 ## default-participant-template
-M  src/class-student-provision.test.ts
-M  src/class-student-provision.ts
+A  src/default-participant-slot.test.ts
+A  src/default-participant-slot.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+3da9b34 feat(provision): scenario-aware nextFolderForRole
 85f69cc feat(scenarios): per-role folderPrefix + onMemberProvisioned hook
 fa0dd0a docs(plan): default participant template implementation plan
 6b40f99 docs(spec): default participant template + scenario-aware provisioning design
@@ -176,9 +177,8 @@ d7503e5 feat(scenarios): provision persona from the active scenario's user role
 61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
 d4052dc feat(scenarios): generic contract-driven pair consumer
 7606cf0 feat(scenarios): add memberName() to the scenario contract
-da76693 docs(critique-agent): drop platform clause from lede; number capability cards 01-08
 ```
 
 ### Last refresh
 
-2026-06-09T14:28:02Z
+2026-06-09T14:30:53Z
