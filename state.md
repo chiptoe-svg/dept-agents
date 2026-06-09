@@ -148,20 +148,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `default-participant-template`
-- **Last tag:** `phase-c-complete-2026-05-28` (43 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (44 commits ahead)
 
 ### Working tree
 
 ```
 ## default-participant-template
-A  src/default-participant-slot.test.ts
-A  src/default-participant-slot.ts
+M  src/class-student-provision.test.ts
+M  src/class-student-provision.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+31e267d feat(default): default-participant slot module
 3da9b34 feat(provision): scenario-aware nextFolderForRole
 85f69cc feat(scenarios): per-role folderPrefix + onMemberProvisioned hook
 fa0dd0a docs(plan): default participant template implementation plan
@@ -176,9 +177,8 @@ c98197f Merge scenario-contract-wiring: platform consumes the scenario contract 
 d7503e5 feat(scenarios): provision persona from the active scenario's user role
 61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
 d4052dc feat(scenarios): generic contract-driven pair consumer
-7606cf0 feat(scenarios): add memberName() to the scenario contract
 ```
 
 ### Last refresh
 
-2026-06-09T14:30:53Z
+2026-06-09T14:38:00Z

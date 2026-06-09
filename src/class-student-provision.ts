@@ -29,9 +29,11 @@ import { collectSkeletonMounts } from './skeleton-mount-registry.js';
 // local use (provisionStudent) and re-exported for back-compat with existing
 // importers (scripts/class-skeleton, scripts/refresh-student-personas).
 import { STUDENT_PERSONA } from './scenarios/classroom/personas.js';
-import { folderPrefix, roleProfile } from './scenarios/registry.js';
+import { folderPrefix, onMemberProvisioned, roleProfile } from './scenarios/registry.js';
 import type { CanonicalRole } from './scenarios/types.js';
 import type { AgentGroup } from './types.js';
+import { slotExists, slotDir, readSlotConfig } from './default-participant-slot.js';
+import { copyDirRecursive } from './channels/playground/api/agent-library.js';
 
 export { STUDENT_PERSONA };
 
@@ -221,34 +223,30 @@ export interface ProvisionStudentResult {
 }
 
 /**
- * Provision one new student — agent_groups row, the student's `users`
- * row, on-disk folder scaffold, `container.json`, `classroom_roster`
- * row, and `agent_group_members` row. Writes exactly one
- * `container.json` (the new folder's), so unlike a re-run of
- * `class-skeleton.ts` it never disturbs existing students.
+ * Generic member provisioning — allocates a folder via the active scenario's
+ * prefix for `role`, copies files from the default-participant slot when one
+ * exists (else falls back to the scenario's roleProfile persona + fixed
+ * defaults), writes DB rows, and calls the scenario's `onMemberProvisioned`
+ * hook.
  *
  * All four DB rows go in one transaction — `agent_group_members.user_id`
  * has a FK to `users(id)`, so the `users` row must land first, and a
  * failure must not leave a half-provisioned agent group behind. If the
  * on-disk scaffold then fails, the committed rows are rolled back too,
- * so a retry reissues the same `student_NN` rather than orphaning it.
+ * so a retry reissues the same folder rather than orphaning it.
  *
  * The caller is responsible for rejecting duplicate emails — this
  * upserts the roster row unconditionally.
  */
-export function provisionStudent(opts: {
+export function provisionMember(opts: {
+  role: CanonicalRole;
   name: string;
   email: string;
   addedBy: string | null;
 }): ProvisionStudentResult {
-  const folder = nextStudentFolder();
+  const folder = nextFolderForRole(opts.role);
   const userId = `class:${folder}`;
   const now = new Date().toISOString();
-  // Defaults are operator-overridable via env so a classroom can spin up
-  // claude/pi/etc. students without editing source. Pre-fix these were hardcoded
-  // to 'codex' / 'gpt-5.4-mini' — every provisioned student came up as codex
-  // regardless of intent. Backward-compatible defaults preserved.
-  const studentModel = process.env.NANOCLAW_STUDENT_MODEL || 'gpt-5.4-mini';
   const group: AgentGroup = {
     id: `ag_${crypto.randomBytes(6).toString('hex')}`,
     name: opts.name,
@@ -258,7 +256,7 @@ export function provisionStudent(opts: {
   };
 
   // 1. All DB rows in one transaction. Order matters: the agent group
-  //    and the student's users row must exist before the membership
+  //    and the member's users row must exist before the membership
   //    row (which FKs both). A throw here commits nothing, so a retry
   //    starts clean instead of tripping the duplicate-email guard.
   getDb().transaction(() => {
@@ -273,14 +271,24 @@ export function provisionStudent(opts: {
     const groupDir = path.join(GROUPS_DIR, folder);
     fs.mkdirSync(groupDir, { recursive: true });
     const personaPath = path.join(groupDir, 'CLAUDE.local.md');
-    // Persona comes from the active scenario's `user` role (canonical role,
-    // NOT roleForFolder(folder) — the folder isn't in class-config.json yet at
-    // provision time). Falls back to STUDENT_PERSONA when no scenario is
-    // registered (e.g. unit tests).
-    const persona = roleProfile('user')?.persona(opts.name) ?? STUDENT_PERSONA(opts.name);
-    if (!fs.existsSync(personaPath)) fs.writeFileSync(personaPath, persona);
     const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
-    if (!fs.existsSync(claudeMdPath)) fs.writeFileSync(claudeMdPath, STUDENT_CLAUDE_MD);
+
+    // 2a. Persona + CLAUDE.md: slot takes precedence over scenario profile.
+    if (slotExists()) {
+      const sd = slotDir();
+      if (fs.existsSync(path.join(sd, 'CLAUDE.local.md')) && !fs.existsSync(personaPath))
+        fs.copyFileSync(path.join(sd, 'CLAUDE.local.md'), personaPath);
+      if (fs.existsSync(path.join(sd, 'CLAUDE.md')) && !fs.existsSync(claudeMdPath))
+        fs.copyFileSync(path.join(sd, 'CLAUDE.md'), claudeMdPath);
+      const slotCustom = path.join(sd, 'custom-skills');
+      if (fs.existsSync(slotCustom)) copyDirRecursive(slotCustom, path.join(groupDir, 'custom-skills'));
+    } else {
+      // Persona comes from the active scenario's role profile. Falls back to
+      // STUDENT_PERSONA when no scenario is registered (e.g. unit tests).
+      if (!fs.existsSync(personaPath))
+        fs.writeFileSync(personaPath, roleProfile(opts.role)?.persona(opts.name) ?? STUDENT_PERSONA(opts.name));
+      if (!fs.existsSync(claudeMdPath)) fs.writeFileSync(claudeMdPath, STUDENT_CLAUDE_MD);
+    }
 
     // 3. .class-shared.md symlink → the instructor-editable shared stance.
     const classSharedSrc = ensureClassSharedTarget();
@@ -293,48 +301,36 @@ export function provisionStudent(opts: {
       }
     }
 
-    // 4. container.json — only this folder's. kb/wiki from class-config.json.
-    // collectSkeletonMounts contributes Drive mounts when /add-classroom-gws
-    // is installed (empty otherwise — no extensions barrel imported here).
-    const classConfig = readClassConfig();
-    const extraMounts = collectSkeletonMounts({
-      studentFolder: folder,
-      studentName: opts.name,
-      classConfig,
-      argv: [],
-    });
-    const containerConfig = makeContainerConfig({
-      kb: (classConfig.kb as string | null) ?? null,
-      wiki: (classConfig.wiki as string | null) ?? null,
-      folder,
-      extraMounts,
-      isStudent: true,
-    });
+    // 4. container_configs row — slot fields take precedence over env defaults.
+    //    Drops inheritedSkills() coupling: no-slot path uses 'all', not owner's skills.
+    const sc = slotExists() ? readSlotConfig() : null;
     createContainerConfig({
       agent_group_id: group.id,
-      provider: containerConfig.provider ?? null,
-      model: studentModel,
-      effort: null,
+      provider: sc?.provider ?? (process.env.NANOCLAW_STUDENT_PROVIDER || 'pi'),
+      model: sc?.model ?? (process.env.NANOCLAW_STUDENT_MODEL || 'gpt-5.4-mini'),
+      model_provider: sc?.model_provider ?? null,
+      effort: sc?.effort ?? null,
       image_tag: null,
-      assistant_name: containerConfig.assistantName ?? null,
-      max_messages_per_prompt: null,
-      skills: JSON.stringify(containerConfig.skills),
-      mcp_servers: JSON.stringify(containerConfig.mcpServers),
-      packages_apt: JSON.stringify(containerConfig.packages.apt),
-      packages_npm: JSON.stringify(containerConfig.packages.npm),
-      additional_mounts: JSON.stringify(containerConfig.additionalMounts),
+      assistant_name: sc?.assistant_name ?? null,
+      max_messages_per_prompt: sc?.max_messages_per_prompt ?? null,
+      skills: JSON.stringify(sc?.skills ?? 'all'),
+      mcp_servers: JSON.stringify(sc?.mcp_servers ?? {}),
+      packages_apt: JSON.stringify(sc?.packages_apt ?? []),
+      packages_npm: JSON.stringify(sc?.packages_npm ?? []),
+      additional_mounts: JSON.stringify(sc?.additional_mounts ?? []),
       cli_scope: 'group',
-      env: JSON.stringify(containerConfig.env ?? {}),
-      allowed_models: JSON.stringify(containerConfig.allowedModels ?? []),
-      model_provider: 'openai-codex',
+      env: JSON.stringify(sc?.env ?? {}),
+      allowed_models: JSON.stringify(sc?.allowed_models ?? []),
       updated_at: new Date().toISOString(),
     });
     materializeContainerJson(group.id);
+
+    // 5. Post-provision hook (no-op when scenario omits it).
+    onMemberProvisioned(folder, { name: opts.name, email: opts.email, role: opts.role });
   } catch (err) {
     // The DB rows are committed but the on-disk scaffold is not. Roll the
-    // rows back so a retry reissues this same student_NN instead of
-    // orphaning it (nextStudentFolder() scans agent_groups). Delete order
-    // respects FKs: membership/roster reference users + agent_groups.
+    // rows back so a retry reissues this same folder instead of orphaning it.
+    // Delete order respects FKs: membership/roster reference users + agent_groups.
     try {
       getDb().transaction(() => {
         removeMember(userId, group.id);
@@ -343,10 +339,23 @@ export function provisionStudent(opts: {
         deleteAgentGroup(group.id);
       })();
     } catch (rollbackErr) {
-      console.error('  [error] provisionStudent: DB rollback after FS failure also failed:', rollbackErr);
+      console.error('  [error] provisionMember: DB rollback after FS failure also failed:', rollbackErr);
     }
     throw err;
   }
 
   return { folder, agentGroupId: group.id, userId, name: opts.name, email: opts.email };
+}
+
+/**
+ * Provision one new student. Thin wrapper around `provisionMember` that
+ * fixes `role` to `'user'` so existing callers (students-admin.ts) need
+ * no changes.
+ */
+export function provisionStudent(opts: {
+  name: string;
+  email: string;
+  addedBy: string | null;
+}): ProvisionStudentResult {
+  return provisionMember({ role: 'user', ...opts });
 }
