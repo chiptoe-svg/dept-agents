@@ -4,10 +4,11 @@ import path from 'path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { nextStudentFolder } from './class-student-provision.js';
+import { nextFolderForRole, nextStudentFolder } from './class-student-provision.js';
 import { createAgentGroup } from './db/agent-groups.js';
 import { closeDb, initTestDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
+import { _resetScenariosForTest, registerScenario } from './scenarios/registry.js';
 
 function mkGroup(folder: string): void {
   createAgentGroup({
@@ -48,6 +49,31 @@ describe('nextStudentFolder', () => {
   it('zero-pads to two digits', () => {
     mkGroup('student_09');
     expect(nextStudentFolder()).toBe('student_10');
+  });
+});
+
+describe('nextFolderForRole', () => {
+  beforeEach(() => {
+    runMigrations(initTestDb());
+    _resetScenariosForTest();
+    registerScenario({
+      name: 'stub',
+      roles: { user: { label: 'P', permission: 'member', persona: (n) => n, greeting: (n) => n } },
+      roleForFolder: (f) => (f.startsWith('user_') ? 'user' : null),
+      memberName: () => null,
+      folderPrefix: { user: 'user_' },
+    });
+  });
+  afterEach(() => {
+    _resetScenariosForTest();
+    closeDb();
+  });
+
+  it('allocates the next folder using the active scenario prefix', () => {
+    expect(nextFolderForRole('user')).toBe('user_1');
+    createAgentGroup({ id: 'ag_u1', name: 'x', folder: 'user_1', agent_provider: 'pi', created_at: '2026-01-01' });
+    createAgentGroup({ id: 'ag_u4', name: 'y', folder: 'user_4', agent_provider: 'pi', created_at: '2026-01-01' });
+    expect(nextFolderForRole('user')).toBe('user_5');
   });
 });
 

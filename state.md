@@ -148,25 +148,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `default-participant-template`
-- **Last tag:** `phase-c-complete-2026-05-28` (41 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (42 commits ahead)
 
 ### Working tree
 
 ```
 ## default-participant-template
+M  src/class-student-provision.test.ts
 M  src/class-student-provision.ts
-M  src/scenario-pairing.test.ts
-M  src/scenarios/classroom/scenario.ts
-M  src/scenarios/industryai_seminar/scenario.ts
-M  src/scenarios/registry.test.ts
-M  src/scenarios/registry.ts
-M  src/scenarios/types.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+85f69cc feat(scenarios): per-role folderPrefix + onMemberProvisioned hook
 fa0dd0a docs(plan): default participant template implementation plan
 6b40f99 docs(spec): default participant template + scenario-aware provisioning design
 fc94b18 docs(state): point port section at canonical ~/.dev-ports.yaml registry
@@ -181,9 +177,8 @@ d7503e5 feat(scenarios): provision persona from the active scenario's user role
 d4052dc feat(scenarios): generic contract-driven pair consumer
 7606cf0 feat(scenarios): add memberName() to the scenario contract
 da76693 docs(critique-agent): drop platform clause from lede; number capability cards 01-08
-1becea9 docs(critique-agent): reframe brief around platform capabilities (tool-first), demote assignment to an applied example
 ```
 
 ### Last refresh
 
-2026-06-09T14:24:06Z
+2026-06-09T14:28:02Z

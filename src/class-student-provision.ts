@@ -29,7 +29,8 @@ import { collectSkeletonMounts } from './skeleton-mount-registry.js';
 // local use (provisionStudent) and re-exported for back-compat with existing
 // importers (scripts/class-skeleton, scripts/refresh-student-personas).
 import { STUDENT_PERSONA } from './scenarios/classroom/personas.js';
-import { roleProfile } from './scenarios/registry.js';
+import { folderPrefix, roleProfile } from './scenarios/registry.js';
+import type { CanonicalRole } from './scenarios/types.js';
 import type { AgentGroup } from './types.js';
 
 export { STUDENT_PERSONA };
@@ -175,6 +176,20 @@ export function nextStudentFolder(): string {
     if (m) max = Math.max(max, parseInt(m[1]!, 10));
   }
   return studentFolder(max + 1);
+}
+
+/** Lowest unused `<prefix><n>` folder for `role` under the active scenario. */
+export function nextFolderForRole(role: CanonicalRole): string {
+  const prefix = folderPrefix(role);
+  if (!prefix) throw new Error(`Active scenario has no folder prefix for role "${role}"`);
+  const re = new RegExp(`^${prefix}(\\d+)$`);
+  const rows = getDb().prepare('SELECT folder FROM agent_groups').all() as { folder: string }[];
+  let max = 0;
+  for (const r of rows) {
+    const m = re.exec(r.folder);
+    if (m) max = Math.max(max, parseInt(m[1]!, 10));
+  }
+  return `${prefix}${max + 1}`;
 }
 
 function readClassConfig(): Record<string, unknown> {
