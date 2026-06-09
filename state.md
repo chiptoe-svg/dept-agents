@@ -41,6 +41,7 @@ Append-only. Drained by the human, not by `refresh-state`.
 
 - **Wire the platform to the scenario contract (Phase 2 proper).** — DONE 2026-06-09 (branch `scenario-contract-wiring`, commits `7606cf0`..`8e894cd`; plan `docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md`). Generic contract-driven pair consumer + provisioning persona via `roleProfile('user')`; three classroom consumers deleted; `memberName()` added; verified by an `industryai_seminar` integration test. Turned out narrower than the ~30-file estimate — Phase 1 had already moved the pair consumers into the profile.
 - **Phase 4 (later):** retire the `classroom` sibling branch + `/add-classroom*` skills (superseded by in-tree scenarios).
+- **Default-participant apply-to-all: container-config reversibility gap.** The reversible restore point that apply-to-all writes (`pre-default-reset-*` in each Participant's library) reverts persona/CLAUDE.md/custom-skills but NOT `container_configs` (model/provider/skills) — because the agent-library `loadEntry` restores files to disk while the container re-materializes `container.json` from the DB on spawn, and `loadEntry` never writes back to `container_configs`. This is a PRE-EXISTING library/DB-sync limitation (affects all library loads, not just this feature); the restore-point copy is worded to say only persona/skills are reverted. Fix later by reconciling `container.json` → `container_configs` on library load (or in apply-to-all). Introduced/surfaced by the default-participant template feature (commits `85f69cc`..`b3bbfb0`).
 
 ## Invariants (don't break)
 
@@ -107,6 +108,7 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-06-09** — **Default Participant Template shipped** (branch `default-participant-template`, `85f69cc`..`b3bbfb0`; spec/plan `docs/superpowers/{specs,plans}/2026-06-09-default-participant-template.*`). The owner configures a dedicated flagged template agent `_default_participant` via the existing playground editor (reached through an owner-only `?seat=` load in `me.ts`), then **Save as default** snapshots it to the slot `data/config/default-participant/`. Provisioning (`provisionMember`, generalizing `provisionStudent`) reads the slot for new Participants and is now **scenario-aware** (folder prefix from the scenario contract's new `folderPrefix`; `student_NN` classroom / `user_NN` seminar, zero-padded; classroom roster append moved to the scenario `onMemberProvisioned` hook). **`inheritedSkills()` owner-agent coupling removed from provisioning** (the thing the owner wanted gone; no-slot fallback = skills `'all'`). **Apply default to all Participants** = owner-only, full replace of `user`-role groups with auto-backup (a UI-loadable `pre-default-reset-*` library entry) + container restart. Auth: GET status owner-or-admin; **save + apply-all owner-only** (tightened from the spec's `isOwnerOrAdmin` to match the destructive `handleAddStudent` precedent + the owner-only intent). Known limitation tracked in Open follow-ups (config not reverted by restore-point load — pre-existing library/DB-sync gap). 1131 tests green; final holistic review APPROVED-WITH-NOTES (notes addressed). NOT yet deployed to the live seminar service (build+restart pending owner go-ahead).
 - **2026-06-09** — **Phase 2 wiring landed** (branch `scenario-contract-wiring`, `7606cf0`..`8e894cd`): platform pairing is now ONE generic contract-driven consumer (`src/scenario-pairing.ts`) reading `roleForFolder`/`roleProfile`/new `memberName`; the three classroom pair consumers (`class-pair-greeting`/`pair-instructor`/`pair-ta`) deleted; provisioning persona from `roleProfile('user')`. Why: `ACTIVE_SCENARIO` must actually drive behavior, not just register a façade — proven by an `industryai_seminar` integration test (Participant greeting, no admin). Decisions: Option A (one generic consumer, not per-role) + `memberName(folder)` added to the contract (classroom=roster, seminar=agent-group name) + scoped-admin scope derived from `roleForFolder` (user/assistant), no per-scenario hook. Metadata keys (`student_*`) kept; renaming deferred. NOTE: a mid-implementation attempt to modify `grantRole`/pair-consumer-registry to pass a test was caught in review and reverted — the fixes belonged in the test (create the FK user row; don't reset import-registered consumers). 1104 tests green.
 - **2026-06-08** — **Phase 2 resumed (un-deferred): canonical-role scenario contract shipped** (`3dcd662`) + **second scenario `industryai_seminar` added with `ACTIVE_SCENARIO` gating** (`52dc82a`). Why: the prior same-day entry deferred Phase 2 until a 2nd scenario forced the abstraction against real, different roles — `industryai_seminar` (Organizer/IT Admin/Facilitator/Participant, all four canonical roles) is that forcing function, so the contract (`src/scenarios/types.ts`: fixed `owner/it_admin/assistant/user` roles, each skinned with label+permission+persona+greeting+`roleForFolder`) was defined now rather than against classroom alone. Contract + registry are tested; **platform consumption is deferred to the next step** (no platform file calls `roleForFolder`/`roleProfile` yet — see Current arc + Open follow-ups). Classroom profile delegates to existing `classRoleForFolder` so it stays green.
 - **2026-06-08** — Reframed as a **group-agent platform with in-tree scenario profiles** (one codebase, `src/scenarios/<name>/`, config-selected), superseding the trunk+branch-install model (too much ceremony) and the classroom-app model (too narrow). Phase 1 done (commit `dce8da2`): `src/scenarios/classroom/` scaffolded; teaching-specific pair consumers moved there; platform pieces stay in `src/`. **Phase 2 (abstract role detection + personas out of the platform via a scenario hook) deliberately DEFERRED** — doing it with only classroom as a consumer would design the interface against one scenario (violates Phase 0 finding + YAGNI). Driver: the 2nd scenario (department) will force the abstraction with real, different roles. Plan: `plans/group-agent-platform.md`.
@@ -148,20 +150,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `default-participant-template`
-- **Last tag:** `phase-c-complete-2026-05-28` (53 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (54 commits ahead)
 
 ### Working tree
 
 ```
 ## default-participant-template
-M  src/class-student-provision.ts
-M  src/default-participant.ts
+M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+b3bbfb0 chore(default): honest restore-point copy; drop orphaned readClassConfig; fix stale header
 4d2eace feat(default): Edit template opens the template agent via owner ?seat
 c91a7ce feat(default): owner Default Participant Template card
 2b7757c fix(default): restrict save + apply-all to owner-only (admins can read status only)
@@ -176,9 +178,8 @@ fb91e89 feat(provision): provisionMember reads default slot; drop owner-agent sk
 85f69cc feat(scenarios): per-role folderPrefix + onMemberProvisioned hook
 fa0dd0a docs(plan): default participant template implementation plan
 6b40f99 docs(spec): default participant template + scenario-aware provisioning design
-fc94b18 docs(state): point port section at canonical ~/.dev-ports.yaml registry
 ```
 
 ### Last refresh
 
-2026-06-09T15:23:00Z
+2026-06-09T15:28:17Z
