@@ -213,6 +213,30 @@ function loadModelDropdowns(el, folder) {
       });
       renderModels();
 
+      // Auto-sync: if the agent's STORED active model isn't a valid/visible
+      // option (e.g. a dead 'anthropic' with no creds, or a model hidden in the
+      // Models tab), the dropdown fell back to a default the agent isn't
+      // actually using — so the dropdown would SHOW one thing while the agent
+      // RUNS another. Push the displayed selection to the agent so "what's
+      // shown == what runs." Fires only on a real mismatch, so it self-heals
+      // once and is a no-op on every subsequent load.
+      {
+        const storedGroup = active
+          ? groupVisible.find((g) => g.id === active.modelProvider) ||
+            groupVisible.find((g) => (g.memberModelProviders || []).includes(active.modelProvider))
+          : null;
+        const storedModelVisible =
+          !!storedGroup && !!active && Array.from(modelSel.options).some((o) => o.value === active.model);
+        if (active && provSel.value && modelSel.value && (!storedGroup || !storedModelVisible)) {
+          fetch(`/api/drafts/${folder}/active-model`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ modelProvider: provSel.value, model: modelSel.value }),
+          }).catch(() => {});
+        }
+      }
+
       // Track last-confirmed model so a cancelled switch can revert the select.
       let lastModel = modelSel.value;
       modelSel.addEventListener('change', async () => {
