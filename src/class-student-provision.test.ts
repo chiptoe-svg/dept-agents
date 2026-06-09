@@ -71,10 +71,10 @@ describe('nextFolderForRole', () => {
   });
 
   it('allocates the next folder using the active scenario prefix', () => {
-    expect(nextFolderForRole('user')).toBe('user_1');
+    expect(nextFolderForRole('user')).toBe('user_01');
     createAgentGroup({ id: 'ag_u1', name: 'x', folder: 'user_1', agent_provider: 'pi', created_at: '2026-01-01' });
     createAgentGroup({ id: 'ag_u4', name: 'y', folder: 'user_4', agent_provider: 'pi', created_at: '2026-01-01' });
-    expect(nextFolderForRole('user')).toBe('user_5');
+    expect(nextFolderForRole('user')).toBe('user_05');
   });
 });
 
@@ -136,29 +136,28 @@ describe('provisionStudent', () => {
     const s = await setup();
     const result = s.provisionStudent({ name: 'Ada Lovelace', email: 'ada@example.edu', addedBy: null });
 
-    // Folder comes from nextFolderForRole('user') → 'student_1' (no zero-padding;
-    // nextStudentFolder() is legacy-only for the old nextStudentFolder tests).
-    expect(result.folder).toBe('student_1');
-    expect(result.userId).toBe('class:student_1');
-    expect(s.getAgentGroupByFolder('student_1')).toBeTruthy();
-    expect(s.getUser('class:student_1')).toBeTruthy();
-    expect(s.isMember('class:student_1', result.agentGroupId)).toBe(true);
-    expect(fs.existsSync(path.join(tmp, 'groups', 'student_1', 'CLAUDE.local.md'))).toBe(true);
-    expect(fs.existsSync(path.join(tmp, 'groups', 'student_1', 'container.json'))).toBe(true);
+    // Folder comes from nextFolderForRole('user') → 'student_01' (zero-padded to 2 digits).
+    expect(result.folder).toBe('student_01');
+    expect(result.userId).toBe('class:student_01');
+    expect(s.getAgentGroupByFolder('student_01')).toBeTruthy();
+    expect(s.getUser('class:student_01')).toBeTruthy();
+    expect(s.isMember('class:student_01', result.agentGroupId)).toBe(true);
+    expect(fs.existsSync(path.join(tmp, 'groups', 'student_01', 'CLAUDE.local.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, 'groups', 'student_01', 'container.json'))).toBe(true);
   });
 
   it('rolls the DB rows back when the on-disk scaffold fails', async () => {
     const s = await setup();
-    // Plant a regular file where the student_1 directory must go, so the
+    // Plant a regular file where the student_01 directory must go, so the
     // scaffold's mkdirSync throws after the DB transaction has committed.
     fs.mkdirSync(path.join(tmp, 'groups'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, 'groups', 'student_1'), 'not a directory');
+    fs.writeFileSync(path.join(tmp, 'groups', 'student_01'), 'not a directory');
 
     expect(() => s.provisionStudent({ name: 'Bad', email: 'bad@example.edu', addedBy: null })).toThrow();
 
     // The committed rows must be gone, so a retry reissues the same slot.
-    expect(s.getAgentGroupByFolder('student_1')).toBeUndefined();
-    expect(s.getUser('class:student_1')).toBeUndefined();
+    expect(s.getAgentGroupByFolder('student_01')).toBeUndefined();
+    expect(s.getUser('class:student_01')).toBeUndefined();
     expect(s.nextStudentFolder()).toBe('student_01');
   });
 });
@@ -243,7 +242,7 @@ describe('provisionMember', () => {
     );
 
     const r = s.provisionMember({ role: 'user', name: 'Dana', email: 'dana@x.edu', addedBy: null });
-    expect(r.folder).toBe('user_1');
+    expect(r.folder).toBe('user_01');
     expect(r.agentGroupId).toBeTruthy();
     const persona = fs.readFileSync(path.join(s.GROUPS_DIR, r.folder, 'CLAUDE.local.md'), 'utf8');
     expect(persona).toBe('# Template persona\n');

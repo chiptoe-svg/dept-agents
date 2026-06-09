@@ -191,7 +191,7 @@ export function nextFolderForRole(role: CanonicalRole): string {
     const m = re.exec(r.folder);
     if (m) max = Math.max(max, parseInt(m[1]!, 10));
   }
-  return `${prefix}${max + 1}`;
+  return `${prefix}${String(max + 1).padStart(2, '0')}`;
 }
 
 function readClassConfig(): Record<string, unknown> {

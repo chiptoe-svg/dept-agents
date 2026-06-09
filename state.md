@@ -148,7 +148,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `default-participant-template`
-- **Last tag:** `phase-c-complete-2026-05-28` (44 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (45 commits ahead)
 
 ### Working tree
 
@@ -162,6 +162,7 @@ M  src/class-student-provision.ts
 ### Recent commits (last 15)
 
 ```
+fb91e89 feat(provision): provisionMember reads default slot; drop owner-agent skill inheritance
 31e267d feat(default): default-participant slot module
 3da9b34 feat(provision): scenario-aware nextFolderForRole
 85f69cc feat(scenarios): per-role folderPrefix + onMemberProvisioned hook
@@ -176,9 +177,8 @@ c98197f Merge scenario-contract-wiring: platform consumes the scenario contract 
 8e894cd test(scenarios): industryai_seminar pairing proves ACTIVE_SCENARIO drives behavior
 d7503e5 feat(scenarios): provision persona from the active scenario's user role
 61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
-d4052dc feat(scenarios): generic contract-driven pair consumer
 ```
 
 ### Last refresh
 
-2026-06-09T14:38:00Z
+2026-06-09T14:43:32Z
