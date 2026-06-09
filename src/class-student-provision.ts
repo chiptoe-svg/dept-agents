@@ -7,10 +7,11 @@
  * customization. This module is the surgical alternative — it touches
  * only the one new `student_NN` folder.
  *
- * The per-student primitives (`STUDENT_PERSONA`, `STUDENT_CLAUDE_MD`,
- * `classSharedStudentMd`, `inheritedSkills`, `makeContainerConfig`) live
- * here so a button-added student is byte-identical to a bulk-added one;
- * `class-skeleton.ts` imports them rather than keeping its own copy.
+ * Provisioning content now comes from the default-participant slot when
+ * one exists (persona, CLAUDE.md, custom-skills, container config), or
+ * falls back to the active scenario's `roleProfile` persona + fixed
+ * defaults. `makeContainerConfig` and `inheritedSkills` are retained
+ * only for the legacy bulk `scripts/class-skeleton.ts` path.
  */
 import crypto from 'crypto';
 import fs from 'fs';
@@ -192,16 +193,6 @@ export function nextFolderForRole(role: CanonicalRole): string {
     if (m) max = Math.max(max, parseInt(m[1]!, 10));
   }
   return `${prefix}${String(max + 1).padStart(2, '0')}`;
-}
-
-function readClassConfig(): Record<string, unknown> {
-  const p = path.join(DATA_DIR, 'class-config.json');
-  if (!fs.existsSync(p)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
 }
 
 /** Ensure the symlink target `data/class-shared-students.md` exists. */

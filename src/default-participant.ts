@@ -132,7 +132,7 @@ export function applyDefaultToAllParticipants(): { affected: number; restorePoin
     const nowIso = new Date().toISOString();
     writeMeta(g.folder, slug, {
       name: 'Before default reset',
-      description: `Snapshot taken automatically before the owner applied the default participant template (${nowIso}). Load this to restore your previous agent.`,
+      description: `Snapshot taken automatically before the owner applied the default participant template (${nowIso}). Load this to restore your previous persona, CLAUDE.md, and custom skills. (Model/provider settings are not reverted by loading.)`,
       createdAt: nowIso,
       updatedAt: nowIso,
     });

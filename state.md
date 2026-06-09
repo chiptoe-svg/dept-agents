@@ -148,21 +148,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `default-participant-template`
-- **Last tag:** `phase-c-complete-2026-05-28` (52 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (53 commits ahead)
 
 ### Working tree
 
 ```
 ## default-participant-template
-M  src/channels/playground/api/me.test.ts
-M  src/channels/playground/api/me.ts
-M  src/channels/playground/public/tabs/home.js
+M  src/class-student-provision.ts
+M  src/default-participant.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+4d2eace feat(default): Edit template opens the template agent via owner ?seat
 c91a7ce feat(default): owner Default Participant Template card
 2b7757c fix(default): restrict save + apply-all to owner-only (admins can read status only)
 e7efdee feat(default): owner-gated API (status/save/apply-all)
@@ -177,9 +177,8 @@ fb91e89 feat(provision): provisionMember reads default slot; drop owner-agent sk
 fa0dd0a docs(plan): default participant template implementation plan
 6b40f99 docs(spec): default participant template + scenario-aware provisioning design
 fc94b18 docs(state): point port section at canonical ~/.dev-ports.yaml registry
-1f2d4ad docs(state): webhook moved to 3003; :3020 overlap resolved
 ```
 
 ### Last refresh
 
-2026-06-09T15:13:32Z
+2026-06-09T15:23:00Z
