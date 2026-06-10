@@ -9,6 +9,7 @@ import { isGlobalAdmin, isOwner } from '../../../modules/permissions/db/user-rol
 import { readWebSearchProvider, writeWebSearchProvider, type WebSearchProvider } from '../../../web-search-config.js';
 import { getAllAgentGroups } from '../../../db/agent-groups.js';
 import { restartAgentGroupContainers } from '../../../container-restart.js';
+import { TEMPLATE_FOLDER } from '../../../default-participant.js';
 import type { PlaygroundSession } from '../auth-store.js';
 import type { ApiResult } from './enrollment.js';
 
@@ -92,7 +93,7 @@ export function handlePostWebSearchConfig(
   }
   writeWebSearchProvider(provider, session.userId!);
   for (const g of getAllAgentGroups()) {
-    if (g.folder === '_default_participant') continue;
+    if (g.folder === TEMPLATE_FOLDER) continue;
     restartAgentGroupContainers(g.id, 'web-search-backend-change');
   }
   return { status: 200, body: { ok: true, active: provider } };
