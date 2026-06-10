@@ -12,6 +12,16 @@ NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac St
 
 **Direction (revised 2026-06-08):** this is a **group-agent platform**, not a classroom app — controlled, individuated agent access for a defined set of people, with "classroom" as one of ~5 scenarios (department, agent-optimization, +2 coming). **Model: ONE codebase + in-tree scenario profiles** under `src/scenarios/<name>/`, selected by config. This supersedes both prior attempts: lean-trunk+branch-install (too much sync ceremony) and fold-into-classroom-app (too narrow). Each scenario's code is tiny (~90% of "classroom" code is the general platform), so in-tree profiles beat branch-install ceremony. Separate installs run the same repo with different scenario config + data; platform features reach all installs on `git pull`. See `plans/group-agent-platform.md`. (The earlier `controlled-access` branch-extraction plan and the `classroom` sibling branch + `/add-classroom*` skills are superseded; branch/skills slated for retirement.)
 
+## Deployment / install map
+
+> **Port source of truth = `~/.dev-ports.yaml`** (machine-wide, run `ports`). Read it before binding/moving ANY port; update it the same turn when you change one. The numbers below mirror it — if they ever disagree, the registry wins.
+
+This Mac Studio runs **TWO independent nanoclaw installs** (different projects, NOT dev/prod of one):
+- **This one — Clemson/seminar:** `/Users/admin/projects/nanoclaw`, service `com.nanoclaw-v2-581fefa4`, ports proxy **3001** / playground **3002** / webhook **3003**, image `nanoclaw-agent-v2-581fefa4:latest`, `ACTIVE_SCENARIO=industryai_seminar`. Ports pinned in `.env`; webhook port ALSO set in the plist `EnvironmentVariables` (plist wins — change both together).
+- **Personal:** `/Users/admin/projects/nanoclaw_personal`, service `com.nanoclaw-v2-011e3c4e`, ports webhook **3010** / playground **3012** / a localhost service on **3020**, separate bot token + DB + image.
+
+DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT touch the other. **⚠️ Footgun:** the global `ncl` (`~/.local/bin/ncl`) points at the PERSONAL install — drive THIS one with `./bin/ncl` or `ncl-clemson` (per-install launchers: `ncl-clemson` / `ncl-personal`). The 2026-06-09 `:3020` overlap (Clemson webhook vs personal localhost) is **resolved** — Clemson webhook moved to 3003. Reloading a plist env change needs `launchctl bootout`+`bootstrap`, not just `kickstart`. See memory `project-two-nanoclaw-installs`.
+
 ## Current arc
 
 **Active arc: the group-agent-platform restructure** (`plans/group-agent-platform.md`) — one codebase, in-tree scenario profiles under `src/scenarios/<name>/`, selected by `ACTIVE_SCENARIO`. Progress:
@@ -30,7 +40,9 @@ NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac St
 Append-only. Drained by the human, not by `refresh-state`.
 
 - **Wire the platform to the scenario contract (Phase 2 proper).** — DONE 2026-06-09 (branch `scenario-contract-wiring`, commits `7606cf0`..`8e894cd`; plan `docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md`). Generic contract-driven pair consumer + provisioning persona via `roleProfile('user')`; three classroom consumers deleted; `memberName()` added; verified by an `industryai_seminar` integration test. Turned out narrower than the ~30-file estimate — Phase 1 had already moved the pair consumers into the profile.
+- **⚠️ REVERT BEFORE GO-LIVE: playground is in insecure no-auth demo mode (set 2026-06-09).** For pre-launch campus testing, the playground runs with `PLAYGROUND_AUTH_BYPASS=1` + `PLAYGROUND_BIND_HOST=127.0.0.1`, fronted by a `caddy reverse-proxy --from :8088 --to 127.0.0.1:3002` (nohup, NOT durable across reboot) so `http://130.127.162.180:8088/?seat=owner|user_01|user_02|user_03` opens with no login on the Clemson network. This exposes the OWNER (admin) seat with no auth — fine for the breakable pilot, NOT for go-live. **To revert:** `pkill -f 'caddy reverse-proxy --from :8088'`; set `PLAYGROUND_AUTH_BYPASS=0` + `PLAYGROUND_BIND_HOST=0.0.0.0` in `.env`; `launchctl kickstart -k gui/$(id -u)/com.nanoclaw-v2-581fefa4`. The hardening guard (refuses bypass on non-loopback bind) is intact — this routes around it via the proxy, by design per the guard's own message.
 - **Phase 4 (later):** retire the `classroom` sibling branch + `/add-classroom*` skills (superseded by in-tree scenarios).
+- **Default-participant apply-to-all: container-config reversibility gap.** The reversible restore point that apply-to-all writes (`pre-default-reset-*` in each Participant's library) reverts persona/CLAUDE.md/custom-skills but NOT `container_configs` (model/provider/skills) — because the agent-library `loadEntry` restores files to disk while the container re-materializes `container.json` from the DB on spawn, and `loadEntry` never writes back to `container_configs`. This is a PRE-EXISTING library/DB-sync limitation (affects all library loads, not just this feature); the restore-point copy is worded to say only persona/skills are reverted. Fix later by reconciling `container.json` → `container_configs` on library load (or in apply-to-all). Introduced/surfaced by the default-participant template feature (commits `85f69cc`..`b3bbfb0`).
 
 ## Invariants (don't break)
 
@@ -97,6 +109,7 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-06-09** — **Default Participant Template shipped** (branch `default-participant-template`, `85f69cc`..`b3bbfb0`; spec/plan `docs/superpowers/{specs,plans}/2026-06-09-default-participant-template.*`). The owner configures a dedicated flagged template agent `_default_participant` via the existing playground editor (reached through an owner-only `?seat=` load in `me.ts`), then **Save as default** snapshots it to the slot `data/config/default-participant/`. Provisioning (`provisionMember`, generalizing `provisionStudent`) reads the slot for new Participants and is now **scenario-aware** (folder prefix from the scenario contract's new `folderPrefix`; `student_NN` classroom / `user_NN` seminar, zero-padded; classroom roster append moved to the scenario `onMemberProvisioned` hook). **`inheritedSkills()` owner-agent coupling removed from provisioning** (the thing the owner wanted gone; no-slot fallback = skills `'all'`). **Apply default to all Participants** = owner-only, full replace of `user`-role groups with auto-backup (a UI-loadable `pre-default-reset-*` library entry) + container restart. Auth: GET status owner-or-admin; **save + apply-all owner-only** (tightened from the spec's `isOwnerOrAdmin` to match the destructive `handleAddStudent` precedent + the owner-only intent). Known limitation tracked in Open follow-ups (config not reverted by restore-point load — pre-existing library/DB-sync gap). 1131 tests green; final holistic review APPROVED-WITH-NOTES (notes addressed). **Merged to main (`209ef62`), deployed (built + restarted `com.nanoclaw-v2-581fefa4`), and live-verified 2026-06-09:** template created, save→slot, `nextFolderForRole('user')`→`user_04`, apply-to-all reset user_01/02/03 to the default with UI-loadable `pre-default-reset-*` restore points capturing their old personas (also genericized the lingering real names in user_02/03 persona files). Current live default persona is a placeholder from the verification — owner should refine it via the Home → Default Participant Template card (Edit template → Save as default). DB backup `data/v2.db.bak-default-participant-20260609-113307`. UI card itself not shell-verifiable (needs a browser owner session) — owner should click through once.
 - **2026-06-09** — **Phase 2 wiring landed** (branch `scenario-contract-wiring`, `7606cf0`..`8e894cd`): platform pairing is now ONE generic contract-driven consumer (`src/scenario-pairing.ts`) reading `roleForFolder`/`roleProfile`/new `memberName`; the three classroom pair consumers (`class-pair-greeting`/`pair-instructor`/`pair-ta`) deleted; provisioning persona from `roleProfile('user')`. Why: `ACTIVE_SCENARIO` must actually drive behavior, not just register a façade — proven by an `industryai_seminar` integration test (Participant greeting, no admin). Decisions: Option A (one generic consumer, not per-role) + `memberName(folder)` added to the contract (classroom=roster, seminar=agent-group name) + scoped-admin scope derived from `roleForFolder` (user/assistant), no per-scenario hook. Metadata keys (`student_*`) kept; renaming deferred. NOTE: a mid-implementation attempt to modify `grantRole`/pair-consumer-registry to pass a test was caught in review and reverted — the fixes belonged in the test (create the FK user row; don't reset import-registered consumers). 1104 tests green.
 - **2026-06-08** — **Phase 2 resumed (un-deferred): canonical-role scenario contract shipped** (`3dcd662`) + **second scenario `industryai_seminar` added with `ACTIVE_SCENARIO` gating** (`52dc82a`). Why: the prior same-day entry deferred Phase 2 until a 2nd scenario forced the abstraction against real, different roles — `industryai_seminar` (Organizer/IT Admin/Facilitator/Participant, all four canonical roles) is that forcing function, so the contract (`src/scenarios/types.ts`: fixed `owner/it_admin/assistant/user` roles, each skinned with label+permission+persona+greeting+`roleForFolder`) was defined now rather than against classroom alone. Contract + registry are tested; **platform consumption is deferred to the next step** (no platform file calls `roleForFolder`/`roleProfile` yet — see Current arc + Open follow-ups). Classroom profile delegates to existing `classRoleForFolder` so it stays green.
 - **2026-06-08** — Reframed as a **group-agent platform with in-tree scenario profiles** (one codebase, `src/scenarios/<name>/`, config-selected), superseding the trunk+branch-install model (too much ceremony) and the classroom-app model (too narrow). Phase 1 done (commit `dce8da2`): `src/scenarios/classroom/` scaffolded; teaching-specific pair consumers moved there; platform pieces stay in `src/`. **Phase 2 (abstract role detection + personas out of the platform via a scenario hook) deliberately DEFERRED** — doing it with only classroom as a consumer would design the interface against one scenario (violates Phase 0 finding + YAGNI). Driver: the 2nd scenario (department) will force the abstraction with real, different roles. Plan: `plans/group-agent-platform.md`.
@@ -137,37 +150,38 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `scenario-contract-wiring`
-- **Last tag:** `phase-c-complete-2026-05-28` (31 commits ahead)
+- **Current:** `main`
+- **Last tag:** `phase-c-complete-2026-05-28` (61 commits ahead)
 
 ### Working tree
 
 ```
-## scenario-contract-wiring
-A  docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md
+## main...origin/main
+ M config/playground-seats.json
+M  src/container-runner.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
-74ecafd docs(state): record Phase 2 wiring landed (scenario contract now consumed)
-8e894cd test(scenarios): industryai_seminar pairing proves ACTIVE_SCENARIO drives behavior
-d7503e5 feat(scenarios): provision persona from the active scenario's user role
-61bcff2 refactor(scenarios): platform pairing via contract; drop classroom consumers
-d4052dc feat(scenarios): generic contract-driven pair consumer
-7606cf0 feat(scenarios): add memberName() to the scenario contract
-52dc82a feat(scenarios): industryai_seminar profile + ACTIVE_SCENARIO gating
-985ef7d docs(critique-agent): remove personal references; serve brief via GitHub Pages
-3dcd662 feat(scenarios): canonical-role scenario contract + classroom reference (Phase 2 increment 1)
-1362e95 docs: frame critique-agent as a future project
-5d4042e docs: add Build-Your-Own Photo-Critique Agent course project
-960d69a docs(state): record group-agent-platform direction + Phase 1 done + Phase 2 deferred
-dce8da2 refactor(scenarios): group-agent platform + scenario profiles (Phase 1)
-980091d docs(plan): Phase 2 partition manifest — classify every file L/P/G/T
-91ece76 fix(controlled-access): make provider-creds dir migration merge-based
+2479fd1 fix(playground): auto-sync agent model to dropdown selection when stored model is invalid/hidden
+2c7f587 fix(session): re-scaffold missing session dir on write (stale rows after data reset)
+8afcafd fix(direct-chat): accept bare 'openai' provider (normalize to codex /openai/v1)
+e1e3f66 docs(state): record temporary no-auth campus demo mode + revert steps
+51d2ec5 docs(state): default-participant template deployed + live-verified
+209ef62 Merge default-participant-template: owner-defined Participant default + scenario-aware provisioning
+013409f docs(state): record default participant template feature + config-reversibility follow-up
+b3bbfb0 chore(default): honest restore-point copy; drop orphaned readClassConfig; fix stale header
+4d2eace feat(default): Edit template opens the template agent via owner ?seat
+c91a7ce feat(default): owner Default Participant Template card
+2b7757c fix(default): restrict save + apply-all to owner-only (admins can read status only)
+e7efdee feat(default): owner-gated API (status/save/apply-all)
+c4e3bd0 fix(default): write meta for apply-to-all restore points so they're loadable in the library UI
+78a4ca1 feat(default): apply-to-all (backup + overwrite + restart) for user-role groups
+113e42d feat(default): template agent bootstrap + save-as-default
 ```
 
 ### Last refresh
 
-2026-06-09T04:15:28Z
+2026-06-09T20:00:58Z

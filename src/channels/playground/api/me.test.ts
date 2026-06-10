@@ -146,17 +146,65 @@ describe('GET /api/me/agent', () => {
 
   // resolveRole inside me.ts hits user-roles → getDb. Without a real DB
   // initialized, that throws. Mock just the predicates the call chain uses.
-  function mockUserRoles() {
+  function mockUserRoles({ ownerUserId }: { ownerUserId?: string } = {}) {
     vi.doMock('../../../modules/permissions/db/user-roles.js', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../../../modules/permissions/db/user-roles.js')>();
       return {
         ...actual,
-        isOwner: () => false,
+        isOwner: (userId: string) => !!ownerUserId && userId === ownerUserId,
         isGlobalAdmin: () => false,
         isAdminOfAgentGroup: () => false,
       };
     });
   }
+
+  it('owner can load any agent via ?seat (for editing the template)', async () => {
+    mockUserRoles({ ownerUserId: 'telegram:owner' });
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getPlaygroundAgentForUser: () => null,
+      getAgentGroupByFolder: (folder: string) =>
+        folder === '_default_participant'
+          ? { id: 'ag_tmpl', name: 'Default Participant Template', folder: '_default_participant' }
+          : null,
+    }));
+    vi.doMock('../../../config.js', () => ({ PLAYGROUND_AUTH_BYPASS: false }));
+    vi.doMock('../seats-config.js', () => ({ readSeatsConfig: () => ({ seats: [] }) }));
+    vi.doMock('../auth-store.js', () => ({ revokeSession: () => {}, revokeSessionsForUser: () => 0 }));
+    vi.doMock('../../../db/classroom-roster.js', () => ({ lookupRosterByUserId: () => null }));
+    vi.doMock('../../../student-google-auth.js', () => ({
+      hasStudentCredentials: () => false,
+      clearStudentCredentials: () => {},
+    }));
+    const { handleGetMyAgent } = await import('./me.js');
+    const r = handleGetMyAgent({ userId: 'telegram:owner', cookieValue: 'c' } as any, '_default_participant');
+    expect(r.status).toBe(200);
+    expect((r.body as { agent: { folder: string } }).agent.folder).toBe('_default_participant');
+  });
+
+  it('ignores ?seat for a non-owner (falls back to their own agent or 4xx)', async () => {
+    mockUserRoles(); // no ownerUserId → isOwner always false
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getPlaygroundAgentForUser: () => ({ id: 'ag_member', name: 'Member', folder: 'member_folder' }),
+      getAgentGroupByFolder: (folder: string) =>
+        folder === '_default_participant'
+          ? { id: 'ag_tmpl', name: 'Default Participant Template', folder: '_default_participant' }
+          : null,
+    }));
+    vi.doMock('../../../config.js', () => ({ PLAYGROUND_AUTH_BYPASS: false }));
+    vi.doMock('../seats-config.js', () => ({ readSeatsConfig: () => ({ seats: [] }) }));
+    vi.doMock('../auth-store.js', () => ({ revokeSession: () => {}, revokeSessionsForUser: () => 0 }));
+    vi.doMock('../../../db/classroom-roster.js', () => ({ lookupRosterByUserId: () => null }));
+    vi.doMock('../../../student-google-auth.js', () => ({
+      hasStudentCredentials: () => false,
+      clearStudentCredentials: () => {},
+    }));
+    const { handleGetMyAgent } = await import('./me.js');
+    const r = handleGetMyAgent({ userId: 'telegram:member', cookieValue: 'c' } as any, '_default_participant');
+    // must NOT resolve to the template for a non-owner
+    if (r.status === 200) {
+      expect((r.body as { agent: { folder: string } }).agent.folder).not.toBe('_default_participant');
+    }
+  });
 
   it('returns the user-assigned agent group + user info', async () => {
     mockUserRoles();

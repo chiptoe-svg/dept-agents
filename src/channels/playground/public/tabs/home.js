@@ -35,6 +35,15 @@ export function mountHome(el) {
       </section>`
     : '';
 
+  const defaultParticipantCard = isOwner
+    ? `
+      <section class="home-card" id="default-participant-card">
+        <h2>Default Participant Template</h2>
+        <p class="muted">Configure the starting persona applied to every new (or reset) Participant.</p>
+        <div id="default-participant-body"><p class="muted">Loading…</p></div>
+      </section>`
+    : '';
+
   const studentsRosterCard = isOwner
     ? `
       <section class="home-card" id="students-roster-card">
@@ -68,6 +77,8 @@ export function mountHome(el) {
       </section>
 
       ${classControlsCard}
+
+      ${defaultParticipantCard}
 
       ${studentsRosterCard}
 
@@ -156,6 +167,7 @@ export function mountHome(el) {
 
   if (isOwner) {
     renderClassControlsCard(el.querySelector('#class-controls-body'));
+    renderDefaultParticipantCard(el.querySelector('#default-participant-body'));
     renderStudentsRosterCard(el.querySelector('#students-roster-body'));
     renderAddStudentCard(el.querySelector('#add-student-body'));
     // class-enrollment-passcode:home-card START
@@ -441,6 +453,120 @@ async function renderUsageCard(body, folder) {
 const ALL_TABS = ['home', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks'];
 const ALL_AUTH = ['api-key', 'oauth', 'claude-code-oauth'];
 const AUTH_LABEL = { 'api-key': 'API key', oauth: 'OAuth (Anthropic Console / OpenAI)', 'claude-code-oauth': 'Claude Code OAuth' };
+
+// ── Default Participant Template card ────────────────────────────────────────
+
+async function renderDefaultParticipantCard(body) {
+  if (!body) return;
+  try {
+    const res = await fetch('/api/default-participant', { credentials: 'same-origin' });
+    if (!res.ok) {
+      body.innerHTML = `<p class="muted">Couldn't load default participant status (${res.status}).</p>`;
+      return;
+    }
+    const data = await res.json();
+    renderDefaultParticipantForm(body, data);
+  } catch (err) {
+    body.innerHTML = `<p class="muted">Couldn't load default participant status: ${escapeHtml(String(err))}</p>`;
+  }
+}
+
+function renderDefaultParticipantForm(body, data) {
+  const { saved, savedAt, savedBy, templateFolder, participantCount } = data;
+
+  const savedLine = saved
+    ? `<p class="muted small">Saved ${escapeHtml(savedAt || '')}${savedBy ? ` by ${escapeHtml(savedBy)}` : ''}.</p>`
+    : `<p class="muted small">No default saved yet.</p>`;
+
+  body.innerHTML = `
+    <dl class="home-dl">
+      <dt>Template folder</dt>
+      <dd><code>${escapeHtml(templateFolder)}</code></dd>
+      <dt>Status</dt>
+      <dd>${saved ? '✅ Saved' : '⚪ Not saved'}</dd>
+      <dt>Participants</dt>
+      <dd>${escapeHtml(String(participantCount))} agent${participantCount === 1 ? '' : 's'}</dd>
+    </dl>
+    ${savedLine}
+    <div class="home-actions" id="dp-actions">
+      <button class="btn" id="dp-edit-btn">Edit template</button>
+      <button class="btn btn-primary" id="dp-save-btn">Save as default</button>
+      <button class="btn btn-danger" id="dp-apply-btn" ${participantCount === 0 ? 'disabled title="No participants yet"' : ''}>Apply default to all Participants</button>
+    </div>
+    <p class="muted small" id="dp-status"></p>
+    <p class="muted small" id="dp-apply-result" hidden></p>
+  `;
+
+  // Edit template: navigate to the playground with ?seat=<templateFolder> so
+  // the owner's session loads the template agent. The entire editor
+  // (persona/skills/models/agents tabs) then operates on that agent group.
+  body.querySelector('#dp-edit-btn').addEventListener('click', () => {
+    window.location.href = '/playground/?seat=' + encodeURIComponent(templateFolder);
+  });
+
+  // Save as default
+  body.querySelector('#dp-save-btn').addEventListener('click', async () => {
+    const statusEl = body.querySelector('#dp-status');
+    statusEl.textContent = 'Saving…';
+    try {
+      const res = await fetch('/api/default-participant/save', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        statusEl.textContent = `Save failed: ${err.error || res.status}`;
+        return;
+      }
+      const result = await res.json();
+      statusEl.textContent = `Saved at ${result.savedAt || 'unknown time'}.`;
+      // Refresh the saved-state line without a full card reload.
+      const savedLineEl = body.querySelector('.muted.small');
+      if (savedLineEl) {
+        savedLineEl.textContent = `Saved ${result.savedAt || ''}`;
+      }
+    } catch (err) {
+      statusEl.textContent = `Save failed: ${String(err)}`;
+    }
+  });
+
+  // Apply default to all Participants
+  body.querySelector('#dp-apply-btn').addEventListener('click', async () => {
+    const statusEl = body.querySelector('#dp-status');
+    const resultEl = body.querySelector('#dp-apply-result');
+    const confirmToken = prompt(
+      `This will overwrite all ${participantCount} Participant agent${participantCount === 1 ? '' : 's'} with the saved default.\n` +
+      `A restore point will be created for each one.\n\nType APPLY to confirm:`,
+    );
+    if (confirmToken !== 'APPLY') {
+      statusEl.textContent = 'Cancelled.';
+      return;
+    }
+    statusEl.textContent = 'Applying…';
+    try {
+      const res = await fetch('/api/default-participant/apply-all', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ confirm: 'APPLY' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        statusEl.textContent = `Apply failed: ${err.error || res.status}`;
+        return;
+      }
+      const result = await res.json();
+      const affected = Number(result.affected) || 0;
+      statusEl.textContent = '';
+      resultEl.hidden = false;
+      resultEl.textContent =
+        `Applied to ${affected} Participant${affected === 1 ? '' : 's'}. ` +
+        `Each now has a pre-default-reset-* restore point in their library.`;
+    } catch (err) {
+      statusEl.textContent = `Apply failed: ${String(err)}`;
+    }
+  });
+}
 
 async function renderClassControlsCard(body) {
   if (!body) return;

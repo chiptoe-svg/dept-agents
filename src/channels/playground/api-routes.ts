@@ -124,6 +124,11 @@ import { handleGetClassControls, handlePutClassControls, DEFAULT_CLASS_ID } from
 import { handleGetModelsTabState } from './api/models-tab-state.js';
 import { handleGetClassBase, handlePutClassBase } from './api/class-base.js';
 import { handleAddStudent, handleGetTunnel, handleStopTunnel } from './api/students-admin.js';
+import {
+  handleGetDefaultParticipant,
+  handleSaveDefaultParticipant,
+  handleApplyDefaultToAll,
+} from './api/default-participant.js';
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
@@ -781,6 +786,23 @@ export async function route(
   // POST /api/admin/tunnel/stop — tear down the guest tunnel. Owner-only.
   if (method === 'POST' && url.pathname === '/api/admin/tunnel/stop') {
     const r = handleStopTunnel(session);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/default-participant — owner/admin: template status
+  if (method === 'GET' && url.pathname === '/api/default-participant') {
+    const r = handleGetDefaultParticipant(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/default-participant/save — owner/admin: snapshot template into slot
+  if (method === 'POST' && url.pathname === '/api/default-participant/save') {
+    const r = handleSaveDefaultParticipant(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/default-participant/apply-all — owner/admin: apply slot to all user-role groups
+  if (method === 'POST' && url.pathname === '/api/default-participant/apply-all') {
+    const body = await readJsonBody(req);
+    const r = handleApplyDefaultToAll(session, body);
     return send(res, r.status, r.body);
   }
 

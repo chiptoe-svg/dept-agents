@@ -44,6 +44,19 @@ export function memberName(folder: string): string | null {
   return getActiveScenario()?.memberName(folder) ?? null;
 }
 
+/** Folder prefix the active scenario uses to provision a member of `role` (null if unset). */
+export function folderPrefix(role: CanonicalRole): string | null {
+  return getActiveScenario()?.folderPrefix[role] ?? null;
+}
+
+/** Run the active scenario's post-provision hook, if any. No-op otherwise. */
+export function onMemberProvisioned(
+  folder: string,
+  member: { name: string; email: string; role: CanonicalRole },
+): void {
+  getActiveScenario()?.onMemberProvisioned?.(folder, member);
+}
+
 export function listScenarios(): string[] {
   return [...scenarios.keys()];
 }
