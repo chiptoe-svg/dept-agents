@@ -129,6 +129,7 @@ import {
   handleSaveDefaultParticipant,
   handleApplyDefaultToAll,
 } from './api/default-participant.js';
+import { handleGetWebSearchConfig, handlePostWebSearchConfig } from './api/web-search-config.js';
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
@@ -803,6 +804,18 @@ export async function route(
   if (method === 'POST' && url.pathname === '/api/default-participant/apply-all') {
     const body = await readJsonBody(req);
     const r = handleApplyDefaultToAll(session, body);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/web-search-config — owner/admin: active provider + per-backend availability
+  if (method === 'GET' && url.pathname === '/api/web-search-config') {
+    const r = await handleGetWebSearchConfig(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/web-search-config — owner/admin: set the active provider
+  if (method === 'POST' && url.pathname === '/api/web-search-config') {
+    const body = await readJsonBody(req);
+    const r = handlePostWebSearchConfig(session, body);
     return send(res, r.status, r.body);
   }
 

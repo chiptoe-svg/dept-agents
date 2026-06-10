@@ -151,21 +151,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `pluggable-web-search`
-- **Last tag:** `phase-c-complete-2026-05-28` (65 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (66 commits ahead)
 
 ### Working tree
 
 ```
 ## pluggable-web-search
  M config/playground-seats.json
-A  src/web-search-config.test.ts
-A  src/web-search-config.ts
+M  src/channels/playground/api-routes.ts
+A  src/channels/playground/api/web-search-config.test.ts
+A  src/channels/playground/api/web-search-config.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+290f45e feat(web-search): install-wide provider config (data/config/web-search.json)
 4ed94ef feat(searxng): managed self-hosted SearXNG service for web_search
 900bc40 docs(plan): pluggable web search (Brave + SearXNG) implementation plan
 e51c42f docs(spec): pluggable web search (Brave + SearXNG, owner-selectable) design
@@ -180,9 +182,8 @@ e1e3f66 docs(state): record temporary no-auth campus demo mode + revert steps
 b3bbfb0 chore(default): honest restore-point copy; drop orphaned readClassConfig; fix stale header
 4d2eace feat(default): Edit template opens the template agent via owner ?seat
 c91a7ce feat(default): owner Default Participant Template card
-2b7757c fix(default): restrict save + apply-all to owner-only (admins can read status only)
 ```
 
 ### Last refresh
 
-2026-06-10T01:37:36Z
+2026-06-10T01:49:04Z
