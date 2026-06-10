@@ -151,20 +151,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (62 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (63 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
+## main...origin/main [ahead 1]
  M config/playground-seats.json
-A  docs/superpowers/specs/2026-06-09-pluggable-web-search-design.md
+A  docs/superpowers/plans/2026-06-09-pluggable-web-search.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+e51c42f docs(spec): pluggable web search (Brave + SearXNG, owner-selectable) design
 65c01e8 feat(container): forward WEB_SEARCH_API_KEY to agent containers (no-OneCLI installs)
 2479fd1 fix(playground): auto-sync agent model to dropdown selection when stored model is invalid/hidden
 2c7f587 fix(session): re-scaffold missing session dir on write (stale rows after data reset)
@@ -179,9 +180,8 @@ c91a7ce feat(default): owner Default Participant Template card
 2b7757c fix(default): restrict save + apply-all to owner-only (admins can read status only)
 e7efdee feat(default): owner-gated API (status/save/apply-all)
 c4e3bd0 fix(default): write meta for apply-to-all restore points so they're loadable in the library UI
-78a4ca1 feat(default): apply-to-all (backup + overwrite + restart) for user-role groups
 ```
 
 ### Last refresh
 
-2026-06-10T01:20:24Z
+2026-06-10T01:27:33Z
