@@ -14,6 +14,10 @@ vi.mock('../../../container-restart.js', () => ({
   restartAgentGroupContainers: vi.fn().mockReturnValue(0),
 }));
 
+// Mock the .env reader so availability is driven only by process.env in tests,
+// never by the real .env on disk (which carries a live SEARXNG_URL).
+vi.mock('../../../env.js', () => ({ readEnvFile: () => ({}) }));
+
 import { initTestDb, closeDb, runMigrations, getDb } from '../../../db/index.js';
 import { grantRole } from '../../../modules/permissions/db/user-roles.js';
 import { createUser } from '../../../modules/permissions/db/users.js';

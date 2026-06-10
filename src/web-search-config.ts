@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from './config.js';
+import { readEnvFile } from './env.js';
 
 export type WebSearchProvider = 'brave' | 'searxng';
 const VALID: WebSearchProvider[] = ['brave', 'searxng'];
@@ -28,4 +29,16 @@ export function writeWebSearchProvider(provider: WebSearchProvider, updatedBy: s
   const dir = path.join(DATA_DIR, 'config');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(configPath(), JSON.stringify({ provider, updatedAt: new Date().toISOString(), updatedBy }, null, 2));
+}
+
+// SEARXNG_URL / WEB_SEARCH_API_KEY come from .env, which the launchd host
+// (`node dist/index.js`, no --env-file) never loads into process.env — values
+// reach the host only via readEnvFile(). process.env still wins as an override
+// (dev/tests), then the .env file, then empty.
+export function readSearxngUrl(): string {
+  return process.env.SEARXNG_URL || readEnvFile(['SEARXNG_URL']).SEARXNG_URL || '';
+}
+
+export function readBraveApiKey(): string {
+  return process.env.WEB_SEARCH_API_KEY || readEnvFile(['WEB_SEARCH_API_KEY']).WEB_SEARCH_API_KEY || '';
 }

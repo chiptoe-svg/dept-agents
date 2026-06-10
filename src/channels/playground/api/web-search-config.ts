@@ -6,7 +6,13 @@
  *   POST /api/web-search-config  — set the active provider; respawns agent containers
  */
 import { isGlobalAdmin, isOwner } from '../../../modules/permissions/db/user-roles.js';
-import { readWebSearchProvider, writeWebSearchProvider, type WebSearchProvider } from '../../../web-search-config.js';
+import {
+  readWebSearchProvider,
+  writeWebSearchProvider,
+  readSearxngUrl,
+  readBraveApiKey,
+  type WebSearchProvider,
+} from '../../../web-search-config.js';
 import { getAllAgentGroups } from '../../../db/agent-groups.js';
 import { restartAgentGroupContainers } from '../../../container-restart.js';
 import { TEMPLATE_FOLDER } from '../../../default-participant.js';
@@ -26,7 +32,7 @@ function isOwnerOrAdmin(userId: string | null): boolean {
 }
 
 async function searxngReachable(): Promise<boolean> {
-  const base = process.env.SEARXNG_URL;
+  const base = readSearxngUrl();
   if (!base) return false;
   try {
     const controller = new AbortController();
@@ -49,18 +55,20 @@ export async function handleGetWebSearchConfig(
   if (!isOwnerOrAdmin(session.userId)) {
     return { status: 403, body: { error: 'owner role required' } };
   }
+  const braveKey = readBraveApiKey();
+  const searxngUrl = readSearxngUrl();
   const backends: BackendStatus[] = [
     {
       id: 'brave',
       label: 'Brave',
-      available: !!process.env.WEB_SEARCH_API_KEY,
-      note: process.env.WEB_SEARCH_API_KEY ? undefined : 'No Brave API key set (WEB_SEARCH_API_KEY).',
+      available: !!braveKey,
+      note: braveKey ? undefined : 'No Brave API key set (WEB_SEARCH_API_KEY).',
     },
     {
       id: 'searxng',
       label: 'SearXNG (self-hosted)',
       available: await searxngReachable(),
-      note: process.env.SEARXNG_URL ? undefined : 'SEARXNG_URL not set.',
+      note: searxngUrl ? undefined : 'SEARXNG_URL not set.',
     },
     {
       id: 'openai',
@@ -85,10 +93,10 @@ export function handlePostWebSearchConfig(
   if (provider !== 'brave' && provider !== 'searxng') {
     return { status: 400, body: { error: 'provider must be an available backend (brave | searxng)' } };
   }
-  if (provider === 'brave' && !process.env.WEB_SEARCH_API_KEY) {
+  if (provider === 'brave' && !readBraveApiKey()) {
     return { status: 400, body: { error: 'Brave is unavailable — no WEB_SEARCH_API_KEY set.' } };
   }
-  if (provider === 'searxng' && !process.env.SEARXNG_URL) {
+  if (provider === 'searxng' && !readSearxngUrl()) {
     return { status: 400, body: { error: 'SearXNG is unavailable — SEARXNG_URL not set.' } };
   }
   writeWebSearchProvider(provider, session.userId!);

@@ -150,21 +150,26 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `pluggable-web-search`
-- **Last tag:** `phase-c-complete-2026-05-28` (70 commits ahead)
+- **Current:** `main`
+- **Last tag:** `phase-c-complete-2026-05-28` (71 commits ahead)
 
 ### Working tree
 
 ```
-## pluggable-web-search
+## main...origin/main [ahead 9]
  M config/playground-seats.json
+M  src/channels/playground/api/web-search-config.test.ts
 M  src/channels/playground/api/web-search-config.ts
+M  src/container-runner.ts
+M  src/web-search-config.test.ts
+M  src/web-search-config.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+1bc47cc refactor(web-search): use exported TEMPLATE_FOLDER constant
 b077fd7 feat(container): forward WEB_SEARCH_PROVIDER + SEARXNG_URL to agent containers
 ce0c5c4 feat(web-search): pluggable backends (brave + searxng) via WEB_SEARCH_PROVIDER
 175db31 feat(web-search): owner Web Search backend toggle card
@@ -179,9 +184,8 @@ e51c42f docs(spec): pluggable web search (Brave + SearXNG, owner-selectable) des
 8afcafd fix(direct-chat): accept bare 'openai' provider (normalize to codex /openai/v1)
 e1e3f66 docs(state): record temporary no-auth campus demo mode + revert steps
 51d2ec5 docs(state): default-participant template deployed + live-verified
-209ef62 Merge default-participant-template: owner-defined Participant default + scenario-aware provisioning
 ```
 
 ### Last refresh
 
-2026-06-10T02:01:14Z
+2026-06-10T02:19:56Z
