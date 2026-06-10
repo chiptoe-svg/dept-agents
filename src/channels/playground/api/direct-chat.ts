@@ -308,6 +308,7 @@ export async function handleDirectChat(body: {
   const NORMALIZE: Record<string, string> = {
     'openai-codex': 'codex',
     'openai-platform': 'codex',
+    openai: 'codex', // bare "OpenAI" group selection — same /openai/v1 route as the codex/platform siblings
     anthropic: 'claude',
     // 'local', 'clemson', 'codex', 'claude' pass through unchanged
   };

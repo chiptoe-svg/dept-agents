@@ -47,4 +47,8 @@ export interface Scenario {
    * the agent-group record or the folder. Null when unknown.
    */
   memberName: (folder: string) => string | null;
+  /** Folder prefix used to provision a member of each canonical role this scenario uses (e.g. user → 'user_'). */
+  folderPrefix: Partial<Record<CanonicalRole, string>>;
+  /** Optional scenario-specific work after a member is provisioned (e.g. classroom roster append). */
+  onMemberProvisioned?: (folder: string, member: { name: string; email: string; role: CanonicalRole }) => void;
 }

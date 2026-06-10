@@ -225,6 +225,14 @@ export function writeSessionMessage(
     onWake?: 0 | 1;
   },
 ): void {
+  // Re-scaffold the session folder if its on-disk directory is missing — e.g. a
+  // session row that outlived its directory after a data reset, or a stale row
+  // from a prior deployment. initSessionFolder is idempotent (recursive mkdir +
+  // ensureSchema), so this is a no-op when the dir already exists.
+  if (!fs.existsSync(inboundDbPath(agentGroupId, sessionId))) {
+    initSessionFolder(agentGroupId, sessionId);
+  }
+
   // Extract base64 attachment data, save to inbox, replace with file paths
   const content = extractAttachmentFiles(agentGroupId, sessionId, message.id, message.content);
 

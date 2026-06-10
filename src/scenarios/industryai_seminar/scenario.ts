@@ -42,6 +42,7 @@ const seminar: Scenario = {
   },
   // Seminar has no roster — use the agent group's stored name; null if absent.
   memberName: (folder): string | null => getAgentGroupByFolder(folder)?.name ?? null,
+  folderPrefix: { owner: 'owner_', it_admin: 'it_admin_', assistant: 'assistant_', user: 'user_' },
   roleForFolder: (folder): CanonicalRole | null => {
     if (folder.startsWith('owner_')) return 'owner';
     if (folder.startsWith('it_admin_')) return 'it_admin';

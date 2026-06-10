@@ -585,6 +585,15 @@ async function buildContainerArgs(
   // env_key resolves; harmless on codex/claude containers since they
   // don't read it. Proxy substitutes the real bearer on /omlx requests.
   args.push('-e', 'OMLX_API_KEY=placeholder');
+  // WEB_SEARCH_API_KEY — Brave Search token for pi's web_search tool. This
+  // install has no OneCLI gateway to inject it at the proxy layer, so the tool
+  // reads it from the container env. Forwarded from the host .env when set;
+  // omitted otherwise (web_search then errors clearly rather than sending an
+  // empty token). Lower-sensitivity than LLM keys, so direct env passthrough
+  // is acceptable here (cf. the OneCLI install, which injects it via the vault).
+  if (process.env.WEB_SEARCH_API_KEY) {
+    args.push('-e', `WEB_SEARCH_API_KEY=${process.env.WEB_SEARCH_API_KEY}`);
+  }
 
   // Provider-contributed env vars (e.g. XDG_DATA_HOME, OPENCODE_*, NO_PROXY).
   if (providerContribution.env) {
