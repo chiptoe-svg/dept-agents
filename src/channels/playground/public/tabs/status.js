@@ -14,8 +14,9 @@ const POLL_MS = 5000;
 const BUDGET_POLL_MS = 30000;
 
 function esc(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
+  return String(s == null ? '' : s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
 }
 
@@ -37,6 +38,8 @@ async function loadBudgets(el) {
     const res = await fetch('/api/budgets', { credentials: 'same-origin' });
     if (!res.ok) {
       console.warn('[status] GET /api/budgets returned', res.status, '— keeping prior budget data');
+      const hl = el.querySelector('#status-host');
+      if (hl) hl.textContent = 'Budget data unavailable — roster hidden. Retrying…';
       return;
     }
     const data = await res.json();
@@ -61,6 +64,8 @@ async function loadBudgets(el) {
     await loadStatus(el);
   } catch (err) {
     console.warn('[status] loadBudgets error — keeping prior budget data:', err);
+    const hl = el.querySelector('#status-host');
+    if (hl) hl.textContent = 'Budget data unavailable — roster hidden. Retrying…';
   }
 }
 
@@ -70,7 +75,10 @@ async function loadStatus(el) {
   if (!tbody || !hostLine) return;
   try {
     const res = await fetch('/api/status', { credentials: 'same-origin' });
-    if (!res.ok) { hostLine.textContent = `Couldn't load status (${res.status}).`; return; }
+    if (!res.ok) {
+      hostLine.textContent = `Couldn't load status (${res.status}).`;
+      return;
+    }
     const data = await res.json();
     hostLine.textContent =
       `gateway: ${data.host.gatewayRunning ? 'up' : 'down'} · ` +
@@ -81,18 +89,18 @@ async function loadStatus(el) {
       // Skip agents that aren't in the scenario member list returned by
       // /api/budgets (e.g. _default_participant template, non-members).
       if (!b) continue;
-      const activity = a.health === 'running'
-        ? humanizeAge(a.heartbeatAgeMs)
-        : humanizeAge(a.lastActivityAt ? Date.now() - Date.parse(a.lastActivityAt) : null);
-      const spend = b.budgetUsd != null
-        ? `$${b.costUsdThisMonth.toFixed(2)} / $${b.budgetUsd.toFixed(2)}`
-        : `$${b.costUsdThisMonth.toFixed(2)}`;
-      const badge = b.status === 'none' ? '' :
-        `<span class="status-badge status-budget status-budget-${esc(b.status)}">${esc(b.status)}</span>`;
-      // Per-agent budget override input — prefill with the agent's current
-      // budgetUsd (which already reflects perAgent override if set), or
-      // blank to mean "use default".
-      const agentBudgetVal = b.budgetUsd != null ? b.budgetUsd : '';
+      const activity =
+        a.health === 'running'
+          ? humanizeAge(a.heartbeatAgeMs)
+          : humanizeAge(a.lastActivityAt ? Date.now() - Date.parse(a.lastActivityAt) : null);
+      const spend =
+        b.budgetUsd != null
+          ? `$${b.costUsdThisMonth.toFixed(2)} / $${b.budgetUsd.toFixed(2)}`
+          : `$${b.costUsdThisMonth.toFixed(2)}`;
+      const badge =
+        b.status === 'none'
+          ? ''
+          : `<span class="status-badge status-budget status-budget-${esc(b.status)}">${esc(b.status)}</span>`;
       const tr = document.createElement('tr');
       tr.innerHTML =
         `<td>${esc(b.roleLabel)}</td>` +
@@ -100,15 +108,7 @@ async function loadStatus(el) {
         `<td>${esc(a.provider || '')}${a.model ? ' / ' + esc(a.model) : ''}</td>` +
         `<td><span class="status-badge status-${esc(a.health)}">${esc(a.health)}</span></td>` +
         `<td>${esc(activity)}</td>` +
-        `<td class="status-spend-cell">` +
-          `${esc(spend)} ${badge}` +
-          `<span class="status-budget-override">` +
-            `<input type="number" min="0" step="0.01" class="status-budget-input" ` +
-              `data-folder="${esc(a.folder)}" placeholder="$ limit" value="${esc(String(agentBudgetVal))}" ` +
-              `title="Per-agent monthly budget (blank = use default)">` +
-            `<button class="btn btn-ghost status-budget-set" data-folder="${esc(a.folder)}">Set</button>` +
-          `</span>` +
-        `</td>` +
+        `<td>${esc(spend)} ${badge} <button class="btn btn-ghost status-budget-set" data-folder="${esc(a.folder)}">Set $</button></td>` +
         `<td><button class="btn btn-ghost status-restart" data-folder="${esc(a.folder)}">Restart</button></td>`;
       tbody.appendChild(tr);
     }
@@ -234,7 +234,9 @@ function renderAddParticipantResult(result, data) {
     }
     const btn = result.querySelector('#ap-copy');
     btn.textContent = 'Copied';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+    }, 1500);
   });
   const stopBtn = result.querySelector('#ap-stop-tunnel');
   if (stopBtn) {
@@ -242,7 +244,9 @@ function renderAddParticipantResult(result, data) {
       stopBtn.disabled = true;
       try {
         await fetch('/api/admin/tunnel/stop', { method: 'POST', credentials: 'same-origin' });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       stopBtn.textContent = 'Tunnel stopped';
     });
   }
@@ -290,39 +294,36 @@ export function mountStatus(el) {
         return;
       }
 
-      // Per-agent budget "Set" button
+      // Per-agent budget "Set $" button — prompt()-based so it survives re-renders
       const setBtn = e.target.closest('.status-budget-set');
       if (setBtn) {
         const folder = setBtn.dataset.folder;
-        const row = setBtn.closest('tr');
-        const input = row && row.querySelector(`.status-budget-input[data-folder="${folder}"]`);
-        const raw = input ? input.value.trim() : '';
-        const val = raw === '' ? null : parseFloat(raw);
-        if (raw !== '' && (isNaN(val) || val < 0)) {
-          const hostLine = el.querySelector('#status-host');
-          if (hostLine) hostLine.textContent = `Invalid budget value for ${folder}.`;
+        const b = budgetsByFolder[folder];
+        const current = b && b.budgetUsd != null ? String(b.budgetUsd) : '';
+        const input = window.prompt(`Monthly budget (USD) for ${folder} — blank to clear:`, current);
+        if (input === null) return; // cancelled
+        const trimmed = input.trim();
+        const val = trimmed === '' ? null : Number(trimmed);
+        if (val !== null && (!Number.isFinite(val) || val < 0)) {
+          window.alert('Enter a number ≥ 0 or leave blank.');
           return;
         }
-        setBtn.disabled = true;
         try {
           const res = await fetch('/api/budgets', {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'content-type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ perAgent: { [folder]: val } }),
           });
           if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            const hostLine = el.querySelector('#status-host');
-            if (hostLine) hostLine.textContent = `Budget save failed: ${err.error || res.status}`;
-            return;
+            const hl = el.querySelector('#status-host');
+            if (hl) hl.textContent = `Budget update failed (${res.status}).`;
           }
-          await loadBudgets(el);
         } catch (err) {
-          const hostLine = el.querySelector('#status-host');
-          if (hostLine) hostLine.textContent = `Budget save failed: ${esc(String(err))}`;
+          const hl = el.querySelector('#status-host');
+          if (hl) hl.textContent = `Budget update failed: ${String(err)}`;
         } finally {
-          setBtn.disabled = false;
+          await loadBudgets(el);
         }
         return;
       }
@@ -391,8 +392,8 @@ export function mountStatus(el) {
   if (el._budgetPoll) clearInterval(el._budgetPoll);
 
   // Initial load: fetch budgets first so the first status render has member
-  // data available; then kick off both polls.
-  loadBudgets(el).then(() => loadStatus(el));
+  // data available. loadBudgets calls loadStatus internally on success.
+  loadBudgets(el);
 
   el._statusPoll = setInterval(() => {
     if (el.offsetParent !== null) loadStatus(el);
