@@ -111,6 +111,7 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-06-11** — **Cost governance (alert-only) + scenario-aware Status roster shipped + deployed + live-verified** (branch `cost-governance`, `ae94cff`..`9d0d490`; spec/plan `docs/superpowers/{specs,plans}/2026-06-11-cost-governance.*`). Gives the owner per-agent **monthly budgets with at-a-glance ok/approaching/over badges** (ALERT-ONLY — no blocking; the credential-proxy enforce path was the declined option). New `api/cost-budgets.ts`: `config/cost-budgets.json` `{defaultMonthlyUsd, warnFraction(0.8), perAgent:{[folder]:usd}}` (read/write the `class-controls.json` pattern; `!Array.isArray` guards on `perAgent` in BOTH read + POST-validate), pure `evaluateBudget(cost,budget,warn)` → `none`(null budget)/`ok`/`approaching`(≥budget·warn)/`over`(≥budget). **`GET /api/budgets`** (owner-gated) is **scenario-agnostic** — rows = `getAllAgentGroups()` ∩ `roleForFolder(folder)!==null` (members only → `_default_participant` template drops out), labeled via `roleProfile(role).label`/`memberName`, model/provider from `getContainerConfig`, `costUsdThisMonth` from `aggregateAgentUsage(g.id).thisMonth.costUsd`. **`POST /api/budgets`** validates (≥0/null, warnFraction (0,1], perAgent object-not-array) → `writeCostBudgets`. **Status tab became the fleet roster** (`public/tabs/status.js`): Role + Spend/Budget columns merged from `/api/budgets` (30s poll, separate from the 5s health poll to keep the DB cost-scan off the fast loop), badge, per-agent budget via `prompt()`-based Set button (survives the 5s re-render — an inline `<input>` got wiped), install-wide default$/warn% editor, **Add-a-participant relocated here from Home** (`POST /api/admin/students` → scenario-aware `provisionMember`). **Home cleanup** (`home.js`): removed the classroom `class-config` roster + add-student cards (superseded by the scenario roster — the seminar's `class-config` was empty so the old Home card showed "No student agents"); KEPT the per-user own-usage card (students' only cost view — they never see owner-only Status) + config cards. Boundaries: no enforcement, no notifications (UI badge only), calendar-month only, no charts. Final opus review APPROVED-WITH-NITS (lone nit moot — budgets⊆status). Host 1206 tests green, build clean. **Live-verified:** `GET /api/budgets?seat=owner_01` returned the seminar roster (Organizer + 3 Participants, costs computed, template excluded). Deployed via host restart of `com.nanoclaw-v2-581fefa4`; tab JS deploys on browser refresh. (Completes the 3 picked gap items: Live trace cards + Status/Health + Cost governance.)
 - **2026-06-11** — **Owner Status/Health tab shipped + deployed + live-verified** (merged to main, `395a2ad`..`ea2e2b4`; spec/plan `docs/superpowers/{specs,plans}/2026-06-11-status-health-tab.*`). New owner/ta-only **Status** tab (`public/tabs/status.js`; added to `app.js` `TABS`+`mounters` + `index.html`; absent from `tabsVisibleToStudents` → owner-only, triple-gated with server-side `isOwnerOrAdmin` on the API). **`GET /api/status`** (`api/status.ts`) → host summary (gateway · active-container count · version) + per-agent health roll-up `running`/`stale`/`idle`/`never` from **`sessions.container_status`** + heartbeat-file mtime vs `ABSOLUTE_CEILING_MS` (NOT the outbound.db `container_state` table — tool-in-flight info), `lastActivityAt` from `sessions.last_active`; **closed sessions excluded** from health+activeSessions (only-closed → `idle`, none-ever → `never`). **`POST /api/status/restart {folder}`** wraps `restartAgentGroupContainers` (per-agent only; **no host/gateway restart from the UI** — would self-kill the page server). 5s auto-refresh while visible. Config-editing stays in the existing agents/models/persona/skills tabs (out of scope). Final review APPROVED; host 1193 tests green. **Live-verified:** `/api/status` returns correct health (template=`never`, idle agents=`idle` with last-activity), v2.0.46. Tab deploys on browser refresh; API loaded via host restart. (2 of 3 picked gap items done — Live trace cards + Status/Health; **Cost governance** remains.)
 - **2026-06-11** — **Richer live trace cards shipped** (merged to main, `badae79`..`8bebfb5`; spec/plan `docs/superpowers/{specs,plans}/2026-06-11-richer-trace-cards.*`). The Chat tab's live trace pane (`src/channels/playground/public/tabs/chat.js`) now renders each tool use as ONE card keyed by `toolCallId` (was two: a `contentIndex`-keyed toolcall card + a separate exec card), with a ✓/✗ **success/error badge** (driven by the native `tool_execution_end.isError`, NanoClaw tool error-string prefixes as fallback via `classifyToolResult`) and **tool-aware previews** (`previewForToolArgs`/`previewForToolResult` — query/url/cmd → result-count/error, deferring to the existing `formatTracePreview`). Pure client-side; no backend/SSE/DB/container change — the host serves the JS from `src/…/public/` directly, so it deploys on a browser hard-refresh (no restart/rebuild). **Also closed the renderer's test gap:** exported `appendPiEvent` + the helpers and added the FIRST automated tests for the trace renderer (`chat-trace.test.ts`, 20 tests, vitest + `happy-dom`). Per-tool DURATION deliberately dropped (the per-turn footer already sums latency); persistence/replay + cross-agent view were out of scope (other gap-analysis options, not chosen). Final review APPROVED-WITH-NITS. Host 1178 tests green.
 
@@ -160,20 +161,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `cost-governance`
-- **Last tag:** `phase-c-complete-2026-05-28` (114 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (115 commits ahead)
 
 ### Working tree
 
 ```
 ## cost-governance
  M config/playground-seats.json
-M  src/channels/playground/public/tabs/home.js
+M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+9d0d490 refactor(home): drop classroom roster + add-student cards (superseded by Status roster)
 ce180c6 fix(status): surface budgets-fetch failure; drop double loadStatus; prompt-based per-agent budget (survives re-render)
 8b041fa feat(status): scenario roster + spend/budget columns + budget editor + add-participant
 886dcbb fix(cost): reject perAgent array in POST validation; test warnFraction=0
@@ -188,9 +190,8 @@ ea2e2b4 fix(status): scope tab CSS (don't clobber existing .status-badge); surfa
 3424bda test(status): assert restart called with group.id; clear mock state; cover restarted:0
 d854ad1 feat(status): POST /api/status/restart + route wiring
 ff2a764 fix(status): classify health from active sessions only; stat heartbeat once; export AgentStatus; test boundaries
-395a2ad feat(status): health-classifier + GET /api/status (owner-gated)
 ```
 
 ### Last refresh
 
-2026-06-11T15:38:13Z
+2026-06-11T16:28:17Z
