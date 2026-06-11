@@ -9,8 +9,9 @@ import { isGlobalAdmin, isOwner } from '../../../modules/permissions/db/user-rol
 import { PROJECT_ROOT } from '../../../config.js';
 import { ABSOLUTE_CEILING_MS } from '../../../host-sweep.js';
 import { getActiveContainerCount } from '../../../container-runner.js';
+import { restartAgentGroupContainers } from '../../../container-restart.js';
 import { getPlaygroundStatus } from '../server.js';
-import { getAllAgentGroups } from '../../../db/agent-groups.js';
+import { getAllAgentGroups, getAgentGroupByFolder } from '../../../db/agent-groups.js';
 import { getSessionsByAgentGroup } from '../../../db/sessions.js';
 import { getContainerConfig } from '../../../db/container-configs.js';
 import { heartbeatPath } from '../../../session-manager.js';
@@ -128,4 +129,17 @@ export function handleGetStatus(session: PlaygroundSession): ApiResult<{
       agents,
     },
   };
+}
+
+export function handlePostStatusRestart(
+  session: PlaygroundSession,
+  body: { folder?: unknown },
+): ApiResult<{ ok: true; restarted: number }> {
+  if (!isOwnerOrAdmin(session.userId)) return { status: 403, body: { error: 'owner or admin required' } };
+  const folder = body.folder;
+  if (typeof folder !== 'string' || !folder) return { status: 400, body: { error: 'folder required' } };
+  const group = getAgentGroupByFolder(folder);
+  if (!group) return { status: 404, body: { error: `Agent group not found: ${folder}` } };
+  const restarted = restartAgentGroupContainers(group.id, 'owner-status-restart');
+  return { status: 200, body: { ok: true, restarted } };
 }

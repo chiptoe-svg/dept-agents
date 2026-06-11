@@ -130,6 +130,7 @@ import {
   handleApplyDefaultToAll,
 } from './api/default-participant.js';
 import { handleGetWebSearchConfig, handlePostWebSearchConfig } from './api/web-search-config.js';
+import { handleGetStatus, handlePostStatusRestart } from './api/status.js';
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
@@ -804,6 +805,18 @@ export async function route(
   if (method === 'POST' && url.pathname === '/api/default-participant/apply-all') {
     const body = await readJsonBody(req);
     const r = handleApplyDefaultToAll(session, body);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/status — owner/admin: host summary + per-agent health roll-up
+  if (method === 'GET' && url.pathname === '/api/status') {
+    const r = handleGetStatus(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/status/restart — owner/admin: restart all containers for an agent group
+  if (method === 'POST' && url.pathname === '/api/status/restart') {
+    const body = await readJsonBody(req);
+    const r = handlePostStatusRestart(session, body);
     return send(res, r.status, r.body);
   }
 

@@ -14,6 +14,11 @@ vi.mock('../../../container-runner.js', () => ({
   getActiveContainerCount: vi.fn().mockReturnValue(0),
 }));
 
+// Mock container-restart — no real restarts in tests
+vi.mock('../../../container-restart.js', () => ({
+  restartAgentGroupContainers: vi.fn().mockReturnValue(2),
+}));
+
 // Mock playground server status
 vi.mock('../server.js', () => ({
   getPlaygroundStatus: vi.fn().mockReturnValue({ running: false, url: null }),
@@ -131,5 +136,58 @@ describe('handleGetStatus owner-gate', () => {
     expect(agent!.health).toBe('never');
     expect(agent!.activeSessions).toBe(0);
     expect(agent!.heartbeatAgeMs).toBeNull();
+  });
+});
+
+describe('handlePostStatusRestart', () => {
+  beforeEach(() => {
+    fs.rmSync(TMP, { recursive: true, force: true });
+    fs.mkdirSync(TMP, { recursive: true });
+    initTestDb();
+    runMigrations(getDb());
+    createUser({ id: OWNER_ID, kind: 'playground', display_name: null, created_at: new Date().toISOString() });
+    grantRole({
+      user_id: OWNER_ID,
+      role: 'owner',
+      agent_group_id: null,
+      granted_by: null,
+      granted_at: new Date().toISOString(),
+    });
+    createUser({ id: MEMBER_ID, kind: 'playground', display_name: null, created_at: new Date().toISOString() });
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(TMP, { recursive: true, force: true });
+  });
+
+  it('403 for non-owner', async () => {
+    const { handlePostStatusRestart } = await import('./status.js');
+    expect(handlePostStatusRestart(nonOwnerSession(), { folder: 'x' }).status).toBe(403);
+  });
+  it('400 when folder missing', async () => {
+    const { handlePostStatusRestart } = await import('./status.js');
+    expect(handlePostStatusRestart(ownerSession(), {}).status).toBe(400);
+  });
+  it('404 for an unknown folder', async () => {
+    const { handlePostStatusRestart } = await import('./status.js');
+    expect(handlePostStatusRestart(ownerSession(), { folder: 'definitely-not-a-folder' }).status).toBe(404);
+  });
+  it('200 with {ok:true, restarted:2} for a known folder', async () => {
+    createAgentGroup({
+      id: 'restart-test-group',
+      name: 'Restart Test',
+      folder: 'restart-test-group',
+      agent_provider: null,
+      created_at: new Date().toISOString(),
+    });
+    const { handlePostStatusRestart } = await import('./status.js');
+    const { restartAgentGroupContainers } = await import('../../../container-restart.js');
+    const result = handlePostStatusRestart(ownerSession(), { folder: 'restart-test-group' });
+    expect(result.status).toBe(200);
+    const body = result.body as { ok: boolean; restarted: number };
+    expect(body.ok).toBe(true);
+    expect(body.restarted).toBe(2);
+    expect(restartAgentGroupContainers).toHaveBeenCalled();
   });
 });
