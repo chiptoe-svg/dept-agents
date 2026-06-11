@@ -3,14 +3,17 @@
  * Containers connect here instead of directly to upstream APIs.
  * The proxy injects real credentials so containers never see them.
  *
- * Routes by URL path prefix:
+ * Routes by URL path prefix (every provider has an EXPLICIT prefix — there is
+ * NO catch-all; an unrecognized/bare path fails closed with 403):
+ *   /anthropic/*        → Anthropic API (strip prefix; inject x-api-key / OAuth)
  *   /openai/*           → OpenAI API via ChatGPT/Codex OAuth (strip prefix, inject Authorization)
  *   /openai-platform/*  → OpenAI API via direct Platform API key (strip prefix, inject Authorization)
  *   /omlx/*             → Local OpenAI-compatible server (mlx-omni, Ollama, etc.)
  *                         (strip prefix, inject Bearer OMLX_API_KEY)
- *   /googleapis/*       → Google APIs (strip prefix, inject OAuth Bearer
- *                         refreshed from ~/.config/gws/credentials.json)
- *   everything else     → Anthropic API (default)
+ *   /clemson/*          → Clemson RCD-hosted OpenAI-compatible LLM (strip prefix)
+ *   /googleapis/*       → Google APIs (currently fenced off by an empty egress
+ *                         allowlist — see resolveProxyRoute / EGRESS_ALLOWLIST)
+ *   anything else       → 403 (fail closed, no credential injected)
  *
  * Anthropic auth modes:
  *   API key:  Proxy injects x-api-key on every request.
