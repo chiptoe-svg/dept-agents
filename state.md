@@ -159,23 +159,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `status-health-tab`
-- **Last tag:** `phase-c-complete-2026-05-28` (103 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (104 commits ahead)
 
 ### Working tree
 
 ```
 ## status-health-tab
  M config/playground-seats.json
-M  src/channels/playground/public/app.js
-M  src/channels/playground/public/index.html
 M  src/channels/playground/public/style.css
-A  src/channels/playground/public/tabs/status.js
+M  src/channels/playground/public/tabs/status.js
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+616cb69 feat(status): owner-only Status tab (host summary + agent health table + restart)
 3424bda test(status): assert restart called with group.id; clear mock state; cover restarted:0
 d854ad1 feat(status): POST /api/status/restart + route wiring
 ff2a764 fix(status): classify health from active sessions only; stat heartbeat once; export AgentStatus; test boundaries
@@ -190,9 +189,8 @@ db5db62 feat(trace): success/error status badge on tool cards (isError + fallbac
 6dfacd4 fix(trace): no-id card rekey, preserve args preview on exec update, label cleanup + tests
 73953c0 feat(trace): unify tool call + execution into one card keyed by toolCallId
 a5f3dce fix(trace): tighten error regex to Error: prefix; guard text-array arm; expand helper tests
-badae79 feat(trace): tool-aware preview + result-classification helpers (exported, tested)
 ```
 
 ### Last refresh
 
-2026-06-11T13:03:43Z
+2026-06-11T13:09:30Z

@@ -1642,8 +1642,8 @@ select.model-changed {
 /* ── Status tab ───────────────────────────────────────────────────────── */
 .status-table { width: 100%; border-collapse: collapse; }
 .status-table th, .status-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; }
-.status-badge { padding: 1px 6px; border-radius: 3px; font-size: 11px; }
-.status-running { background: #e3efe0; color: #3c6e2f; }
-.status-stale   { background: #f6e0de; color: #a8332b; }
-.status-idle    { background: #eee; color: #666; }
-.status-never   { background: #f4f4f4; color: #999; }
+.status-table .status-badge { padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 400; text-transform: none; }
+.status-table .status-running { background: #e3efe0; color: #3c6e2f; }
+.status-table .status-stale   { background: #f6e0de; color: #a8332b; }
+.status-table .status-idle    { background: #eee; color: #666; }
+.status-table .status-never   { background: #f4f4f4; color: #999; }

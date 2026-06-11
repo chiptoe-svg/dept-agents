@@ -3,7 +3,6 @@
  * Polls GET /api/status every 5s while the tab panel is visible.
  */
 const POLL_MS = 5000;
-const HEALTH_LABEL = { running: 'running', stale: 'stale', idle: 'idle', never: 'never' };
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
@@ -38,12 +37,13 @@ async function loadStatus(el) {
       tr.innerHTML =
         `<td>${esc(a.name)} <span class="muted">${esc(a.folder)}</span></td>` +
         `<td>${esc(a.provider || '')}${a.model ? ' / ' + esc(a.model) : ''}</td>` +
-        `<td><span class="status-badge status-${esc(a.health)}">${esc(HEALTH_LABEL[a.health] || a.health)}</span></td>` +
+        `<td><span class="status-badge status-${esc(a.health)}">${esc(a.health)}</span></td>` +
         `<td>${esc(activity)}</td>` +
         `<td><button class="btn btn-ghost status-restart" data-folder="${esc(a.folder)}">Restart</button></td>`;
       tbody.appendChild(tr);
     }
   } catch (err) {
+    // leave the last-rendered rows on a fetch error — stale data beats a blank table for ops.
     hostLine.textContent = `Couldn't load status: ${esc(String(err))}`;
   }
 }
@@ -56,26 +56,39 @@ export function mountStatus(el) {
     `<th>Agent</th><th>Model</th><th>Health</th><th>Activity</th><th></th>` +
     `</tr></thead><tbody id="status-rows"></tbody></table></section>`;
 
-  el.addEventListener('click', async (e) => {
-    const btn = e.target.closest('.status-restart');
-    if (!btn) return;
-    btn.disabled = true;
-    btn.textContent = 'restarting…';
-    try {
-      await fetch('/api/status/restart', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: btn.dataset.folder }),
-      });
-    } finally {
-      await loadStatus(el);
-    }
-  });
+  // app.js mounts each tab once; this guard also makes a future re-mount safe
+  // (no duplicate click handlers → no double POSTs).
+  if (!el._statusWired) {
+    el.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.status-restart');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = 'restarting…';
+      try {
+        const res = await fetch('/api/status/restart', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder: btn.dataset.folder }),
+        });
+        if (!res.ok) {
+          const hostLine = el.querySelector('#status-host');
+          if (hostLine) hostLine.textContent = `Restart failed (${res.status}).`;
+        }
+      } catch (err) {
+        const hostLine = el.querySelector('#status-host');
+        if (hostLine) hostLine.textContent = `Restart failed: ${String(err && err.message ? err.message : err)}`;
+      } finally {
+        await loadStatus(el);
+      }
+    });
+    el._statusWired = true;
+  }
 
   if (el._statusPoll) clearInterval(el._statusPoll);
   loadStatus(el);
   el._statusPoll = setInterval(() => {
-    if (el.offsetParent !== null) loadStatus(el); // only when the panel is visible
+    // hidden attr → display:none → offsetParent null → skip the fetch while another tab is shown
+    if (el.offsetParent !== null) loadStatus(el);
   }, POLL_MS);
 }
