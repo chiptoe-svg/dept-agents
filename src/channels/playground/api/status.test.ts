@@ -20,15 +20,17 @@ vi.mock('../server.js', () => ({
 }));
 
 import { classifySessionHealth, rollupHealth, ABSENT_HEARTBEAT } from './status.js';
+import { ABSOLUTE_CEILING_MS } from '../../../host-sweep.js';
 import { initTestDb, closeDb, runMigrations, getDb } from '../../../db/index.js';
 import { grantRole } from '../../../modules/permissions/db/user-roles.js';
 import { createUser } from '../../../modules/permissions/db/users.js';
+import { createAgentGroup } from '../../../db/agent-groups.js';
 
 const TMP = '/tmp/nanoclaw-test-status-api';
 const OWNER_ID = 'playground:owner';
 const MEMBER_ID = 'playground:member';
 
-const CEIL = 30 * 60 * 1000;
+const CEIL = ABSOLUTE_CEILING_MS;
 
 describe('classifySessionHealth', () => {
   it('running container with a fresh heartbeat → running', () => {
@@ -37,6 +39,9 @@ describe('classifySessionHealth', () => {
   it('running container with a stale/absent heartbeat → stale', () => {
     expect(classifySessionHealth('running', CEIL + 1, CEIL)).toBe('stale');
     expect(classifySessionHealth('running', ABSENT_HEARTBEAT, CEIL)).toBe('stale');
+  });
+  it('running container at exactly the boundary → stale', () => {
+    expect(classifySessionHealth('running', CEIL, CEIL)).toBe('stale');
   });
   it('idle/stopped → idle', () => {
     expect(classifySessionHealth('idle', 1000, CEIL)).toBe('idle');
@@ -47,6 +52,9 @@ describe('classifySessionHealth', () => {
 describe('rollupHealth', () => {
   it('no sessions → never', () => {
     expect(rollupHealth([])).toBe('never');
+  });
+  it('single element → returns that element', () => {
+    expect(rollupHealth(['stale'])).toBe('stale');
   });
   it('reports the worst state (stale > running > idle)', () => {
     expect(rollupHealth(['idle', 'running', 'stale'])).toBe('stale');
@@ -101,5 +109,27 @@ describe('handleGetStatus owner-gate', () => {
     };
     expect(typeof body.host.version).toBe('string');
     expect(Array.isArray(body.agents)).toBe(true);
+  });
+
+  it('agent group with no sessions → health: never, activeSessions: 0, heartbeatAgeMs: null', async () => {
+    createAgentGroup({
+      id: 'test-group-1',
+      name: 'Test Group',
+      folder: 'test-group-1',
+      agent_provider: null,
+      created_at: new Date().toISOString(),
+    });
+    const { handleGetStatus } = await import('./status.js');
+    const result = handleGetStatus(ownerSession());
+    expect(result.status).toBe(200);
+    const body = result.body as {
+      host: { version: string; gatewayRunning: boolean; activeContainers: number };
+      agents: import('./status.js').AgentStatus[];
+    };
+    const agent = body.agents.find((a) => a.folder === 'test-group-1');
+    expect(agent).toBeDefined();
+    expect(agent!.health).toBe('never');
+    expect(agent!.activeSessions).toBe(0);
+    expect(agent!.heartbeatAgeMs).toBeNull();
   });
 });

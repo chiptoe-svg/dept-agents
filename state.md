@@ -159,21 +159,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `status-health-tab`
-- **Last tag:** `phase-c-complete-2026-05-28` (99 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (100 commits ahead)
 
 ### Working tree
 
 ```
 ## status-health-tab
  M config/playground-seats.json
-A  src/channels/playground/api/status.test.ts
-A  src/channels/playground/api/status.ts
+M  src/channels/playground/api/status.test.ts
+M  src/channels/playground/api/status.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+395a2ad feat(status): health-classifier + GET /api/status (owner-gated)
 123a92a docs(plan): owner Status/Health tab plan + spec correction (sessions.container_status source)
 bf2f1ec docs(spec): owner Status/Health tab (health roll-up + restart op)
 4c729ff docs(state): record richer live trace cards shipped
@@ -188,9 +189,8 @@ badae79 feat(trace): tool-aware preview + result-classification helpers (exporte
 293bacb docs(plan): richer live trace cards implementation plan
 62ea5df docs(spec): richer live trace cards (unify tool card + status badge + tool-aware previews)
 c7b9dfd docs(state): record agent egress control shipped + live-verified + deploy nuances
-5f4d676 fix(pi-model): derive proxy ORIGIN from ANTHROPIC_BASE_URL for omlx/clemson
 ```
 
 ### Last refresh
 
-2026-06-11T12:46:29Z
+2026-06-11T12:53:02Z

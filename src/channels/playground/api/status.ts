@@ -39,7 +39,7 @@ export function rollupHealth(sessionHealths: SessionHealth[]): AgentHealth {
   return sessionHealths.reduce<AgentHealth>((worst, h) => (HEALTH_ORDER[h] > HEALTH_ORDER[worst] ? h : worst), 'idle');
 }
 
-interface AgentStatus {
+export interface AgentStatus {
   folder: string;
   name: string;
   model: string | null;
@@ -82,31 +82,36 @@ export function handleGetStatus(session: PlaygroundSession): ApiResult<{
   agents: AgentStatus[];
 }> {
   if (!isOwnerOrAdmin(session.userId)) {
-    return { status: 403, body: { error: 'owner role required' } };
+    return { status: 403, body: { error: 'owner or admin required' } };
   }
   const now = Date.now();
   const agents: AgentStatus[] = getAllAgentGroups().map((g) => {
-    const sessions = getSessionsByAgentGroup(g.id);
-    const healths = sessions.map((s) =>
-      classifySessionHealth(s.container_status, readHeartbeatAgeMs(g.id, s.id, now), ABSOLUTE_CEILING_MS),
+    const allSessions = getSessionsByAgentGroup(g.id);
+    const sessions = allSessions.filter((s) => s.status === 'active'); // health + counts from live sessions only
+    const sessionAges = sessions.map((s) => ({ s, age: readHeartbeatAgeMs(g.id, s.id, now) })); // stat once, reuse
+    const healths = sessionAges.map(({ s, age }) =>
+      classifySessionHealth(s.container_status, age, ABSOLUTE_CEILING_MS),
     );
-    const runningAges = sessions
-      .filter((s) => s.container_status === 'running')
-      .map((s) => readHeartbeatAgeMs(g.id, s.id, now))
+    const runningAges = sessionAges
+      .filter(({ s }) => s.container_status === 'running')
+      .map(({ age }) => age)
       .filter((a) => Number.isFinite(a));
     const cfg = getContainerConfig(g.id);
+    // ISO-8601 timestamps sort lexicographically === chronologically.
     const lastActivityAt =
-      sessions
+      allSessions
         .map((s) => s.last_active)
         .filter(Boolean)
         .sort()
         .pop() ?? null;
+    let health = rollupHealth(healths);
+    if (health === 'never' && allSessions.length > 0) health = 'idle'; // has only closed sessions → idle, not 'never'
     return {
       folder: g.folder,
       name: g.name,
       model: cfg?.model ?? null,
       provider: cfg?.model_provider ?? null,
-      health: rollupHealth(healths),
+      health,
       heartbeatAgeMs: runningAges.length ? Math.min(...runningAges) : null,
       lastActivityAt,
       activeSessions: sessions.filter((s) => s.container_status === 'running' || s.container_status === 'idle').length,
