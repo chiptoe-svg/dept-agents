@@ -4,7 +4,6 @@ import type { AddressInfo } from 'net';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-
 // `vi.hoisted` ensures mockEnv exists when the vi.mock factory below
 // runs — important now that credential-proxy.ts pulls in
 // student-creds-paths → config → env at import time, which fires the
@@ -27,6 +26,7 @@ import {
   serializeResolvedCredsError,
   resolveOmlxKey,
   resolveProxyRoute,
+  isEgressAllowed,
 } from './credential-proxy.js';
 
 function makeRequest(
@@ -310,6 +310,25 @@ describe('credential-proxy', () => {
     // No upstream request was made — the upstream mock server was never hit
     expect(lastUpstreamHeaders).toEqual({});
   });
+
+  it('returns 403 for a disallowed path within a valid route (egress allowlist gate)', async () => {
+    proxyPort = await startProxy({ OPENAI_API_KEY: 'sk-test-openai' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/openai/v1/models',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({ error: 'endpoint not allowed by nanoclaw egress policy' });
+    // Mock upstream must NOT have been hit — no credentials forwarded
+    expect(lastUpstreamHeaders).toEqual({});
+  });
 });
 
 describe('userCredsHook', () => {
@@ -377,6 +396,31 @@ describe('credential-proxy OMLX_API_KEY default', () => {
   it('uses OMLX_API_KEY env when set', () => {
     process.env.OMLX_API_KEY = 'classroom-shared-key';
     expect(resolveOmlxKey()).toBe('classroom-shared-key');
+  });
+});
+
+describe('isEgressAllowed', () => {
+  it('allows the chat/messages/responses endpoints + the anthropic OAuth exchange', () => {
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/messages')).toBe(true);
+    expect(isEgressAllowed('anthropic', 'POST', '/api/oauth/claude_cli/create_api_key')).toBe(true);
+    expect(isEgressAllowed('openai', 'POST', '/v1/responses')).toBe(true);
+    expect(isEgressAllowed('openai', 'POST', '/v1/chat/completions')).toBe(true);
+    expect(isEgressAllowed('openai-platform', 'POST', '/v1/chat/completions')).toBe(true);
+    expect(isEgressAllowed('omlx', 'POST', '/v1/responses')).toBe(true);
+    expect(isEgressAllowed('clemson', 'POST', '/v1/chat/completions')).toBe(true);
+  });
+  it('blocks the proven exploit and other non-chat endpoints', () => {
+    expect(isEgressAllowed('openai', 'POST', '/v1/models')).toBe(false);
+    expect(isEgressAllowed('openai', 'GET', '/v1/responses')).toBe(false);
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/models')).toBe(false);
+    expect(isEgressAllowed('anthropic', 'GET', '/v1/messages')).toBe(false);
+  });
+  it('blocks the entire googleapis route (empty allowlist, dead route)', () => {
+    expect(isEgressAllowed('googleapis', 'GET', '/drive/v3/files')).toBe(false);
+    expect(isEgressAllowed('googleapis', 'POST', '/gmail/v1/users/me/messages/send')).toBe(false);
+  });
+  it('ignores query strings when matching', () => {
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/messages?beta=true')).toBe(true);
   });
 });
 

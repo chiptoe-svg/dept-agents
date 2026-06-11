@@ -114,6 +114,30 @@ export function resolveProxyRoute(rawUrl: string): { route: ProxyRoute; upstream
   return null;
 }
 
+/**
+ * Per-route upstream-path allowlist. Only these (METHOD, path) pairs are
+ * forwarded; everything else → 403 with no credential injected. `googleapis`
+ * is intentionally empty — the route is dead (the GWS relay calls Google
+ * directly), so it rejects everything. Query strings are ignored.
+ *
+ * anthropic includes /api/oauth/claude_cli/create_api_key — the OAuth-mode
+ * token→temp-key exchange the proxy injects on (see module docstring). Without
+ * it, OAuth-mode installs cannot mint a session key and every call fails.
+ */
+export const EGRESS_ALLOWLIST: Record<ProxyRoute, string[]> = {
+  anthropic: ['POST /v1/messages', 'POST /api/oauth/claude_cli/create_api_key'],
+  openai: ['POST /v1/responses', 'POST /v1/chat/completions'],
+  'openai-platform': ['POST /v1/responses', 'POST /v1/chat/completions'],
+  omlx: ['POST /v1/chat/completions', 'POST /v1/responses'],
+  clemson: ['POST /v1/chat/completions', 'POST /v1/responses'],
+  googleapis: [],
+};
+
+export function isEgressAllowed(route: ProxyRoute, method: string, upstreamPath: string): boolean {
+  const pathname = upstreamPath.split('?')[0];
+  return EGRESS_ALLOWLIST[route].includes(`${method.toUpperCase()} ${pathname}`);
+}
+
 export function serializeResolvedCredsError(
   result: Extract<ResolvedCreds, { kind: 'connect_required' | 'forbidden' }>,
 ): { status: number; body: Record<string, unknown> } {
@@ -519,6 +543,18 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         const isHttps = upstreamUrl.protocol === 'https:';
         const makeRequest = requestFor(isHttps);
 
+        if (!isEgressAllowed(route, req.method || 'GET', upstreamPath)) {
+          log.warn('credential-proxy: egress blocked (path not allowed)', {
+            route,
+            method: req.method,
+            upstreamPath: upstreamPath.split('?')[0],
+            src: req.socket.remoteAddress,
+          });
+          res.writeHead(403, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'endpoint not allowed by nanoclaw egress policy' }));
+          return;
+        }
+
         // ── payload-log: capture request body ────────────────────────────────
         const rawSessionId = req.headers[SESSION_ID_HEADER];
         const sessionId = typeof rawSessionId === 'string' && rawSessionId.length > 0 ? rawSessionId : 'unattributed';
@@ -586,6 +622,9 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         }
         // ── per-user-provider-auth:proxy-invocation END ────────────────────────
 
+        // NOTE: unreachable since 2026-06-10 — `/googleapis` has an empty egress
+        // allowlist (isEgressAllowed) and 403s above. Kept for a future
+        // per-student GWS-through-proxy design, which must add its own controls.
         if (isGoogle) {
           // Google APIs: refresh access token if needed, inject as Bearer.
           // Returns 502 with an actionable message if no creds configured.

@@ -154,21 +154,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `agent-egress-control`
-- **Last tag:** `phase-c-complete-2026-05-28` (81 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (82 commits ahead)
 
 ### Working tree
 
 ```
 ## agent-egress-control
  M config/playground-seats.json
-M  docs/superpowers/plans/2026-06-10-agent-egress-control.md
-M  docs/superpowers/specs/2026-06-10-agent-egress-control-design.md
+M  src/credential-proxy.test.ts
+M  src/credential-proxy.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+bb2d075 docs(egress): anthropic allowlist must include the OAuth token-exchange path
 f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query-string routing
 2e8032a docs(proxy): update module docstring for explicit-prefix routing (no catch-all)
 81c97a0 feat(proxy): explicit /anthropic prefix, no provider catch-all (unrecognized -> 403)
@@ -183,9 +184,8 @@ f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query
 b077fd7 feat(container): forward WEB_SEARCH_PROVIDER + SEARXNG_URL to agent containers
 ce0c5c4 feat(web-search): pluggable backends (brave + searxng) via WEB_SEARCH_PROVIDER
 175db31 feat(web-search): owner Web Search backend toggle card
-83d315d feat(web-search): owner-gated config API (status/availability/set)
 ```
 
 ### Last refresh
 
-2026-06-11T04:13:17Z
+2026-06-11T04:15:31Z
