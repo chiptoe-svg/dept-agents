@@ -157,20 +157,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `richer-trace-cards`
-- **Last tag:** `phase-c-complete-2026-05-28` (94 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (95 commits ahead)
 
 ### Working tree
 
 ```
 ## richer-trace-cards
  M config/playground-seats.json
-M  src/channels/playground/public/tabs/chat-trace.test.ts
+M  src/channels/playground/public/tabs/chat.js
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+134b68b test(trace): no-regression coverage for text-only turns
 e0d0b37 fix(trace): clear opposite status class on re-fire; badge title; CSS specificity; pending-state test
 db5db62 feat(trace): success/error status badge on tool cards (isError + fallback)
 6dfacd4 fix(trace): no-id card rekey, preserve args preview on exec update, label cleanup + tests
@@ -185,9 +186,8 @@ c7b9dfd docs(state): record agent egress control shipped + live-verified + deplo
 46bda30 feat(proxy): per-route egress allowlist (chat + anthropic OAuth exchange); googleapis fail-closed
 bb2d075 docs(egress): anthropic allowlist must include the OAuth token-exchange path
 f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query-string routing
-2e8032a docs(proxy): update module docstring for explicit-prefix routing (no catch-all)
 ```
 
 ### Last refresh
 
-2026-06-11T11:37:15Z
+2026-06-11T11:40:11Z

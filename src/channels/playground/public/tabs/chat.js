@@ -1278,7 +1278,9 @@ function piHandleToolExecutionEnd(trace, event, st) {
     card = createToolCard(trace._currentTurnUl || trace, null);
     card.kindEl.textContent = 'tool · (unknown)';
     card.li.dataset.toolCallId = event.toolCallId || '';
-    st.toolCards[event.toolCallId] = card;
+    // Only register under a real id — avoids a `toolCards["undefined"]` entry
+    // for a malformed event with no toolCallId.
+    if (event.toolCallId) st.toolCards[event.toolCallId] = card;
   }
   const name = card.toolName || 'unknown';
   const result = event.result;
