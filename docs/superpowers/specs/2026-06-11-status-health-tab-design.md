@@ -12,7 +12,8 @@ Give the owner an in-playground **Status / Health** surface: see gateway/host st
 
 - **Tab gating** (`src/channels/playground/public/app.js`): `TABS = ['home','chat','persona','skills','models','agents','sources','retrieval','benchmarks']`; `mounters[name]` maps tab→mount fn; owner/ta see all `TABS`, students see only `activeClass.tabsVisibleToStudents`. So a new `status` tab **excluded from `tabsVisibleToStudents`** is automatically owner/ta-only. Tab buttons + `#tab-<name>` panels live in `index.html`.
 - **Health signals (host has them, none surfaced):**
-  - `container_state` table (per-session, `outbound.db`, row `id=1`): `status` + `status_changed` (read in `src/db/session-db.ts` ~line 254; written by `markContainerRunning`/`markContainerStopped` in `session-manager.ts:590/600`).
+  - **`sessions.container_status`** — `'running' | 'idle' | 'stopped'` on the central `sessions` table (`types.ts:145`), written by `markContainerRunning`/`markContainerIdle`/`markContainerStopped` (`session-manager.ts:590–601`). This is the per-session running status. (NOTE: the `container_state` table in `outbound.db` is *tool-in-flight* info for sweep tolerance — NOT the running status; do not use it here.)
+  - **`sessions.last_active`** — last-activity ISO timestamp (set on each `markContainerRunning`). Use this for `lastActivityAt` (no need to read per-session `outbound.db`).
   - Heartbeat file mtime at `heartbeatPath(agentGroupId, sessionId)` — liveness.
   - `getActiveContainerCount()` / `isContainerRunning(sessionId)` (`container-runner.ts`) — this host process's in-memory truth.
   - `getAllAgentGroups()` (`db/agent-groups.ts`), `getSessionsByAgentGroup(id)` / `getActiveSessions()` (`db/sessions.ts`).
@@ -20,7 +21,7 @@ Give the owner an in-playground **Status / Health** surface: see gateway/host st
   - `getPlaygroundStatus()` (`channels/playground/server.ts`) → `{ running, url }`.
 - **Ops primitive:** `restartAgentGroupContainers(agentGroupId, reason)` (`container-restart.ts`) — kills + lets the next message re-spawn.
 - **Owner-gating pattern:** `isOwner` / `isGlobalAdmin` → `isOwnerOrAdmin(userId)` (as in `api/web-search-config.ts`); handlers return `ApiResult<T>` and take a `PlaygroundSession`. Routes wired in `api-routes.ts`; the demo bypass session is always the owner (so live owner-gate can't be exercised under bypass — unit-test the gate).
-- **Last activity:** newest `messages_out.timestamp` for the agent's sessions.
+- **Last activity:** `sessions.last_active` (max across the agent's sessions) — no per-session `outbound.db` read needed.
 
 ## Architecture
 
@@ -43,13 +44,13 @@ New `src/channels/playground/api/status.ts`, `handleGetStatus(session)` → owne
 }
 ```
 
-**Per-agent health roll-up** (an agent group may have several sessions — report the *worst* state + an `activeSessions` count):
-- `running` — a session whose container `isContainerRunning(sessionId)` is true AND heartbeat mtime age < `ABSOLUTE_CEILING_MS`.
-- `stale` — `container_state.status` is running (or `isContainerRunning`) BUT heartbeat age ≥ `ABSOLUTE_CEILING_MS` (or heartbeat file missing while marked running) — the sweep's "stuck" condition.
-- `idle` — has sessions but no running container (normal between turns / stopped).
-- `never` — no sessions / no container ever.
+**Per-agent health roll-up** (an agent group may have several sessions via `getSessionsByAgentGroup(id)` — report the *worst* state + an `activeSessions` count). Per session, from `sessions.container_status` + heartbeat mtime age + `isContainerRunning(sessionId)`:
+- `running` — `container_status === 'running'` AND heartbeat age < `ABSOLUTE_CEILING_MS` (heartbeat fresh).
+- `stale` — `container_status === 'running'` BUT heartbeat age ≥ `ABSOLUTE_CEILING_MS` (or heartbeat file missing while marked running) — the sweep's "stuck" condition.
+- `idle` — `container_status` is `'idle'` or `'stopped'` (no running container; normal between turns).
+- `never` — agent has no sessions at all.
 
-`version` from `package.json`. `gatewayRunning`/`activeContainers` from `getPlaygroundStatus()` + `getActiveContainerCount()`. Implementation verifies the exact `container_state` reader + `getPlaygroundStatus` field names against the source.
+Worst-of ordering: `stale` > `running` > `idle` > `never`. `lastActivityAt` = max `sessions.last_active` across the agent's sessions. `activeSessions` = count of sessions with `container_status` in (`running`,`idle`). `version` from `package.json`. `gatewayRunning` from `getPlaygroundStatus().running`; `activeContainers` from `getActiveContainerCount()`.
 
 ### Component 2 — Restart op (write)
 
@@ -65,7 +66,7 @@ Owner-gated `POST /api/status/restart` body `{ folder }` → resolve the agent g
 
 ```
 Status tab (5s poll) → GET /api/status (owner-gated)
-   → getAllAgentGroups + per-session container_state + heartbeat mtime + isContainerRunning + newest messages_out
+   → getAllAgentGroups + getSessionsByAgentGroup + sessions.container_status/last_active + heartbeat mtime + isContainerRunning
    → { host, agents[] }
 Restart button → POST /api/status/restart {folder} → restartAgentGroupContainers → re-fetch
 ```
@@ -73,7 +74,7 @@ Restart button → POST /api/status/restart {folder} → restartAgentGroupContai
 ## Testing
 
 Host (`vitest`, `src/channels/playground/api/status.test.ts`):
-- **Health classification:** given mocked `container_state` + heartbeat mtime + `isContainerRunning`, assert each of running / stale / idle / never (table-driven). Stale = running-but-heartbeat-past-ceiling.
+- **Health classification:** given sessions with mocked `container_status` + heartbeat mtime + `isContainerRunning`, assert each of running / stale / idle / never (table-driven). Stale = `container_status='running'` but heartbeat past the ceiling. (Extract the classifier as a pure function taking `(sessions, heartbeatAgeFn, isRunningFn, now)` so it's unit-testable without real files/host state.)
 - **Roll-up:** an agent with two sessions (one running, one stale) reports `stale` (worst) + `activeSessions: 2`.
 - **Host summary** shape (gatewayRunning/activeContainers/version present).
 - **`GET /api/status`** owner-gated: non-owner → 403.
