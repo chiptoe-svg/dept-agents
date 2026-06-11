@@ -1141,8 +1141,6 @@ function piHandleToolcallEnd(trace, ame, st) {
   if (!card) {
     card = createToolCard(trace._currentTurnUl || trace, null);
   }
-  delete st.pendingToolCards[ame.contentIndex];
-
   const name = tc.name || 'unknown';
   const args = tc.arguments != null ? tc.arguments : {};
   card.toolName = name;
@@ -1151,9 +1149,13 @@ function piHandleToolcallEnd(trace, ame, st) {
   card.argsEl.textContent = formatTracePayloadFull(args);
 
   if (tc.id) {
+    // Rekey contentIndex → toolCallId so tool_execution_* finds the same card.
+    delete st.pendingToolCards[ame.contentIndex];
     card.li.dataset.toolCallId = tc.id;
     st.toolCards[tc.id] = card;
   }
+  // (No tc.id is a degenerate pi case — leave the card in pendingToolCards;
+  // turn_start clears it. Without an id it cannot be correlated to exec events.)
   if (trace._currentTurnUl) finalizeTurn(trace._currentTurnUl.closest('.trace-turn'));
   trace.scrollTop = trace.scrollHeight;
 }
@@ -1240,7 +1242,6 @@ function piHandleToolExecutionStart(trace, event, st) {
   let card = st.toolCards[toolCallId];
   if (!card) {
     card = createToolCard(trace._currentTurnUl || trace, toolName || null);
-    if (toolName) card.kindEl.textContent = `tool · ${toolName}`;
     if (args != null) card.argsEl.textContent = formatTracePayloadFull(args);
     card.li.dataset.toolCallId = toolCallId;
     st.toolCards[toolCallId] = card;
@@ -1259,7 +1260,8 @@ function piHandleToolExecutionUpdate(trace, event, st) {
   const card = st.toolCards[event.toolCallId];
   if (!card) return;
   if (event.partialResult != null) {
-    card.previewEl.textContent = formatTracePreview(event.partialResult);
+    card.resultEl.textContent = formatTracePayloadFull(event.partialResult);
+    card.resultEl.style.display = '';
   }
   trace.scrollTop = trace.scrollHeight;
 }
@@ -1272,7 +1274,8 @@ function piHandleToolExecutionUpdate(trace, event, st) {
 function piHandleToolExecutionEnd(trace, event, st) {
   let card = st.toolCards[event.toolCallId];
   if (!card) {
-    card = createToolCard(trace._currentTurnUl || trace, event.toolCallId || null);
+    card = createToolCard(trace._currentTurnUl || trace, null);
+    card.kindEl.textContent = 'tool · (unknown)';
     card.li.dataset.toolCallId = event.toolCallId || '';
     st.toolCards[event.toolCallId] = card;
   }

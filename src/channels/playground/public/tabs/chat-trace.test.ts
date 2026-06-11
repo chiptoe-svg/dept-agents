@@ -139,6 +139,26 @@ describe('unified tool card', () => {
     pi(trace, { type: 'tool_execution_end', toolCallId: 'tcB', isError: false, result: 'ok-b' });
     expect(trace.querySelectorAll('[data-tool-call-id="tcA"]').length).toBe(1);
     expect(trace.querySelectorAll('[data-tool-call-id="tcB"]').length).toBe(1);
+    // Fix 5: fallback-created cards must have name/args populated, not just exist.
+    expect(trace.querySelector('[data-tool-call-id="tcA"]').textContent).toContain('https://a');
+    expect(trace.querySelector('[data-tool-call-id="tcB"]').textContent).toContain('https://b');
+  });
+
+  it('renders exactly one card for a toolcall_end with no tc.id (no-id degenerate path)', () => {
+    const trace = freshTrace();
+    pi(trace, { type: 'message_update', assistantMessageEvent: { type: 'toolcall_start', contentIndex: 0 } });
+    pi(trace, {
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'toolcall_end',
+        contentIndex: 0,
+        toolCall: { name: 'web_search', arguments: { query: 'q' } },
+      },
+    });
+    // No exec events — the card stays in pendingToolCards (no id to key by).
+    const cards = trace.querySelectorAll('.trace-tool_use');
+    expect(cards.length).toBe(1);
+    expect(cards[0].textContent).toContain('q');
   });
 
   it('renders a card when execution arrives with no preceding toolcall_end', () => {
