@@ -235,3 +235,13 @@ describe('status badge', () => {
     expect(card.querySelector('.trace-tool-badge').textContent).toBe('…');
   });
 });
+
+describe('no regression: text-only turn', () => {
+  it('renders the assistant bubble for a plain message turn', () => {
+    const trace = freshTrace();
+    pi(trace, { type: 'message_start', message: { role: 'assistant' } });
+    pi(trace, { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Hello world' } });
+    pi(trace, { type: 'message_end', message: { usage: { input: 10, output: 3, cost: { total: 0.0001 } } } });
+    expect(trace.textContent).toContain('Hello world');
+  });
+});
