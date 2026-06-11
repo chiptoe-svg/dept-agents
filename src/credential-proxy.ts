@@ -123,6 +123,15 @@ export function resolveProxyRoute(rawUrl: string): { route: ProxyRoute; upstream
  * anthropic includes /api/oauth/claude_cli/create_api_key — the OAuth-mode
  * token→temp-key exchange the proxy injects on (see module docstring). Without
  * it, OAuth-mode installs cannot mint a session key and every call fails.
+ *
+ * Each entry is `"METHOD path"` (single space separator); the path is matched
+ * EXACTLY and case-sensitively (no trailing-slash or case normalization) —
+ * anything that doesn't match exactly fails closed (403). Paths must not
+ * contain leading spaces.
+ *
+ * A bare prefix like `/anthropic` (no trailing path) resolves to
+ * `upstreamPath = '/'`, which is intentionally not in any allowlist, so
+ * it 403s.
  */
 export const EGRESS_ALLOWLIST: Record<ProxyRoute, string[]> = {
   anthropic: ['POST /v1/messages', 'POST /api/oauth/claude_cli/create_api_key'],
@@ -543,6 +552,8 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         const isHttps = upstreamUrl.protocol === 'https:';
         const makeRequest = requestFor(isHttps);
 
+        // `|| 'GET'` is a safe fallback: no allowlist entry uses GET, so a
+        // missing method fails closed.
         if (!isEgressAllowed(route, req.method || 'GET', upstreamPath)) {
           log.warn('credential-proxy: egress blocked (path not allowed)', {
             route,

@@ -422,6 +422,15 @@ describe('isEgressAllowed', () => {
   it('ignores query strings when matching', () => {
     expect(isEgressAllowed('anthropic', 'POST', '/v1/messages?beta=true')).toBe(true);
   });
+  it('fails closed on case variants and bare-prefix paths (exact match, intentional)', () => {
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/Messages')).toBe(false); // path case-sensitive
+    expect(isEgressAllowed('openai', 'POST', '/V1/responses')).toBe(false);
+    expect(isEgressAllowed('anthropic', 'POST', '/')).toBe(false); // bare prefix → '/'
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/messages/')).toBe(false); // trailing slash
+  });
+  it('normalizes the HTTP method case', () => {
+    expect(isEgressAllowed('openai', 'post', '/v1/chat/completions')).toBe(true);
+  });
 });
 
 describe('resolveProxyRoute', () => {

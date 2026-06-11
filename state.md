@@ -154,7 +154,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `agent-egress-control`
-- **Last tag:** `phase-c-complete-2026-05-28` (82 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (83 commits ahead)
 
 ### Working tree
 
@@ -169,6 +169,7 @@ M  src/credential-proxy.ts
 ### Recent commits (last 15)
 
 ```
+46bda30 feat(proxy): per-route egress allowlist (chat + anthropic OAuth exchange); googleapis fail-closed
 bb2d075 docs(egress): anthropic allowlist must include the OAuth token-exchange path
 f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query-string routing
 2e8032a docs(proxy): update module docstring for explicit-prefix routing (no catch-all)
@@ -183,9 +184,8 @@ f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query
 1bc47cc refactor(web-search): use exported TEMPLATE_FOLDER constant
 b077fd7 feat(container): forward WEB_SEARCH_PROVIDER + SEARXNG_URL to agent containers
 ce0c5c4 feat(web-search): pluggable backends (brave + searxng) via WEB_SEARCH_PROVIDER
-175db31 feat(web-search): owner Web Search backend toggle card
 ```
 
 ### Last refresh
 
-2026-06-11T04:15:31Z
+2026-06-11T04:20:09Z
