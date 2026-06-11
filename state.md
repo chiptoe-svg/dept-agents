@@ -160,21 +160,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `cost-governance`
-- **Last tag:** `phase-c-complete-2026-05-28` (115 commits ahead)
+- **Current:** `main`
+- **Last tag:** `phase-c-complete-2026-05-28` (116 commits ahead)
 
 ### Working tree
 
 ```
-## cost-governance
+## main...origin/main
  M config/playground-seats.json
-M  state.md
+A  docs/superpowers/specs/2026-06-11-simple-my-agent-tab-design.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+b597d60 docs(state): record cost governance + scenario-aware Status roster shipped + live-verified
 9d0d490 refactor(home): drop classroom roster + add-student cards (superseded by Status roster)
 ce180c6 fix(status): surface budgets-fetch failure; drop double loadStatus; prompt-based per-agent budget (survives re-render)
 8b041fa feat(status): scenario roster + spend/budget columns + budget editor + add-participant
@@ -189,9 +190,8 @@ ea2e2b4 fix(status): scope tab CSS (don't clobber existing .status-badge); surfa
 616cb69 feat(status): owner-only Status tab (host summary + agent health table + restart)
 3424bda test(status): assert restart called with group.id; clear mock state; cover restarted:0
 d854ad1 feat(status): POST /api/status/restart + route wiring
-ff2a764 fix(status): classify health from active sessions only; stat heartbeat once; export AgentStatus; test boundaries
 ```
 
 ### Last refresh
 
-2026-06-11T16:28:17Z
+2026-06-11T21:15:38Z
