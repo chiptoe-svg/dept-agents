@@ -159,20 +159,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (96 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (97 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 34]
+## main...origin/main [ahead 35]
  M config/playground-seats.json
-M  state.md
+A  docs/superpowers/specs/2026-06-11-status-health-tab-design.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+4c729ff docs(state): record richer live trace cards shipped
 8bebfb5 fix(trace): don't register a fallback card under an undefined toolCallId key
 134b68b test(trace): no-regression coverage for text-only turns
 e0d0b37 fix(trace): clear opposite status class on re-fire; badge title; CSS specificity; pending-state test
@@ -187,9 +188,8 @@ c7b9dfd docs(state): record agent egress control shipped + live-verified + deplo
 5f4d676 fix(pi-model): derive proxy ORIGIN from ANTHROPIC_BASE_URL for omlx/clemson
 35ad39c docs/test(proxy): document exact-match egress semantics + fail-closed edge cases
 46bda30 feat(proxy): per-route egress allowlist (chat + anthropic OAuth exchange); googleapis fail-closed
-bb2d075 docs(egress): anthropic allowlist must include the OAuth token-exchange path
 ```
 
 ### Last refresh
 
-2026-06-11T11:41:55Z
+2026-06-11T12:04:17Z
