@@ -185,3 +185,88 @@ describe('humanizeSkillTitle', () => {
     expect(humanizeSkillTitle('wiki')).toBe('Wiki');
   });
 });
+
+describe('handlePutAgentName', () => {
+  function mockWriteDeps() {
+    const updateScalars = vi.fn();
+    const updateGroup = vi.fn();
+    const materialize = vi.fn(() => ({ skills: [] }));
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => GROUP,
+      updateAgentGroup: updateGroup,
+    }));
+    vi.doMock('../../../db/container-configs.js', () => ({ updateContainerConfigScalars: updateScalars }));
+    vi.doMock('../../../container-config.js', () => ({ materializeContainerJson: materialize }));
+    vi.doMock('../../../default-participant-slot.js', () => ({ readSlotConfig: () => null }));
+    vi.doMock('../../../model-catalog.js', () => ({ getModelCatalog: () => [] }));
+    return { updateScalars, updateGroup, materialize };
+  }
+
+  it('writes assistant_name + group display name and re-materializes container.json', async () => {
+    const { updateScalars, updateGroup, materialize } = mockWriteDeps();
+    const { handlePutAgentName } = await import('./simple-config.js');
+    const r = handlePutAgentName('user_01', { name: '  JaneBot  ' });
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ ok: true, name: 'JaneBot' });
+    expect(updateScalars).toHaveBeenCalledWith('ag-1', { assistant_name: 'JaneBot' });
+    expect(updateGroup).toHaveBeenCalledWith('ag-1', { name: 'JaneBot' });
+    expect(materialize).toHaveBeenCalledWith('ag-1');
+  });
+
+  it('400s on empty, whitespace-only, too-long, or non-string names', async () => {
+    mockWriteDeps();
+    const { handlePutAgentName } = await import('./simple-config.js');
+    expect(handlePutAgentName('user_01', { name: '' }).status).toBe(400);
+    expect(handlePutAgentName('user_01', { name: '   ' }).status).toBe(400);
+    expect(handlePutAgentName('user_01', { name: 'x'.repeat(41) }).status).toBe(400);
+    expect(handlePutAgentName('user_01', { name: 42 }).status).toBe(400);
+    expect(handlePutAgentName('user_01', {}).status).toBe(400);
+  });
+
+  it('404s on an unknown folder', async () => {
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => undefined,
+      updateAgentGroup: vi.fn(),
+    }));
+    vi.doMock('../../../db/container-configs.js', () => ({ updateContainerConfigScalars: vi.fn() }));
+    vi.doMock('../../../container-config.js', () => ({ materializeContainerJson: vi.fn() }));
+    vi.doMock('../../../default-participant-slot.js', () => ({ readSlotConfig: () => null }));
+    vi.doMock('../../../model-catalog.js', () => ({ getModelCatalog: () => [] }));
+    const { handlePutAgentName } = await import('./simple-config.js');
+    expect(handlePutAgentName('nope', { name: 'X' }).status).toBe(404);
+  });
+});
+
+describe('handleSimpleRestart', () => {
+  it('kills the group container and reports ok', async () => {
+    const kill = vi.fn();
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => GROUP,
+      updateAgentGroup: vi.fn(),
+    }));
+    vi.doMock('./agent-library-handlers.js', () => ({ killGroupContainer: kill }));
+    vi.doMock('../../../db/container-configs.js', () => ({ updateContainerConfigScalars: vi.fn() }));
+    vi.doMock('../../../container-config.js', () => ({ materializeContainerJson: vi.fn() }));
+    vi.doMock('../../../default-participant-slot.js', () => ({ readSlotConfig: () => null }));
+    vi.doMock('../../../model-catalog.js', () => ({ getModelCatalog: () => [] }));
+    const { handleSimpleRestart } = await import('./simple-config.js');
+    const r = handleSimpleRestart('user_01');
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ ok: true });
+    expect(kill).toHaveBeenCalledWith('user_01', 'simple tab save');
+  });
+
+  it('404s on an unknown folder', async () => {
+    vi.doMock('../../../db/agent-groups.js', () => ({
+      getAgentGroupByFolder: () => undefined,
+      updateAgentGroup: vi.fn(),
+    }));
+    vi.doMock('./agent-library-handlers.js', () => ({ killGroupContainer: vi.fn() }));
+    vi.doMock('../../../db/container-configs.js', () => ({ updateContainerConfigScalars: vi.fn() }));
+    vi.doMock('../../../container-config.js', () => ({ materializeContainerJson: vi.fn() }));
+    vi.doMock('../../../default-participant-slot.js', () => ({ readSlotConfig: () => null }));
+    vi.doMock('../../../model-catalog.js', () => ({ getModelCatalog: () => [] }));
+    const { handleSimpleRestart } = await import('./simple-config.js');
+    expect(handleSimpleRestart('nope').status).toBe(404);
+  });
+});

@@ -15,10 +15,12 @@ import path from 'path';
 
 import { CONTAINER_DIR } from '../../../config.js';
 import { materializeContainerJson } from '../../../container-config.js';
-import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
+import { getAgentGroupByFolder, updateAgentGroup } from '../../../db/agent-groups.js';
+import { updateContainerConfigScalars } from '../../../db/container-configs.js';
 import { readSlotConfig } from '../../../default-participant-slot.js';
 import { getModelCatalog } from '../../../model-catalog.js';
 import type { ApiResult } from './me.js';
+import { killGroupContainer } from './agent-library-handlers.js';
 
 const SKILLS_DIR = path.join(CONTAINER_DIR, 'skills');
 
@@ -138,6 +140,49 @@ export function handleGetSimpleConfig(draftFolder: string): ApiResult<SimpleConf
       status: 200,
       body: { agentName: cfg.assistantName || group.name, skills, models, activeModel },
     };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
+}
+
+/**
+ * PUT /api/drafts/:folder/name — set the assistant's display name. Writes
+ * the container-config `assistant_name` (system prompt at next spawn) AND
+ * the agent group's display name so rosters and /api/me/agent agree.
+ */
+export function handlePutAgentName(
+  draftFolder: string,
+  body: { name?: unknown },
+): ApiResult<{ ok: true; name: string }> {
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (name.length < 1 || name.length > 40) {
+    return { status: 400, body: { error: 'name must be 1–40 characters' } };
+  }
+  try {
+    const group = getAgentGroupByFolder(draftFolder);
+    if (!group) return { status: 404, body: { error: `Agent group not found: ${draftFolder}` } };
+    updateContainerConfigScalars(group.id, { assistant_name: name });
+    updateAgentGroup(group.id, { name });
+    materializeContainerJson(group.id);
+    return { status: 200, body: { ok: true, name } };
+  } catch (err) {
+    return { status: 500, body: { error: (err as Error).message } };
+  }
+}
+
+/**
+ * POST /api/simple-restart — stop the group's running container so the next
+ * message respawns with freshly-saved skills/name. A separate endpoint
+ * (rather than baking the kill into the skills PUT) because the skills PUT
+ * is shared with the advanced Skills tab, where editing shouldn't bounce a
+ * working container mid-session.
+ */
+export function handleSimpleRestart(draftFolder: string): ApiResult<{ ok: true }> {
+  try {
+    const group = getAgentGroupByFolder(draftFolder);
+    if (!group) return { status: 404, body: { error: `Agent group not found: ${draftFolder}` } };
+    killGroupContainer(draftFolder, 'simple tab save');
+    return { status: 200, body: { ok: true } };
   } catch (err) {
     return { status: 500, body: { error: (err as Error).message } };
   }
