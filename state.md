@@ -160,21 +160,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `cost-governance`
-- **Last tag:** `phase-c-complete-2026-05-28` (111 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (112 commits ahead)
 
 ### Working tree
 
 ```
 ## cost-governance
  M config/playground-seats.json
-M  src/channels/playground/api/cost-budgets.test.ts
-M  src/channels/playground/api/cost-budgets.ts
+M  src/channels/playground/public/style.css
+M  src/channels/playground/public/tabs/status.js
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+886dcbb fix(cost): reject perAgent array in POST validation; test warnFraction=0
 b480065 feat(cost): scenario-aware GET/POST /api/budgets (members + cost + budget)
 2bf08f0 fix(cost): guard perAgent against array json in readCostBudgets
 ae94cff feat(cost): budget config + evaluator (pure, tested)
@@ -189,9 +190,8 @@ ff2a764 fix(status): classify health from active sessions only; stat heartbeat o
 395a2ad feat(status): health-classifier + GET /api/status (owner-gated)
 123a92a docs(plan): owner Status/Health tab plan + spec correction (sessions.container_status source)
 bf2f1ec docs(spec): owner Status/Health tab (health roll-up + restart op)
-4c729ff docs(state): record richer live trace cards shipped
 ```
 
 ### Last refresh
 
-2026-06-11T15:27:01Z
+2026-06-11T15:30:10Z

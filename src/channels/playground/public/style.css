@@ -1647,3 +1647,10 @@ select.model-changed {
 .status-table .status-stale   { background: #f6e0de; color: #a8332b; }
 .status-table .status-idle    { background: #eee; color: #666; }
 .status-table .status-never   { background: #f4f4f4; color: #999; }
+.status-table .status-budget { padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-left: 4px; }
+.status-table .status-budget-ok { background: #e3efe0; color: #3c6e2f; }
+.status-table .status-budget-approaching { background: #fff3cd; color: #856404; }
+.status-table .status-budget-over { background: #f6e0de; color: #a8332b; }
+.status-spend-cell { white-space: nowrap; }
+.status-budget-override { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.status-budget-input { width: 72px; padding: 2px 5px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; }
