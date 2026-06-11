@@ -116,7 +116,7 @@ export function mountSimple(el) {
 // Panel orchestration — fleshed out in Task 6 (data load + wiring) and
 // Task 7 (model dropdown + bubble labels). Kept separate from mountSimple
 // so the testable helpers below stay pure DOM.
-function initPanel(wrapper, folder) {
+export function initPanel(wrapper, folder) {
   const nameInput = wrapper.querySelector('#simple-agent-name');
   const skillsHost = wrapper.querySelector('#simple-skills');
   const personaEl = wrapper.querySelector('#simple-persona');
@@ -260,7 +260,7 @@ function currentModelLabel(wrapper) {
  * our own PUT active-model (server resolves + recycles the container) and
  * a silent hidden-select sync for direct mode.
  */
-function initModelDropdown(wrapper, folder, config) {
+export function initModelDropdown(wrapper, folder, config) {
   const sel = wrapper.querySelector('#simple-model-sel');
   sel.innerHTML = '';
   for (const m of config.models) {

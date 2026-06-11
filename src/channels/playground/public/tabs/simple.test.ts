@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   renderSkillRows,
   checkedSkills,
   applyUseAgentToggle,
   syncHiddenModelSelects,
   setBubbleLabels,
+  initPanel,
+  initModelDropdown,
 } from './simple.js';
 
 const SKILLS = [
@@ -135,5 +137,162 @@ describe('setBubbleLabels', () => {
     setBubbleLabels(wrapper, 'Jane\nBot', 'm\rx');
     expect(wrapper.style.getPropertyValue('--agent-label')).toBe('"🤖 Jane Bot — your agent"');
     expect(wrapper.style.getPropertyValue('--model-label')).toBe('"⚡ m x — model only (no skills, no personality)"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers shared by the Save-flow and model-change tests
+// ---------------------------------------------------------------------------
+
+function buildPanelWrapper() {
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = `
+    <input id="simple-agent-name" value="TestBot">
+    <div id="simple-skills"></div>
+    <textarea id="simple-persona"></textarea>
+    <button id="simple-save" type="button">Save my agent</button>
+    <div id="simple-save-status"></div>
+    <input type="checkbox" id="simple-use-agent" checked>
+    <div class="simple-panel-body"></div>
+    <button id="mode-agent"></button>
+    <button id="mode-direct"></button>
+    <select id="simple-model-sel"></select>
+    <select id="provider-sel"></select>
+    <select id="model-sel"></select>
+  `;
+  return wrapper;
+}
+
+/** Minimal ok-response that returns JSON once. */
+function okJson(body: unknown) {
+  return Promise.resolve({ ok: true, json: async () => body } as Response);
+}
+
+describe('initPanel — Save flow', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('PUT skills + PUT persona + POST simple-restart on Save click, shows success status', async () => {
+    const folder = 'test-folder';
+    const wrapper = buildPanelWrapper();
+
+    // Pre-render two skills so the Save can read checkedSkills().
+    renderSkillRows(wrapper.querySelector('#simple-skills')!, [
+      { name: 'image-gen', title: 'Image gen', description: '', enabled: true },
+      { name: 'pdf-reader', title: 'Pdf reader', description: '', enabled: false },
+    ]);
+    (wrapper.querySelector('#simple-persona') as HTMLTextAreaElement).value = 'Be helpful.';
+
+    const calls: Array<[string, RequestInit]> = [];
+    vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      // Config load triggered by initPanel — return skills matching our pre-render.
+      if (url.startsWith('/api/simple-config')) {
+        return okJson({
+          agentName: 'TestBot',
+          skills: [
+            { name: 'image-gen', title: 'Image gen', description: '', enabled: true },
+            { name: 'pdf-reader', title: 'Pdf reader', description: '', enabled: false },
+          ],
+          models: [],
+          activeModel: null,
+        });
+      }
+      // Persona GET triggered by initPanel's Promise.all.
+      if (
+        url === `/api/drafts/${folder}/persona` &&
+        (!(init as RequestInit).method || (init as RequestInit).method === 'GET')
+      ) {
+        return okJson({ text: 'Be helpful.' });
+      }
+      return okJson({ ok: true });
+    });
+
+    initPanel(wrapper, folder);
+
+    // Let the initial fetch Promise.all resolve (skills are rendered after this).
+    await new Promise((r) => setTimeout(r, 0));
+
+    // After initPanel's .then runs, persona textarea may have been reset — restore it.
+    (wrapper.querySelector('#simple-persona') as HTMLTextAreaElement).value = 'Be helpful.';
+
+    const saveBtn = wrapper.querySelector('#simple-save') as HTMLButtonElement;
+    saveBtn.click();
+
+    // Await the full async save chain (skills + persona + restart are sequential awaits).
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const methods = (url: string, method: string) =>
+      calls.filter(([u, i]) => u === url && (i as RequestInit).method === method);
+
+    expect(methods(`/api/drafts/${folder}/skills`, 'PUT').length).toBe(1);
+    const skillsBody = JSON.parse(methods(`/api/drafts/${folder}/skills`, 'PUT')[0][1].body as string);
+    expect(skillsBody.skills).toEqual(['image-gen']); // only checked skill
+
+    expect(methods(`/api/drafts/${folder}/persona`, 'PUT').length).toBe(1);
+    const personaBody = JSON.parse(methods(`/api/drafts/${folder}/persona`, 'PUT')[0][1].body as string);
+    expect(personaBody.text).toBe('Be helpful.');
+
+    expect(methods('/api/simple-restart', 'POST').length).toBe(1);
+    const restartBody = JSON.parse(methods('/api/simple-restart', 'POST')[0][1].body as string);
+    expect(restartBody.folder).toBe(folder);
+
+    const statusEl = wrapper.querySelector('#simple-save-status') as HTMLElement;
+    expect(statusEl.textContent).toBe('Saved! Your agent will use this from its next reply.');
+  });
+});
+
+describe('initModelDropdown — model change', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('PUT active-model and syncs hidden selects when #simple-model-sel changes', async () => {
+    const folder = 'test-folder';
+    const wrapper = buildPanelWrapper();
+
+    const calls: Array<[string, RequestInit]> = [];
+    vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return okJson({ ok: true });
+    });
+
+    const config = {
+      models: [
+        { id: 'gpt-5.5', displayName: 'GPT-5.5', provider: 'openai-codex' },
+        { id: 'claude-sonnet-4-5', displayName: 'Claude Sonnet', provider: 'anthropic' },
+      ],
+      activeModel: { id: 'claude-sonnet-4-5', provider: 'anthropic' },
+    };
+
+    initModelDropdown(wrapper, folder, config);
+
+    // Change selection to the OpenAI model.
+    // happy-dom v20 only updates selectedOptions[] when the `selected` attribute
+    // is toggled via removeAttribute/setAttribute — `sel.value =` or
+    // `.selected = true` alone leave selectedOptions stale.
+    const sel = wrapper.querySelector('#simple-model-sel') as HTMLSelectElement;
+    for (const o of sel.options) o.removeAttribute('selected');
+    sel.options[0].setAttribute('selected', ''); // gpt-5.5 / openai-codex
+    sel.value = 'gpt-5.5'; // keep .value in sync too
+    sel.dispatchEvent(new Event('change'));
+
+    // Await the async fetch inside the change handler.
+    await new Promise((r) => setTimeout(r, 0));
+
+    const putCalls = calls.filter(
+      ([u, i]) => u === `/api/drafts/${folder}/active-model` && (i as RequestInit).method === 'PUT',
+    );
+    expect(putCalls.length).toBe(1);
+    const body = JSON.parse(putCalls[0][1].body as string);
+    expect(body.modelProvider).toBe('openai-codex');
+    expect(body.model).toBe('gpt-5.5');
+
+    // Hidden selects should be synced: openai-codex maps to PROVIDER_GROUP id 'openai'.
+    expect((wrapper.querySelector('#provider-sel') as HTMLSelectElement).value).toBe('openai');
+    expect((wrapper.querySelector('#model-sel') as HTMLSelectElement).value).toBe('gpt-5.5');
   });
 });

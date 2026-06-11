@@ -162,20 +162,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `simple-my-agent-tab`
-- **Last tag:** `phase-c-complete-2026-05-28` (131 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (132 commits ahead)
 
 ### Working tree
 
 ```
 ## simple-my-agent-tab
  M config/playground-seats.json
-M  state.md
+M  src/channels/playground/public/tabs/simple.js
+M  src/channels/playground/public/tabs/simple.test.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+c587b09 docs(state): decision-log entry for the My Agent simple tab
 f976147 fix(playground): harden simple-tab bubble labels and active-model preselect
 bd49bb2 feat(playground): simple tab model dropdown, hidden-select sync, labeled reply bubbles
 c8e178b fix(playground): guard simple-tab Save against double-click and lost name-save failures
@@ -190,9 +192,8 @@ cb9cd10 feat(playground): agent-name PUT + simple-restart handlers
 e0303ac feat(playground): GET /api/simple-config handler — template skill shortlist + model choices
 acdd91e refactor(playground): export killGroupContainer with reason param
 7386c62 docs(plans): My Agent simple tab implementation plan
-93afd88 docs(spec): My Agent simple tab — embedded chat + use-agent toggle + template-driven skills/persona/models
 ```
 
 ### Last refresh
 
-2026-06-11T22:38:05Z
+2026-06-11T22:55:15Z
