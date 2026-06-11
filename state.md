@@ -157,20 +157,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (85 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (86 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 23]
+## main...origin/main [ahead 24]
  M config/playground-seats.json
-M  state.md
+A  docs/superpowers/specs/2026-06-11-richer-trace-cards-design.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+c7b9dfd docs(state): record agent egress control shipped + live-verified + deploy nuances
 5f4d676 fix(pi-model): derive proxy ORIGIN from ANTHROPIC_BASE_URL for omlx/clemson
 35ad39c docs/test(proxy): document exact-match egress semantics + fail-closed edge cases
 46bda30 feat(proxy): per-route egress allowlist (chat + anthropic OAuth exchange); googleapis fail-closed
@@ -185,9 +186,8 @@ f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query
 9a8c3c3 docs(spec): agent egress control — proxy allowlist + fetch_url guard
 489d8f4 docs(state): record pluggable web search shipped + Apple-container/env deploy fixes
 71d3730 fix(web-search): read SEARXNG_URL/WEB_SEARCH_API_KEY via readEnvFile, not process.env
-1bc47cc refactor(web-search): use exported TEMPLATE_FOLDER constant
 ```
 
 ### Last refresh
 
-2026-06-11T10:37:29Z
+2026-06-11T10:58:54Z
