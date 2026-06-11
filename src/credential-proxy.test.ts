@@ -272,6 +272,44 @@ describe('credential-proxy', () => {
     expect(res.statusCode).toBe(502);
     expect(res.body).toBe('Bad Gateway');
   });
+
+  it('returns 403 for a bare /v1/messages path (old catch-all path — no prefix)', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({ error: 'endpoint not allowed by nanoclaw egress policy' });
+    // No upstream request was made — the upstream mock server was never hit
+    expect(lastUpstreamHeaders).toEqual({});
+  });
+
+  it('returns 403 for an unrecognized prefix like /foo/bar', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/foo/bar',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({ error: 'endpoint not allowed by nanoclaw egress policy' });
+    // No upstream request was made — the upstream mock server was never hit
+    expect(lastUpstreamHeaders).toEqual({});
+  });
 });
 
 describe('userCredsHook', () => {
@@ -368,6 +406,12 @@ describe('resolveProxyRoute', () => {
     expect(resolveProxyRoute('/v1/messages')).toBeNull();
     expect(resolveProxyRoute('/')).toBeNull();
     expect(resolveProxyRoute('/foo/bar')).toBeNull();
+  });
+  it('preserves query strings on the upstream path', () => {
+    expect(resolveProxyRoute('/anthropic/v1/messages?beta=true')).toEqual({
+      route: 'anthropic',
+      upstreamPath: '/v1/messages?beta=true',
+    });
   });
 });
 

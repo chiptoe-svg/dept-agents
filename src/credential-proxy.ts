@@ -528,19 +528,6 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
           const store = getStore(payloadLogCtx, agentGroupId, sessionId);
           if (store) {
             try {
-              // upstream_route values used for the payload store; kept distinct from
-              // the older 'google' log label which serves a different purpose.
-              const route = isOpenAIPlatform
-                ? 'openai-platform'
-                : isOpenAI
-                  ? 'openai'
-                  : isOmlx
-                    ? 'omlx'
-                    : isClemson
-                      ? 'clemson'
-                      : isGoogle
-                        ? 'googleapis'
-                        : 'anthropic';
               payloadSeq = store.write({
                 ts: Date.now(),
                 upstreamRoute: route,

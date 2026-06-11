@@ -154,13 +154,14 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `agent-egress-control`
-- **Last tag:** `phase-c-complete-2026-05-28` (79 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (80 commits ahead)
 
 ### Working tree
 
 ```
 ## agent-egress-control
  M config/playground-seats.json
+M  src/credential-proxy.test.ts
 M  src/credential-proxy.ts
 ?? .codegraph/
 ```
@@ -168,6 +169,7 @@ M  src/credential-proxy.ts
 ### Recent commits (last 15)
 
 ```
+2e8032a docs(proxy): update module docstring for explicit-prefix routing (no catch-all)
 81c97a0 feat(proxy): explicit /anthropic prefix, no provider catch-all (unrecognized -> 403)
 5cd6454 fix(fetch_url): block hex IPv4-mapped IPv6, skip DNS when aborted, test happy-path redirect
 6247aeb feat(fetch_url): block internal/loopback/link-local egress + re-validate redirects
@@ -182,9 +184,8 @@ ce0c5c4 feat(web-search): pluggable backends (brave + searxng) via WEB_SEARCH_PR
 175db31 feat(web-search): owner Web Search backend toggle card
 83d315d feat(web-search): owner-gated config API (status/availability/set)
 290f45e feat(web-search): install-wide provider config (data/config/web-search.json)
-4ed94ef feat(searxng): managed self-hosted SearXNG service for web_search
 ```
 
 ### Last refresh
 
-2026-06-11T04:06:12Z
+2026-06-11T04:10:09Z
