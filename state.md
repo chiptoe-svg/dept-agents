@@ -159,21 +159,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (107 commits ahead)
+- **Current:** `cost-governance`
+- **Last tag:** `phase-c-complete-2026-05-28` (108 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 45]
+## cost-governance
  M config/playground-seats.json
-A  docs/superpowers/plans/2026-06-11-cost-governance.md
+A  src/channels/playground/api/cost-budgets.test.ts
+A  src/channels/playground/api/cost-budgets.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+2db72ff docs(plan): cost governance + scenario-aware Status roster implementation plan
 410b3eb docs(spec): cost governance (alert-only) + scenario-aware Status roster
 2e73b91 docs(state): record owner Status/Health tab shipped + live-verified
 ea2e2b4 fix(status): scope tab CSS (don't clobber existing .status-badge); surface restart failures; idempotent click wiring; drop dead HEALTH_LABEL
@@ -188,9 +190,8 @@ bf2f1ec docs(spec): owner Status/Health tab (health roll-up + restart op)
 8bebfb5 fix(trace): don't register a fallback card under an undefined toolCallId key
 134b68b test(trace): no-regression coverage for text-only turns
 e0d0b37 fix(trace): clear opposite status class on re-fire; badge title; CSS specificity; pending-state test
-db5db62 feat(trace): success/error status badge on tool cards (isError + fallback)
 ```
 
 ### Last refresh
 
-2026-06-11T15:04:18Z
+2026-06-11T15:15:24Z
