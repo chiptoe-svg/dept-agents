@@ -1656,15 +1656,21 @@ select.model-changed {
 .status-budget-input { width: 72px; padding: 2px 5px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; }
 
 /* ── "My Agent" simple tab ── */
+
+/* Hide the chat tab's advanced chrome — the side panel drives the hidden
+   controls programmatically (see tabs/simple.js header comment). */
+.simple-mode .chat-toolbar { display: none; }
+.simple-mode .trace-panel { display: none; }
+
 .simple-topbar {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
   margin-bottom: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fafafa;
+  background: var(--surface-alt);
   font-size: 13px;
 }
 
@@ -1680,7 +1686,7 @@ select.model-changed {
 .simple-panel {
   flex: 1;
   min-width: 220px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   align-self: flex-start;
@@ -1691,7 +1697,7 @@ select.model-changed {
   align-items: center;
   gap: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
 .simple-toggle {
   display: flex;
@@ -1711,7 +1717,7 @@ select.model-changed {
   margin: 10px 0 4px;
 }
 .simple-hint {
-  color: #999;
+  color: var(--text-faint);
   font-weight: 400;
   font-size: 12px;
 }
@@ -1745,7 +1751,7 @@ select.model-changed {
   margin-top: 10px;
 }
 .simple-save-status {
-  color: #888;
+  color: var(--text-faint);
   font-size: 12px;
   margin-top: 4px;
   min-height: 1em;
