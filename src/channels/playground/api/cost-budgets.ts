@@ -21,7 +21,7 @@ export function readCostBudgets(): CostBudgets {
         typeof raw.warnFraction === 'number' && raw.warnFraction > 0 && raw.warnFraction <= 1
           ? raw.warnFraction
           : DEFAULT_WARN,
-      perAgent: raw.perAgent && typeof raw.perAgent === 'object' ? raw.perAgent : {},
+      perAgent: raw.perAgent && typeof raw.perAgent === 'object' && !Array.isArray(raw.perAgent) ? raw.perAgent : {},
     };
   } catch {
     return { defaultMonthlyUsd: null, warnFraction: DEFAULT_WARN, perAgent: {} };

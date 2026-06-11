@@ -160,21 +160,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `cost-governance`
-- **Last tag:** `phase-c-complete-2026-05-28` (108 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (109 commits ahead)
 
 ### Working tree
 
 ```
 ## cost-governance
  M config/playground-seats.json
-A  src/channels/playground/api/cost-budgets.test.ts
-A  src/channels/playground/api/cost-budgets.ts
+M  src/channels/playground/api/cost-budgets.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+ae94cff feat(cost): budget config + evaluator (pure, tested)
 2db72ff docs(plan): cost governance + scenario-aware Status roster implementation plan
 410b3eb docs(spec): cost governance (alert-only) + scenario-aware Status roster
 2e73b91 docs(state): record owner Status/Health tab shipped + live-verified
@@ -189,9 +189,8 @@ bf2f1ec docs(spec): owner Status/Health tab (health roll-up + restart op)
 4c729ff docs(state): record richer live trace cards shipped
 8bebfb5 fix(trace): don't register a fallback card under an undefined toolCallId key
 134b68b test(trace): no-regression coverage for text-only turns
-e0d0b37 fix(trace): clear opposite status class on re-fire; badge title; CSS specificity; pending-state test
 ```
 
 ### Last refresh
 
-2026-06-11T15:15:24Z
+2026-06-11T15:18:28Z
