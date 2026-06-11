@@ -157,20 +157,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (86 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (87 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 24]
+## main...origin/main [ahead 25]
  M config/playground-seats.json
-A  docs/superpowers/specs/2026-06-11-richer-trace-cards-design.md
+A  docs/superpowers/plans/2026-06-11-richer-trace-cards.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+62ea5df docs(spec): richer live trace cards (unify tool card + status badge + tool-aware previews)
 c7b9dfd docs(state): record agent egress control shipped + live-verified + deploy nuances
 5f4d676 fix(pi-model): derive proxy ORIGIN from ANTHROPIC_BASE_URL for omlx/clemson
 35ad39c docs/test(proxy): document exact-match egress semantics + fail-closed edge cases
@@ -185,9 +186,8 @@ f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query
 3b95be6 docs(spec): egress control — remove proxy catch-all, explicit /anthropic prefix, fail-closed default
 9a8c3c3 docs(spec): agent egress control — proxy allowlist + fetch_url guard
 489d8f4 docs(state): record pluggable web search shipped + Apple-container/env deploy fixes
-71d3730 fix(web-search): read SEARXNG_URL/WEB_SEARCH_API_KEY via readEnvFile, not process.env
 ```
 
 ### Last refresh
 
-2026-06-11T10:58:54Z
+2026-06-11T11:05:44Z
