@@ -157,7 +157,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `richer-trace-cards`
-- **Last tag:** `phase-c-complete-2026-05-28` (92 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (93 commits ahead)
 
 ### Working tree
 
@@ -173,6 +173,7 @@ M  src/channels/playground/public/tabs/chat.js
 ### Recent commits (last 15)
 
 ```
+db5db62 feat(trace): success/error status badge on tool cards (isError + fallback)
 6dfacd4 fix(trace): no-id card rekey, preserve args preview on exec update, label cleanup + tests
 73953c0 feat(trace): unify tool call + execution into one card keyed by toolCallId
 a5f3dce fix(trace): tighten error regex to Error: prefix; guard text-array arm; expand helper tests
@@ -187,9 +188,8 @@ bb2d075 docs(egress): anthropic allowlist must include the OAuth token-exchange 
 f3af052 refactor(proxy): drop shadowed route var; test handler-level 403 + query-string routing
 2e8032a docs(proxy): update module docstring for explicit-prefix routing (no catch-all)
 81c97a0 feat(proxy): explicit /anthropic prefix, no provider catch-all (unrecognized -> 403)
-5cd6454 fix(fetch_url): block hex IPv4-mapped IPv6, skip DNS when aborted, test happy-path redirect
 ```
 
 ### Last refresh
 
-2026-06-11T11:31:49Z
+2026-06-11T11:36:12Z

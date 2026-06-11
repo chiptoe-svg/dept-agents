@@ -1267,9 +1267,10 @@ function piHandleToolExecutionUpdate(trace, event, st) {
 }
 
 /**
- * tool_execution_end: finalize the unified card with the result preview and
- * full result body. Creates a fallback card if neither toolcall_end nor
- * tool_execution_start was seen. Status badge wiring is added in Task 3.
+ * tool_execution_end: finalize the unified tool card: stamp a ✓/✗ status
+ * badge + ok/error class via classifyToolResult, fill the result preview +
+ * body. Creates a fallback card if neither toolcall_end nor
+ * tool_execution_start was seen.
  */
 function piHandleToolExecutionEnd(trace, event, st) {
   let card = st.toolCards[event.toolCallId];
@@ -1282,8 +1283,10 @@ function piHandleToolExecutionEnd(trace, event, st) {
   const name = card.toolName || 'unknown';
   const result = event.result;
   const status = classifyToolResult(event); // 'ok' | 'error'
+  card.li.classList.remove('trace-tool-ok', 'trace-tool-error');
   card.li.classList.add(status === 'error' ? 'trace-tool-error' : 'trace-tool-ok');
   card.badgeEl.textContent = status === 'error' ? '✗' : '✓';
+  card.badgeEl.title = status === 'error' ? 'error' : 'success'; // Fix 5: a11y/tooltip
   card.previewEl.textContent = previewForToolResult(name, result, status);
   if (result != null) {
     card.resultEl.textContent = formatTracePayloadFull(result);

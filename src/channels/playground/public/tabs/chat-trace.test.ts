@@ -210,10 +210,28 @@ describe('status badge', () => {
     expect(card.classList.contains('trace-tool-ok')).toBe(true);
     expect(card.querySelector('.trace-tool-badge').textContent).toContain('✓');
   });
+  // This test exercises the exec-without-toolcall_end path: no toolcall_end fired,
+  // so classifyToolResult relies on the error-string regex rather than isError.
   it('uses the error-string fallback when isError is absent', () => {
     const trace = freshTrace();
     pi(trace, { type: 'tool_execution_start', toolCallId: 'f1', toolName: 'web_search', args: {} });
     pi(trace, { type: 'tool_execution_end', toolCallId: 'f1', result: 'Web search failed: 422' });
     expect(trace.querySelector('[data-tool-call-id="f1"]').classList.contains('trace-tool-error')).toBe(true);
+  });
+  it('shows a pending badge with no status class before execution ends', () => {
+    const trace = freshTrace();
+    pi(trace, {
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'toolcall_end',
+        contentIndex: 0,
+        toolCall: { id: 'p1', name: 'web_search', arguments: { query: 'x' } },
+      },
+    });
+    pi(trace, { type: 'tool_execution_start', toolCallId: 'p1', toolName: 'web_search', args: { query: 'x' } });
+    const card = trace.querySelector('[data-tool-call-id="p1"]');
+    expect(card.classList.contains('trace-tool-ok')).toBe(false);
+    expect(card.classList.contains('trace-tool-error')).toBe(false);
+    expect(card.querySelector('.trace-tool-badge').textContent).toBe('…');
   });
 });

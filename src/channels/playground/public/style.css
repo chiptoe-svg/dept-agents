@@ -556,8 +556,8 @@ html, body {
 }
 .trace-tool_use { border-left-color: #4a90e2; }
 .trace-tool_result { border-left-color: #87a96b; }
-.trace-tool-ok    { border-left-color: #87a96b; }   /* success — matches trace-tool_result accent */
-.trace-tool-error { border-left-color: #c0504d; }   /* error — red accent */
+.trace.trace-tool-ok    { border-left-color: #87a96b; }   /* success — matches trace-tool_result accent */
+.trace.trace-tool-error { border-left-color: #c0504d; }   /* error — red accent */
 .trace-tool-badge { margin-right: 4px; font-weight: 600; }
 .trace-kind { font-weight: 500; color: #333; }
 .trace-body {
