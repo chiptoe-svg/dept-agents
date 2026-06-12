@@ -1885,10 +1885,12 @@ select.model-changed {
 }
 
 /* ── Layering: one window, two occupants ──
-   The left column is a fixed window shape: card (slim header + chat,
-   top corners) + strip (full width, bottom corners). The geometry NEVER
-   changes — toggling the agent (applyUseAgentToggle adds .agent-off)
-   only recolors the surfaces and swaps the label text: ON = green agent
+   The left column is a fixed stack: card (slim header + chat) riding
+   above an inset strip — the strip's 10px margins + the card's drop
+   shadow are the "on top of a layer underneath" hint, mirroring the
+   panel/trace-strip pairing on the right. The geometry NEVER changes —
+   toggling the agent (applyUseAgentToggle adds .agent-off) only
+   recolors the surfaces and swaps the label text: ON = green agent
    card over a grayed model strip; OFF = solid blue-family model card
    (fully usable, not disabled) with the agent standing by in the strip.
    Accent hexes are the deliberate bubble accent families (see the
@@ -1905,7 +1907,7 @@ select.model-changed {
   flex: 1;
   min-height: 0;
   border: 1px solid #bfe3c9;
-  border-radius: 8px 8px 0 0; /* strip below carries the window's bottom corners */
+  border-radius: 8px;
   background: #fdfffe;
   box-shadow: 0 3px 10px rgba(46, 125, 70, 0.18);
   overflow: hidden; /* clean rounded corners; chat modals live in #modal-root, so nothing is clipped */
@@ -1927,6 +1929,7 @@ select.model-changed {
   border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 8px 8px;
+  margin: 0 10px; /* narrower than the card — reads as the layer underneath (mirrors .simple-trace-strip) */
   padding: 3px 10px;
 }
 
