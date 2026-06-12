@@ -164,24 +164,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (155 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (156 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 15]
+## main...origin/main [ahead 16]
  M config/playground-seats.json
-M  src/channels/playground/api/simple-config.test.ts
-M  src/channels/playground/api/simple-config.ts
 M  src/channels/playground/public/style.css
-M  src/channels/playground/public/tabs/chat.js
 M  src/channels/playground/public/tabs/simple.js
+M  src/channels/playground/public/tabs/simple.test.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+58a3687 feat(playground): real skill tooltips + clear-chat button
 52df527 feat(playground): unsaved-changes indicator on the simple tab
 ca265ca feat(playground): weather skill + 2-col shortlist + skill source viewer
 eb31efc feat(playground): demo model menu — friendly names + group-prefixed labels
@@ -196,9 +195,8 @@ c2aea77 feat(playground): trace roll-up CSS — peek strip, .trace-open collapse
 7e28911 feat(playground): side-stack DOM + trace re-parent + roll-up wiring on simple tab
 0a7cce8 refactor(playground): capture chat trace element once at wiring time
 b898069 docs(plan): simple-tab trace roll-up implementation plan
-5621af3 docs(spec): simple-tab trace roll-up design
 ```
 
 ### Last refresh
 
-2026-06-12T16:57:04Z
+2026-06-12T17:28:42Z

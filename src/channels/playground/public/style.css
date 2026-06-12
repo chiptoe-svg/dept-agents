@@ -1884,15 +1884,15 @@ select.model-changed {
   margin-bottom: 2px;
 }
 
-/* ── Layering: the agent card rides above the model layer ──
-   The left column is a stack: agent card (slim header + chat) on top,
-   a thin strip of the model layer peeking out beneath. Toggling the
-   agent off adds .agent-off to .simple-mode (applyUseAgentToggle):
-   the green framing drains away, the strip collapses, and the chat
-   sits flat on the exposed model card. Accent hexes are the deliberate
-   bubble accent families (see the bubble rules above), not tokens.
-   Note: border-style (solid↔dashed) doesn't interpolate — the color
-   and shadow transitions carry the animation. */
+/* ── Layering: one window, two occupants ──
+   The left column is a fixed window shape: card (slim header + chat,
+   top corners) + strip (full width, bottom corners). The geometry NEVER
+   changes — toggling the agent (applyUseAgentToggle adds .agent-off)
+   only recolors the surfaces and swaps the label text: ON = green agent
+   card over a grayed model strip; OFF = solid blue-family model card
+   (fully usable, not disabled) with the agent standing by in the strip.
+   Accent hexes are the deliberate bubble accent families (see the
+   bubble rules above), not tokens. */
 .simple-stack {
   flex: 2.2;
   min-width: 0;
@@ -1905,11 +1905,11 @@ select.model-changed {
   flex: 1;
   min-height: 0;
   border: 1px solid #bfe3c9;
-  border-radius: 8px;
+  border-radius: 8px 8px 0 0; /* strip below carries the window's bottom corners */
   background: #fdfffe;
   box-shadow: 0 3px 10px rgba(46, 125, 70, 0.18);
   overflow: hidden; /* clean rounded corners; chat modals live in #modal-root, so nothing is clipped */
-  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, padding-bottom 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
 }
 .simple-card-header {
   font-size: 11px;
@@ -1927,11 +1927,7 @@ select.model-changed {
   border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 8px 8px;
-  margin: 0 10px; /* narrower than the card — reads as the layer underneath */
   padding: 3px 10px;
-  overflow: hidden;
-  max-height: 2em;
-  transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
 }
 
 /* Panel fused to the agent card: same elevation, same green framing. */
@@ -1942,29 +1938,18 @@ select.model-changed {
   transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, padding-bottom 0.3s ease;
 }
 
-/* OFF — the agent layer lifts away and the model layer underneath becomes
-   the window: the strip collapses while the card frame extends down by the
-   strip's exact footprint (so the frame's bottom edge lands where the strip's
-   was — the under-layer absorbed into the window), and the card takes the
-   same sunk surface treatment as the panel on the right. The chat content
-   and input row stay pinned: strip collapse (-22px) and card padding-bottom
-   (+22px) cancel out. Dashed blue border = the bubble-direct family. */
+/* OFF — same window, different occupant. The frame keeps its exact shape;
+   only the colors change hands: solid blue-family border + white surface
+   (you're talking straight to the model — fully usable, NOT disabled), and
+   setLayerLabels flips the strip to show the agent standing by. */
 .simple-mode.agent-off .simple-agent-card {
-  border: 1px dashed #aab4d4;
-  background: var(--surface-alt);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08);
-  padding-bottom: 22px; /* = .simple-model-strip footprint: 3px padding ×2 + 15px line + 1px border */
+  border-color: #aab4d4;
+  background: #fdfdff;
+  box-shadow: 0 3px 10px rgba(74, 90, 150, 0.16);
 }
 .simple-mode.agent-off .simple-card-header {
   color: #4a5a96;
-  border-bottom: 1px dashed #aab4d4;
-}
-.simple-mode.agent-off .simple-model-strip {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  opacity: 0;
-  border-width: 0;
+  border-bottom-color: #aab4d4;
 }
 .simple-mode.agent-off .simple-panel {
   border-color: var(--border);

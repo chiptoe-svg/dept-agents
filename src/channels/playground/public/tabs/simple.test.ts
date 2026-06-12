@@ -428,22 +428,24 @@ describe('setLayerLabels / applyUseAgentToggle layering', () => {
     expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('🤖 JaneBot');
   });
 
-  it('renders the model label in the header when the wrapper is .agent-off', () => {
+  it('swaps both labels when the wrapper is .agent-off — header names the model, strip parks the agent', () => {
     const wrapper = layeredWrapper();
     wrapper.classList.add('agent-off');
     setLayerLabels(wrapper, 'JaneBot', 'GPT-5.5');
     expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('⚡ GPT-5.5 — model only');
-    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('⚡ GPT-5.5 — underneath');
+    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('🤖 JaneBot — standing by');
   });
 
-  it('toggle OFF adds .agent-off and swaps the header; ON restores it', () => {
+  it('toggle OFF adds .agent-off and swaps the labels; ON restores them', () => {
     const wrapper = layeredWrapper();
     applyUseAgentToggle(wrapper, false);
     expect(wrapper.classList.contains('agent-off')).toBe(true);
     expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('⚡ GPT-5.5 — model only');
+    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('🤖 JaneBot — standing by');
 
     applyUseAgentToggle(wrapper, true);
     expect(wrapper.classList.contains('agent-off')).toBe(false);
     expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('🤖 JaneBot');
+    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('⚡ GPT-5.5 — underneath');
   });
 });
