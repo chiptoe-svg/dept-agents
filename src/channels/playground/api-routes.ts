@@ -129,6 +129,9 @@ import {
   handleSaveDefaultParticipant,
   handleApplyDefaultToAll,
 } from './api/default-participant.js';
+import { handleGetWebSearchConfig, handlePostWebSearchConfig } from './api/web-search-config.js';
+import { handleGetStatus, handlePostStatusRestart } from './api/status.js';
+import { handleGetBudgets, handlePostBudgets } from './api/cost-budgets.js';
 import { handleDirectChat } from './api/direct-chat.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
@@ -143,6 +146,7 @@ import {
   handleLogout,
   handleLogoutAll,
 } from './api/me.js';
+import { handleGetSimpleConfig, handlePutAgentName, handleSimpleRestart } from './api/simple-config.js';
 import { pushToAll, registerSseClient } from './sse.js';
 
 export async function route(
@@ -657,6 +661,45 @@ export async function route(
     return send(res, r.status, r.body);
   }
 
+  // GET /api/simple-config?folder=… — beginner-tab config: template skill
+  // shortlist + model choices + the agent's current name/model. Member-
+  // readable behind the same draft-read gate as the other drafts GETs.
+  if (method === 'GET' && url.pathname === '/api/simple-config') {
+    const folder = url.searchParams.get('folder') || '';
+    if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    const r = handleGetSimpleConfig(folder);
+    return send(res, r.status, r.body);
+  }
+
+  // PUT /api/drafts/:folder/name — student-editable assistant name.
+  // Reuses the skills_put gate action: name edits belong to the same
+  // "save my agent" surface as the skills checklist.
+  const nameMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/name$/);
+  if (method === 'PUT' && nameMatch) {
+    const draftFolder = nameMatch[1]!;
+    {
+      const decision = checkDraftMutation(draftFolder, 'skills_put', session.userId);
+      if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    }
+    const body = await readJsonBody(req);
+    const r = handlePutAgentName(draftFolder, body as { name?: unknown });
+    return send(res, r.status, r.body);
+  }
+
+  // POST /api/simple-restart — recycle the group's container so a simple-tab
+  // save takes effect on the next message.
+  if (method === 'POST' && url.pathname === '/api/simple-restart') {
+    const body = await readJsonBody(req);
+    const folder = typeof body.folder === 'string' ? body.folder : '';
+    if (!folder) return send(res, 400, { error: 'folder (string) required' });
+    {
+      const decision = checkDraftMutation(folder, 'skills_put', session.userId);
+      if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    }
+    const r = handleSimpleRestart(folder);
+    return send(res, r.status, r.body);
+  }
+
   // PUT /api/catalog/local-entries — append/replace a curated entry in
   // config/model-catalog-local.json. Owner-only because the file is global
   // (not draft-scoped) and getModelCatalog() reads it on every API call.
@@ -803,6 +846,43 @@ export async function route(
   if (method === 'POST' && url.pathname === '/api/default-participant/apply-all') {
     const body = await readJsonBody(req);
     const r = handleApplyDefaultToAll(session, body);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/status — owner/admin: host summary + per-agent health roll-up
+  if (method === 'GET' && url.pathname === '/api/status') {
+    const r = handleGetStatus(session);
+    return send(res, r.status, r.body);
+  }
+
+  // POST /api/status/restart — owner/admin: restart all containers for an agent group
+  if (method === 'POST' && url.pathname === '/api/status/restart') {
+    const body = await readJsonBody(req);
+    const r = handlePostStatusRestart(session, body);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/web-search-config — owner/admin: active provider + per-backend availability
+  if (method === 'GET' && url.pathname === '/api/web-search-config') {
+    const r = await handleGetWebSearchConfig(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/web-search-config — owner/admin: set the active provider
+  if (method === 'POST' && url.pathname === '/api/web-search-config') {
+    const body = await readJsonBody(req);
+    const r = handlePostWebSearchConfig(session, body);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /api/budgets — owner/admin: per-member cost + budget summary
+  if (method === 'GET' && url.pathname === '/api/budgets') {
+    const r = handleGetBudgets(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/budgets — owner/admin: write budget config
+  if (method === 'POST' && url.pathname === '/api/budgets') {
+    const body = await readJsonBody(req);
+    const r = handlePostBudgets(session, body);
     return send(res, r.status, r.body);
   }
 

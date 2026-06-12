@@ -556,6 +556,9 @@ html, body {
 }
 .trace-tool_use { border-left-color: #4a90e2; }
 .trace-tool_result { border-left-color: #87a96b; }
+.trace.trace-tool-ok    { border-left-color: #87a96b; }   /* success — matches trace-tool_result accent */
+.trace.trace-tool-error { border-left-color: #c0504d; }   /* error — red accent */
+.trace-tool-badge { margin-right: 4px; font-weight: 600; }
 .trace-kind { font-weight: 500; color: #333; }
 .trace-body {
   color: #555;
@@ -1635,3 +1638,271 @@ select.model-changed {
   float: right;
 }
 .result-card .result-source { font-size: 0.75em; color: var(--muted, #888); margin-bottom: 0.25rem; }
+
+/* ── Status tab ───────────────────────────────────────────────────────── */
+.status-table { width: 100%; border-collapse: collapse; }
+.status-table th, .status-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; }
+.status-table .status-badge { padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 400; text-transform: none; }
+.status-table .status-running { background: #e3efe0; color: #3c6e2f; }
+.status-table .status-stale   { background: #f6e0de; color: #a8332b; }
+.status-table .status-idle    { background: #eee; color: #666; }
+.status-table .status-never   { background: #f4f4f4; color: #999; }
+.status-table .status-budget { padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-left: 4px; }
+.status-table .status-budget-ok { background: #e3efe0; color: #3c6e2f; }
+.status-table .status-budget-approaching { background: #fff3cd; color: #856404; }
+.status-table .status-budget-over { background: #f6e0de; color: #a8332b; }
+.status-spend-cell { white-space: nowrap; }
+.status-budget-override { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.status-budget-input { width: 72px; padding: 2px 5px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; }
+
+/* ── "My Agent" simple tab ── */
+
+/* Hide the chat tab's advanced chrome — the side panel drives the hidden
+   controls programmatically (see tabs/simple.js header comment). */
+.simple-mode .chat-toolbar { display: none; }
+.simple-mode .trace-panel { display: none; }
+
+/* Constrain the height chain so the chat column flexes within the agent
+   card and #chat-log scrolls internally (same :not([hidden]) guard as
+   #tab-chat — see that rule's comment). Without this the card grows to
+   content height and the model strip sits below the fold. overflow stays
+   auto (tab-body default): a too-tall side panel still scrolls the tab. */
+#tab-simple:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+.simple-mode {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.simple-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  font-size: 13px;
+}
+
+.simple-layout {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+.simple-chat-host {
+  flex: 1;
+  min-width: 0;
+  /* flex column so the embedded .chat-layout (flex: 1) fills the host */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.simple-panel {
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  align-self: flex-start;
+}
+
+.simple-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.simple-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.simple-name-input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.simple-section-label {
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+.simple-hint {
+  color: var(--text-faint);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.simple-skill-row {
+  margin: 3px 0;
+}
+.simple-info-btn {
+  border: none;
+  background: none;
+  color: #4a5a96;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+}
+.simple-skill-desc {
+  background: #f4f6fb;
+  border: 1px solid #dde;
+  border-radius: 4px;
+  padding: 6px;
+  margin: 4px 0;
+  color: #445;
+  font-size: 12px;
+}
+
+#simple-persona {
+  width: 100%;
+  box-sizing: border-box;
+}
+#simple-save {
+  margin-top: 10px;
+}
+.simple-save-status {
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-top: 4px;
+  min-height: 1em;
+}
+
+/* Toggle OFF — everything below the header grayed and inert. */
+.simple-panel-body.simple-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Reply differentiation — agent replies are `.msg.agent` (chat.js:692),
+   direct/model-only replies are `.bubble-direct` (chat.js:571). Labels come
+   from CSS vars set by simple.js (setBubbleLabels). */
+.simple-mode .msg.agent {
+  background: #e8f5ec;
+  border: 1px solid #bfe3c9;
+  border-radius: 8px;
+}
+.simple-mode .msg.agent::before {
+  content: var(--agent-label, '🤖 your agent');
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2e7d46;
+  margin-bottom: 2px;
+}
+.simple-mode .bubble-direct {
+  background: #eef1f8;
+  border: 1px dashed #aab4d4;
+  border-radius: 8px;
+}
+.simple-mode .bubble-direct::before {
+  content: var(--model-label, '⚡ model only');
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5a96;
+  margin-bottom: 2px;
+}
+
+/* ── Layering: the agent card rides above the model layer ──
+   The left column is a stack: agent card (slim header + chat) on top,
+   a thin strip of the model layer peeking out beneath. Toggling the
+   agent off adds .agent-off to .simple-mode (applyUseAgentToggle):
+   the green framing drains away, the strip collapses, and the chat
+   sits flat on the exposed model card. Accent hexes are the deliberate
+   bubble accent families (see the bubble rules above), not tokens.
+   Note: border-style (solid↔dashed) doesn't interpolate — the color
+   and shadow transitions carry the animation. */
+.simple-stack {
+  flex: 2.2;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.simple-agent-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #bfe3c9;
+  border-radius: 8px;
+  background: #fdfffe;
+  box-shadow: 0 3px 10px rgba(46, 125, 70, 0.18);
+  overflow: hidden; /* clean rounded corners; chat modals live in #modal-root, so nothing is clipped */
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+}
+.simple-card-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2e7d46;
+  padding: 4px 10px;
+  border-bottom: 1px solid #bfe3c9;
+  min-height: 1em;
+  transition: color 0.3s ease, border-color 0.3s ease;
+}
+.simple-model-strip {
+  font-size: 11px;
+  color: var(--text-faint);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  margin: 0 10px; /* narrower than the card — reads as the layer underneath */
+  padding: 3px 10px;
+  overflow: hidden;
+  max-height: 2em;
+  transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+}
+
+/* Panel fused to the agent card: same elevation, same green framing. */
+.simple-mode .simple-panel {
+  border-color: #bfe3c9;
+  background: #fdfffe;
+  box-shadow: 0 3px 10px rgba(46, 125, 70, 0.18);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+}
+
+/* OFF — the agent layer retracts: chat flattens onto the model card
+   (gray, dashed — the bubble-direct family), the strip disappears
+   (you're ON the model layer now), the panel sinks and grays. */
+.simple-mode.agent-off .simple-agent-card {
+  border: 1px dashed #aab4d4;
+  background: transparent;
+  box-shadow: none;
+}
+.simple-mode.agent-off .simple-card-header {
+  color: #4a5a96;
+  border-bottom: 1px dashed #aab4d4;
+}
+.simple-mode.agent-off .simple-model-strip {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  border-width: 0;
+}
+.simple-mode.agent-off .simple-panel {
+  border-color: var(--border);
+  background: var(--surface-alt);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .simple-agent-card,
+  .simple-card-header,
+  .simple-model-strip,
+  .simple-mode .simple-panel {
+    transition: none;
+  }
+}

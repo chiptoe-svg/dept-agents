@@ -43,6 +43,7 @@ import {
   type VolumeMount,
 } from './providers/provider-container-registry.js';
 import { detectAuthMode } from './credential-proxy.js';
+import { readWebSearchProvider, readSearxngUrl, readBraveApiKey } from './web-search-config.js';
 import {
   heartbeatPath,
   markContainerRunning,
@@ -539,7 +540,7 @@ async function buildContainerArgs(
   //               proxy injects real OAuth token on that exchange request.
   // Native credential proxy: route container API calls to host:3001 with
   // placeholder credentials. Proxy substitutes real keys/OAuth tokens.
-  args.push('-e', `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`);
+  args.push('-e', `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}/anthropic`);
   // OpenAI traffic routes through one of two proxy prefixes per the group's
   // active provider: `codex` (cloud OpenAI) → /openai/v1, `local`
   // (mlx-omni-server) → /omlx/v1. The proxy strips the prefix and substitutes
@@ -591,8 +592,17 @@ async function buildContainerArgs(
   // omitted otherwise (web_search then errors clearly rather than sending an
   // empty token). Lower-sensitivity than LLM keys, so direct env passthrough
   // is acceptable here (cf. the OneCLI install, which injects it via the vault).
-  if (process.env.WEB_SEARCH_API_KEY) {
-    args.push('-e', `WEB_SEARCH_API_KEY=${process.env.WEB_SEARCH_API_KEY}`);
+  const braveApiKey = readBraveApiKey();
+  if (braveApiKey) {
+    args.push('-e', `WEB_SEARCH_API_KEY=${braveApiKey}`);
+  }
+  // Web-search backend selection (owner picks it install-wide in
+  // data/config/web-search.json; the pi web_search tool dispatches on it).
+  // Forward the provider + the SearXNG URL (Brave key already forwarded above).
+  args.push('-e', `WEB_SEARCH_PROVIDER=${readWebSearchProvider()}`);
+  const searxngUrl = readSearxngUrl();
+  if (searxngUrl) {
+    args.push('-e', `SEARXNG_URL=${searxngUrl}`);
   }
 
   // Provider-contributed env vars (e.g. XDG_DATA_HOME, OPENCODE_*, NO_PROXY).

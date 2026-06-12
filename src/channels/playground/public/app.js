@@ -1,4 +1,5 @@
 import { mountHome } from './tabs/home.js';
+import { mountSimple } from './tabs/simple.js';
 import { mountChat, refreshChatModels } from './tabs/chat.js';
 import { mountPersona } from './tabs/persona.js';
 import { mountSkills } from './tabs/skills.js';
@@ -7,10 +8,11 @@ import { mountAgents } from './tabs/agents.js';
 import { mountSources } from './tabs/sources.js';
 import { mountRetrieval } from './tabs/retrieval.js';
 import { mountBenchmarks } from './tabs/benchmarks.js';
+import { mountStatus } from './tabs/status.js';
 import { initDraftBanner } from './draft-banner.js';
 
-const TABS = ['home', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks'];
-const mounters = { home: mountHome, chat: mountChat, persona: mountPersona, skills: mountSkills, models: mountModels, agents: mountAgents, sources: mountSources, retrieval: mountRetrieval, benchmarks: mountBenchmarks };
+const TABS = ['home', 'simple', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks', 'status'];
+const mounters = { home: mountHome, simple: mountSimple, chat: mountChat, persona: mountPersona, skills: mountSkills, models: mountModels, agents: mountAgents, sources: mountSources, retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus };
 const mounted = {};
 let allowedTabs = TABS.slice();
 
@@ -44,6 +46,10 @@ function applyClassControls(classControls, user) {
   if (currentTab && !allowedTabs.includes(currentTab)) {
     showTab(allowedTabs[0] || 'home');
   }
+  // A student stripped down to exactly one tab gets a single uncluttered
+  // page — no tab strip at all.
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) tabBar.hidden = allowedTabs.length === 1;
 }
 
 async function init() {

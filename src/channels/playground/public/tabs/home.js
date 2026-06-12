@@ -44,21 +44,12 @@ export function mountHome(el) {
       </section>`
     : '';
 
-  const studentsRosterCard = isOwner
+  const webSearchCard = isOwner
     ? `
-      <section class="home-card" id="students-roster-card">
-        <h2>Students</h2>
-        <div id="students-roster-body"><p class="muted">Loading…</p></div>
-      </section>`
-    : '';
-
-  // Owner-only "Add a student" card — name + email provisions one student;
-  // the "external guest" checkbox also opens a 60-min cloudflared tunnel.
-  const addStudentCard = isOwner
-    ? `
-      <section class="home-card" id="add-student-card">
-        <h2>Add a student</h2>
-        <div id="add-student-body"></div>
+      <section class="home-card" id="web-search-card">
+        <h2>Web Search</h2>
+        <p class="muted">Choose which search backend agents use. Unavailable backends are greyed out.</p>
+        <div id="web-search-body"><p class="muted">Loading…</p></div>
       </section>`
     : '';
 
@@ -80,9 +71,7 @@ export function mountHome(el) {
 
       ${defaultParticipantCard}
 
-      ${studentsRosterCard}
-
-      ${addStudentCard}
+      ${webSearchCard}
 
       <section class="home-card">
         <h2>Settings</h2>
@@ -101,13 +90,17 @@ export function mountHome(el) {
       </section>
 
       <!-- class-enrollment-passcode:home-card START -->
-      ${isOwner ? `
+      ${
+        isOwner
+          ? `
       <section class="home-card" id="enrollment-passcode-card">
         <h2>Today's enrollment passcode</h2>
         <div id="enrollment-passcode-body">
           <p class="muted">Loading…</p>
         </div>
-      </section>` : ''}
+      </section>`
+          : ''
+      }
       <!-- class-enrollment-passcode:home-card END -->
 
       <section class="home-card" id="google-card">
@@ -148,7 +141,9 @@ export function mountHome(el) {
   el.querySelector('#logout-btn').addEventListener('click', async () => {
     try {
       await fetch('/api/me/logout', { method: 'POST', credentials: 'same-origin' });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     window.location.href = '/login';
   });
 
@@ -156,7 +151,9 @@ export function mountHome(el) {
     if (!confirm('Log out of ALL sessions for this account? Other devices will also need to re-authenticate.')) return;
     try {
       await fetch('/api/me/logout-all', { method: 'POST', credentials: 'same-origin' });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     window.location.href = '/login';
   });
 
@@ -168,219 +165,11 @@ export function mountHome(el) {
   if (isOwner) {
     renderClassControlsCard(el.querySelector('#class-controls-body'));
     renderDefaultParticipantCard(el.querySelector('#default-participant-body'));
-    renderStudentsRosterCard(el.querySelector('#students-roster-body'));
-    renderAddStudentCard(el.querySelector('#add-student-body'));
+    renderWebSearchCard(el.querySelector('#web-search-body'));
     // class-enrollment-passcode:home-card START
     renderEnrollmentPasscodeCard(el.querySelector('#enrollment-passcode-body'));
     // class-enrollment-passcode:home-card END
   }
-}
-
-async function renderStudentsRosterCard(body) {
-  if (!body) return;
-  try {
-    const res = await fetch('/api/usage/_/students?providers=codex', { credentials: 'same-origin' });
-    if (!res.ok) {
-      body.innerHTML = `<p class="muted">Couldn't load roster (${res.status}).</p>`;
-      return;
-    }
-    const data = await res.json();
-    if (!data.students || data.students.length === 0) {
-      body.innerHTML = `<p class="muted">No student agents yet. Add students via the classroom flow.</p>`;
-      return;
-    }
-    const tbodyRows = data.students.map((s) => `
-      <tr>
-        <td><button class="roster-name-btn" data-folder="${escapeHtml(s.agentGroup.folder)}">${escapeHtml(s.agentGroup.name || '?')}</button></td>
-        <td class="centered">${s.role === 'ta' ? '<span class="role-ta" title="Teaching Assistant">TA</span>' : ''}</td>
-        <td class="num">${fmtUsd(s.thisMonth.costUsd)}</td>
-        <td class="num">${fmtUsd(s.total.costUsd)}</td>
-        <td class="centered">${s.enrolled ? '<span class="roster-enrolled" title="Has signed in">✅</span>' : '<span class="roster-not-enrolled" title="Not yet signed in">⚪</span>'}</td>
-      </tr>
-      <tr class="roster-detail-row" id="detail-${escapeHtml(s.agentGroup.folder)}" hidden>
-        <td colspan="5"><div class="roster-detail-body"><p class="muted small">Loading…</p></div></td>
-      </tr>
-    `).join('');
-    const enrolledCount = data.students.filter((s) => s.enrolled).length;
-    body.innerHTML = `
-      <table class="roster-table">
-        <thead><tr><th>Name</th><th class="centered">TA</th><th class="num">This month</th><th class="num">Total $</th><th class="centered">Activated</th></tr></thead>
-        <tbody>${tbodyRows}</tbody>
-      </table>
-      <p class="muted small">${enrolledCount} of ${data.students.length} have activated their account. Cost computed from token counts × per-model rate.</p>
-    `;
-    body.querySelectorAll('.roster-name-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const folder = btn.dataset.folder;
-        const detailRow = body.querySelector(`#detail-${folder}`);
-        if (!detailRow) return;
-        const isOpen = !detailRow.hidden;
-        if (isOpen) {
-          detailRow.hidden = true;
-          btn.classList.remove('active');
-          return;
-        }
-        detailRow.hidden = false;
-        btn.classList.add('active');
-        const detailBody = detailRow.querySelector('.roster-detail-body');
-        if (detailBody.dataset.loaded) return;
-        detailBody.dataset.loaded = '1';
-        fetch(`/api/admin/students/${encodeURIComponent(folder)}`, { credentials: 'same-origin' })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.error) {
-              detailBody.innerHTML = `<p class="muted small">Error: ${escapeHtml(d.error)}</p>`;
-              return;
-            }
-            detailBody.innerHTML = renderStudentDetail(d);
-          })
-          .catch((err) => {
-            detailBody.innerHTML = `<p class="muted small">Failed: ${escapeHtml(String(err))}</p>`;
-          });
-      });
-    });
-  } catch (err) {
-    body.innerHTML = `<p class="muted">Couldn't load roster: ${escapeHtml(String(err))}</p>`;
-  }
-}
-
-function renderAddStudentCard(body) {
-  if (!body) return;
-  body.innerHTML = `
-    <p class="muted">Provisions a new student agent + roster entry. Tick "external guest" to also open a 60-minute public tunnel and get an off-campus login link.</p>
-    <div class="home-form">
-      <label>Name<input id="as-name" type="text" autocomplete="off" placeholder="Jane Doe"></label>
-      <label>Email<input id="as-email" type="email" autocomplete="off" placeholder="jane@example.edu"></label>
-      <label class="cc-check"><input id="as-external" type="checkbox"> External guest (start 60-min tunnel)</label>
-    </div>
-    <div class="home-actions">
-      <button id="as-submit" class="btn btn-primary">Add student</button>
-      <span class="muted" id="as-status"></span>
-    </div>
-    <div id="as-result" hidden></div>
-  `;
-
-  const nameInput = body.querySelector('#as-name');
-  const emailInput = body.querySelector('#as-email');
-  const externalInput = body.querySelector('#as-external');
-  const submitBtn = body.querySelector('#as-submit');
-  const status = body.querySelector('#as-status');
-  const result = body.querySelector('#as-result');
-
-  submitBtn.addEventListener('click', async () => {
-    const name = nameInput.value.trim();
-    const email = emailInput.value.trim();
-    const external = externalInput.checked;
-    if (!name || !email) {
-      status.textContent = 'Name and email are required.';
-      return;
-    }
-    submitBtn.disabled = true;
-    status.textContent = external ? 'Provisioning + starting tunnel…' : 'Provisioning…';
-    result.hidden = true;
-    try {
-      const res = await fetch('/api/admin/students', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ name, email, external }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        status.textContent = `Failed: ${data.error || res.status}`;
-        return;
-      }
-      status.textContent = '';
-      nameInput.value = '';
-      emailInput.value = '';
-      externalInput.checked = false;
-      renderAddStudentResult(result, data);
-    } catch (err) {
-      status.textContent = `Failed: ${escapeHtml(String(err))}`;
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-}
-
-function renderAddStudentResult(result, data) {
-  result.hidden = false;
-  let tunnelBlock = '';
-  if (data.external && data.tunnel) {
-    const until = new Date(data.tunnel.expiresAt).toLocaleTimeString();
-    tunnelBlock = `<p class="muted small">🌐 Public tunnel live until <strong>${escapeHtml(until)}</strong>. <button class="btn" id="as-stop-tunnel">Stop tunnel</button></p>`;
-  } else if (data.external && !data.tunnel) {
-    tunnelBlock = `<p class="cc-banner-warn">Tunnel didn't start (${escapeHtml(data.tunnelError || 'unknown error')}). The link below uses the campus address — only works on-campus.</p>`;
-  }
-  result.innerHTML = `
-    <div class="add-student-result">
-      <p>✅ Added <strong>${escapeHtml(data.name)}</strong> as <code>${escapeHtml(data.folder)}</code> <span class="muted">(${escapeHtml(data.email)})</span>.</p>
-      <p class="muted small">Send this login link to the student:</p>
-      <div class="as-link-row">
-        <input type="text" class="as-link" readonly value="${escapeHtml(data.loginUrl)}">
-        <button class="btn" id="as-copy">Copy</button>
-      </div>
-      ${tunnelBlock}
-      <p class="muted small">Reload the page to see them in the Students roster above.</p>
-    </div>
-  `;
-  const linkInput = result.querySelector('.as-link');
-  result.querySelector('#as-copy').addEventListener('click', async () => {
-    linkInput.select();
-    try {
-      await navigator.clipboard.writeText(linkInput.value);
-    } catch {
-      document.execCommand('copy');
-    }
-    const btn = result.querySelector('#as-copy');
-    btn.textContent = 'Copied';
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-    }, 1500);
-  });
-  const stopBtn = result.querySelector('#as-stop-tunnel');
-  if (stopBtn) {
-    stopBtn.addEventListener('click', async () => {
-      stopBtn.disabled = true;
-      try {
-        await fetch('/api/admin/tunnel/stop', { method: 'POST', credentials: 'same-origin' });
-      } catch {
-        /* ignore */
-      }
-      stopBtn.textContent = 'Tunnel stopped';
-    });
-  }
-}
-
-function renderStudentDetail(d) {
-  const fmtDate = (s) => s ? new Date(s).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
-  const providerLines = Object.entries(d.providers || {}).map(([id, p]) => {
-    const methods = [];
-    if (p.hasOAuth) methods.push(`subscription${p.active === 'oauth' ? ' ★' : ''}`);
-    if (p.hasApiKey) methods.push(`API key${p.active === 'apiKey' ? ' ★' : ''}`);
-    const status = methods.length ? `✅ ${methods.join(', ')}` : '⚪ not connected';
-    return `<div><strong>${escapeHtml(id)}:</strong> ${status}</div>`;
-  }).join('');
-
-  const skillsList = d.skills && d.skills.length
-    ? d.skills.map((s) => `<code>${escapeHtml(s)}</code>`).join(', ')
-    : '<span class="muted">none</span>';
-
-  const personaBlock = d.persona
-    ? `<pre class="roster-detail-persona">${escapeHtml(d.persona)}</pre>`
-    : `<span class="muted">—</span>`;
-
-  return `
-    <dl class="roster-detail-dl">
-      <dt>Email</dt><dd>${d.email ? escapeHtml(d.email) : '—'}</dd>
-      <dt>Enrolled</dt><dd>${fmtDate(d.enrolledAt)}</dd>
-      <dt>Telegram</dt><dd>${d.telegram ? '✅ paired' : '⚪ not paired'}</dd>
-      <dt>Google</dt><dd>${d.google ? '✅ connected' : '⚪ not connected'}</dd>
-      <dt>Providers</dt><dd>${providerLines || '<span class="muted">—</span>'}</dd>
-      <dt>Skills</dt><dd>${skillsList}</dd>
-      <dt>Persona</dt><dd>${personaBlock}</dd>
-    </dl>
-  `;
 }
 
 function fmtUsd(n) {
@@ -413,19 +202,20 @@ async function renderUsageCard(body, folder) {
     const data = await res.json();
     const tm = data.thisMonth;
     const tot = data.total;
-    const monthRows = tm.byModel.length === 0
-      ? `<tr><td colspan="4" class="muted">No usage this month yet.</td></tr>`
-      : tm.byModel
-          .map(
-            (m) => `
+    const monthRows =
+      tm.byModel.length === 0
+        ? `<tr><td colspan="4" class="muted">No usage this month yet.</td></tr>`
+        : tm.byModel
+            .map(
+              (m) => `
             <tr>
               <td><code>${escapeHtml(m.model)}</code> <span class="muted">(${escapeHtml(m.provider)})</span></td>
               <td>${fmtTokens(m.tokensIn)}</td>
               <td>${fmtTokens(m.tokensOut)}</td>
               <td>${fmtUsd(m.costUsd)}</td>
             </tr>`,
-          )
-          .join('');
+            )
+            .join('');
     body.innerHTML = `
       <div class="usage-rollup">
         <div class="usage-box">
@@ -452,7 +242,11 @@ async function renderUsageCard(body, folder) {
 
 const ALL_TABS = ['home', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks'];
 const ALL_AUTH = ['api-key', 'oauth', 'claude-code-oauth'];
-const AUTH_LABEL = { 'api-key': 'API key', oauth: 'OAuth (Anthropic Console / OpenAI)', 'claude-code-oauth': 'Claude Code OAuth' };
+const AUTH_LABEL = {
+  'api-key': 'API key',
+  oauth: 'OAuth (Anthropic Console / OpenAI)',
+  'claude-code-oauth': 'Claude Code OAuth',
+};
 
 // ── Default Participant Template card ────────────────────────────────────────
 
@@ -536,7 +330,7 @@ function renderDefaultParticipantForm(body, data) {
     const resultEl = body.querySelector('#dp-apply-result');
     const confirmToken = prompt(
       `This will overwrite all ${participantCount} Participant agent${participantCount === 1 ? '' : 's'} with the saved default.\n` +
-      `A restore point will be created for each one.\n\nType APPLY to confirm:`,
+        `A restore point will be created for each one.\n\nType APPLY to confirm:`,
     );
     if (confirmToken !== 'APPLY') {
       statusEl.textContent = 'Cancelled.';
@@ -568,6 +362,74 @@ function renderDefaultParticipantForm(body, data) {
   });
 }
 
+// ── Web Search backend card ───────────────────────────────────────────────────
+
+async function renderWebSearchCard(body) {
+  if (!body) return;
+  try {
+    const res = await fetch('/api/web-search-config', { credentials: 'same-origin' });
+    if (!res.ok) {
+      body.innerHTML = `<p class="muted">Couldn't load web search config (${res.status}).</p>`;
+      return;
+    }
+    const data = await res.json();
+    renderWebSearchForm(body, data);
+  } catch (err) {
+    body.innerHTML = `<p class="muted">Couldn't load web search config: ${escapeHtml(String(err))}</p>`;
+  }
+}
+
+function renderWebSearchForm(body, data) {
+  const { active, backends } = data;
+
+  const rows = (backends || [])
+    .map((b) => {
+      const noteHtml = b.note ? ` <span class="muted" style="font-size:0.85em">${escapeHtml(b.note)}</span>` : '';
+      return `
+        <div style="margin: 0.35rem 0;">
+          <label style="${b.available ? '' : 'color: var(--muted-color, #888);'}">
+            <input type="radio" name="web-search-backend" value="${escapeHtml(b.id)}"
+              ${active === b.id ? 'checked' : ''}
+              ${b.available ? '' : 'disabled'}>
+            ${escapeHtml(b.label)}
+          </label>${noteHtml}
+        </div>`;
+    })
+    .join('');
+
+  body.innerHTML = `
+    <div id="ws-backends">${rows}</div>
+    <p class="muted small" id="ws-status"></p>
+  `;
+
+  body.querySelectorAll('input[name="web-search-backend"]').forEach((radio) => {
+    radio.addEventListener('change', async () => {
+      const statusEl = body.querySelector('#ws-status');
+      const chosen = radio.value;
+      const chosenBackend = (backends || []).find((b) => b.id === chosen);
+      statusEl.textContent = 'Switching…';
+      try {
+        const res = await fetch('/api/web-search-config', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ provider: chosen }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          statusEl.textContent = err.error || `Request failed (${res.status}).`;
+          return;
+        }
+        const result = await res.json();
+        const activeLabel = chosenBackend ? chosenBackend.label : result.active;
+        statusEl.textContent = `Switched to ${activeLabel} — agents use it on their next message (containers respawned).`;
+      } catch (err) {
+        statusEl.textContent = `Switch failed: ${String(err)}`;
+      }
+    });
+  });
+}
+
 async function renderClassControlsCard(body) {
   if (!body) return;
   try {
@@ -588,11 +450,15 @@ function renderClassControlsForm(body, cfg) {
   //   providers: { [id]: { allow, provideDefault, allowByo } } }
   const DEFAULT_CLASS_ID = 'default';
   const cls = (cfg.classes && cfg.classes[DEFAULT_CLASS_ID]) || {
-    tabsVisibleToStudents: [], authModesAvailable: [], providers: {},
+    tabsVisibleToStudents: [],
+    authModesAvailable: [],
+    providers: {},
   };
-  const tabsChecks = ALL_TABS.map((t) => `
+  const tabsChecks = ALL_TABS.map(
+    (t) => `
     <label class="cc-check"><input type="checkbox" data-cc-tab="${t}" ${cls.tabsVisibleToStudents.includes(t) ? 'checked' : ''}> ${t}</label>
-  `).join('');
+  `,
+  ).join('');
   // ── classroom-provider-auth:class-controls-providers START ────────────
   // Group toggles use AND-on-read / broadcast-on-write across underlying
   // spec ids — see plans/class-controls-provider-grouping.md.
@@ -602,8 +468,7 @@ function renderClassControlsForm(body, cfg) {
     ? `<div class="cc-banner-warn">⚠ Class mode not yet configured — pick provider policies below, then Save.</div>`
     : '';
   const groupFlag = (group, field) =>
-    group.specIds.length > 0 &&
-    group.specIds.every((sid) => !!(policies[sid] && policies[sid][field]));
+    group.specIds.length > 0 && group.specIds.every((sid) => !!(policies[sid] && policies[sid][field]));
   // providedReady is shipped on the GET response — true when the owner
   // has a usable credential for at least one member spec (sibling
   // fallback included). Used to disable the Provided checkbox so the
@@ -695,8 +560,10 @@ function renderClassControlsForm(body, cfg) {
     const next = {
       classes: {
         default: {
-          tabsVisibleToStudents: [...body.querySelectorAll('[data-cc-tab]')].filter((i) => i.checked).map((i) => i.dataset.ccTab),
-          authModesAvailable:    cls.authModesAvailable || [],
+          tabsVisibleToStudents: [...body.querySelectorAll('[data-cc-tab]')]
+            .filter((i) => i.checked)
+            .map((i) => i.dataset.ccTab),
+          authModesAvailable: cls.authModesAvailable || [],
           providers,
         },
       },
@@ -767,9 +634,7 @@ async function renderTelegramCard(body) {
       </div>
       <div id="telegram-pair-instructions" hidden></div>
     `;
-    body.querySelector('#telegram-pair-btn').addEventListener('click', () =>
-      issueAndShowCode(body, data.botUsername),
-    );
+    body.querySelector('#telegram-pair-btn').addEventListener('click', () => issueAndShowCode(body, data.botUsername));
     body.querySelector('#telegram-refresh-btn').addEventListener('click', () => renderTelegramCard(body));
   } catch (err) {
     body.innerHTML = `<p class="muted">Couldn't reach the pairing endpoint: ${escapeHtml(String(err))}</p>`;
@@ -896,7 +761,10 @@ async function renderGoogleCard(body) {
 }
 
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
 }
 
 // ── classroom-provider-auth:providers-card-impl START ─────────────────────
@@ -917,17 +785,14 @@ async function renderProvidersCard(body) {
   }
   try {
     const agentGroupId = (window.currentAgent && window.currentAgent.id) || '';
-    const res = await fetch(
-      `/api/me/models-tab-state?agentGroupId=${encodeURIComponent(agentGroupId)}`,
-      { credentials: 'same-origin' },
-    );
+    const res = await fetch(`/api/me/models-tab-state?agentGroupId=${encodeURIComponent(agentGroupId)}`, {
+      credentials: 'same-origin',
+    });
     const data = await res.json();
     const visibleProviders = (data.providers || []).filter((p) => p.state !== 'HIDDEN');
 
     const rows = visibleProviders.map(renderProviderRow).filter(Boolean);
-    body.innerHTML = rows.length
-      ? rows.join('')
-      : `<p class="muted">No providers enabled by your instructor.</p>`;
+    body.innerHTML = rows.length ? rows.join('') : `<p class="muted">No providers enabled by your instructor.</p>`;
 
     visibleProviders.forEach((p) => wireProviderRow(body, p));
   } catch (err) {
@@ -949,10 +814,9 @@ async function renderProvidersCard(body) {
 async function renderInstructorProvidersCard(body) {
   try {
     const agentGroupId = (window.currentAgent && window.currentAgent.id) || '';
-    const res = await fetch(
-      `/api/me/models-tab-state?agentGroupId=${encodeURIComponent(agentGroupId)}`,
-      { credentials: 'same-origin' },
-    );
+    const res = await fetch(`/api/me/models-tab-state?agentGroupId=${encodeURIComponent(agentGroupId)}`, {
+      credentials: 'same-origin',
+    });
     const data = await res.json();
     const specsById = {};
     for (const p of data.providers || []) specsById[p.id] = p;

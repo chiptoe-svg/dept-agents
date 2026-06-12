@@ -32,14 +32,14 @@ import path from 'path';
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Stop any running container for the group so the next message respawns. */
-function killGroupContainer(folder: string): void {
+export function killGroupContainer(folder: string, reason = 'agent library load'): void {
   const group = getAgentGroupByFolder(folder);
   if (!group) return;
   for (const s of getActiveSessions()) {
     if (s.agent_group_id !== group.id) continue;
     if (!isContainerRunning(s.id)) continue;
     try {
-      killContainer(s.id, 'agent library load');
+      killContainer(s.id, reason);
     } catch {
       /* best-effort */
     }

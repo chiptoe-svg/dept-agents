@@ -2,6 +2,21 @@ import { getModel, type Model } from '@earendil-works/pi-ai';
 import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
 
 /**
+ * Extract the proxy ORIGIN (`protocol//host`) from ANTHROPIC_BASE_URL, which
+ * now carries a `/anthropic` path prefix. Falls back to the default proxy
+ * origin when unset/malformed. (Mirrors proxy-fetch.ts's deriveProxyOrigin.)
+ */
+export function deriveProxyOrigin(raw: string | undefined): string {
+  const fallback = 'http://host.docker.internal:3001';
+  try {
+    const u = new URL(raw ?? fallback);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Synthesize an OpenAI-compatible Model object for providers pi-ai's
  * built-in catalog (models.generated.js) doesn't know about — Clemson's
  * RCD endpoint and local OMLX server. Both speak the OpenAI Chat
@@ -15,9 +30,11 @@ import type { ThinkingLevel } from '@earendil-works/pi-agent-core';
  * works without any pi-ai code change. The HTTP client picks the right
  * endpoint shape from `api: 'openai-completions'`.
  *
- * The baseUrl reuses the credential-proxy host from ANTHROPIC_BASE_URL
- * (the same proxy serves all routes on the same port). Adding a new path
- * prefix routes the request through the matching proxy branch.
+ * The baseUrl reuses only the credential-proxy ORIGIN from ANTHROPIC_BASE_URL
+ * (the same proxy serves all routes on the same port) and appends this
+ * provider's own path prefix. ANTHROPIC_BASE_URL carries a `/anthropic` path
+ * prefix, so we strip to origin first (deriveProxyOrigin) — using it verbatim
+ * would route omlx/clemson traffic through the anthropic prefix and 403.
  *
  * contextWindow defaulted to 32768 — safe for the Qwen 3.x family.
  * Specific models can override (DeepSeek V4 has 128k, gemma-4 has 8k,
@@ -30,13 +47,18 @@ function synthesizeOpenAICompatibleModel(input: {
   proxyPathPrefix: string;
   contextWindow?: number;
 }): Model<'openai-completions'> {
-  const proxyHost = process.env.ANTHROPIC_BASE_URL ?? 'http://host.docker.internal:3001';
+  // Reuse ONLY the ORIGIN (protocol//host) of the credential proxy from
+  // ANTHROPIC_BASE_URL. As of the egress-control work that env var carries a
+  // `/anthropic` path prefix (explicit-prefix routing); using it verbatim here
+  // would produce `…/anthropic/omlx/v1/...`, which the proxy rejects. Strip to
+  // origin and append this provider's own prefix.
+  const proxyOrigin = deriveProxyOrigin(process.env.ANTHROPIC_BASE_URL);
   return {
     id: input.modelId,
     name: input.modelId,
     api: 'openai-completions',
     provider: input.provider,
-    baseUrl: `${proxyHost}${input.proxyPathPrefix}`,
+    baseUrl: `${proxyOrigin}${input.proxyPathPrefix}`,
     reasoning: false,
     input: ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

@@ -4,7 +4,6 @@ import type { AddressInfo } from 'net';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-
 // `vi.hoisted` ensures mockEnv exists when the vi.mock factory below
 // runs — important now that credential-proxy.ts pulls in
 // student-creds-paths → config → env at import time, which fires the
@@ -26,6 +25,8 @@ import {
   userCredsHook,
   serializeResolvedCredsError,
   resolveOmlxKey,
+  resolveProxyRoute,
+  isEgressAllowed,
 } from './credential-proxy.js';
 
 function makeRequest(
@@ -95,7 +96,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: {
           'content-type': 'application/json',
           'x-api-key': 'placeholder',
@@ -116,7 +117,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/api/oauth/claude_cli/create_api_key',
+        path: '/anthropic/api/oauth/claude_cli/create_api_key',
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer placeholder',
@@ -138,7 +139,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: {
           'content-type': 'application/json',
           'x-api-key': 'temp-key-from-exchange',
@@ -158,7 +159,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: {
           'content-type': 'application/json',
           connection: 'keep-alive',
@@ -187,7 +188,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: {
           'content-type': 'application/json',
           'x-api-key': 'placeholder',
@@ -217,7 +218,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/api/oauth/claude_cli/create_api_key',
+        path: '/anthropic/api/oauth/claude_cli/create_api_key',
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer placeholder',
@@ -238,7 +239,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: { 'content-type': 'application/json', 'x-api-key': 'placeholder' },
       },
       '{}',
@@ -262,7 +263,7 @@ describe('credential-proxy', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: { 'content-type': 'application/json' },
       },
       '{}',
@@ -270,6 +271,63 @@ describe('credential-proxy', () => {
 
     expect(res.statusCode).toBe(502);
     expect(res.body).toBe('Bad Gateway');
+  });
+
+  it('returns 403 for a bare /v1/messages path (old catch-all path — no prefix)', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({ error: 'endpoint not allowed by nanoclaw egress policy' });
+    // No upstream request was made — the upstream mock server was never hit
+    expect(lastUpstreamHeaders).toEqual({});
+  });
+
+  it('returns 403 for an unrecognized prefix like /foo/bar', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/foo/bar',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({ error: 'endpoint not allowed by nanoclaw egress policy' });
+    // No upstream request was made — the upstream mock server was never hit
+    expect(lastUpstreamHeaders).toEqual({});
+  });
+
+  it('returns 403 for a disallowed path within a valid route (egress allowlist gate)', async () => {
+    proxyPort = await startProxy({ OPENAI_API_KEY: 'sk-test-openai' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/openai/v1/models',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({ error: 'endpoint not allowed by nanoclaw egress policy' });
+    // Mock upstream must NOT have been hit — no credentials forwarded
+    expect(lastUpstreamHeaders).toEqual({});
   });
 });
 
@@ -341,6 +399,75 @@ describe('credential-proxy OMLX_API_KEY default', () => {
   });
 });
 
+describe('isEgressAllowed', () => {
+  it('allows the chat/messages/responses endpoints + the anthropic OAuth exchange', () => {
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/messages')).toBe(true);
+    expect(isEgressAllowed('anthropic', 'POST', '/api/oauth/claude_cli/create_api_key')).toBe(true);
+    expect(isEgressAllowed('openai', 'POST', '/v1/responses')).toBe(true);
+    expect(isEgressAllowed('openai', 'POST', '/v1/chat/completions')).toBe(true);
+    expect(isEgressAllowed('openai-platform', 'POST', '/v1/chat/completions')).toBe(true);
+    expect(isEgressAllowed('omlx', 'POST', '/v1/responses')).toBe(true);
+    expect(isEgressAllowed('clemson', 'POST', '/v1/chat/completions')).toBe(true);
+  });
+  it('blocks the proven exploit and other non-chat endpoints', () => {
+    expect(isEgressAllowed('openai', 'POST', '/v1/models')).toBe(false);
+    expect(isEgressAllowed('openai', 'GET', '/v1/responses')).toBe(false);
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/models')).toBe(false);
+    expect(isEgressAllowed('anthropic', 'GET', '/v1/messages')).toBe(false);
+  });
+  it('blocks the entire googleapis route (empty allowlist, dead route)', () => {
+    expect(isEgressAllowed('googleapis', 'GET', '/drive/v3/files')).toBe(false);
+    expect(isEgressAllowed('googleapis', 'POST', '/gmail/v1/users/me/messages/send')).toBe(false);
+  });
+  it('ignores query strings when matching', () => {
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/messages?beta=true')).toBe(true);
+  });
+  it('fails closed on case variants and bare-prefix paths (exact match, intentional)', () => {
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/Messages')).toBe(false); // path case-sensitive
+    expect(isEgressAllowed('openai', 'POST', '/V1/responses')).toBe(false);
+    expect(isEgressAllowed('anthropic', 'POST', '/')).toBe(false); // bare prefix → '/'
+    expect(isEgressAllowed('anthropic', 'POST', '/v1/messages/')).toBe(false); // trailing slash
+  });
+  it('normalizes the HTTP method case', () => {
+    expect(isEgressAllowed('openai', 'post', '/v1/chat/completions')).toBe(true);
+  });
+});
+
+describe('resolveProxyRoute', () => {
+  it('routes the new /anthropic prefix and strips it', () => {
+    expect(resolveProxyRoute('/anthropic/v1/messages')).toEqual({ route: 'anthropic', upstreamPath: '/v1/messages' });
+  });
+  it('routes openai / openai-platform / omlx / clemson with prefix stripped', () => {
+    expect(resolveProxyRoute('/openai/v1/responses')).toEqual({ route: 'openai', upstreamPath: '/v1/responses' });
+    expect(resolveProxyRoute('/openai-platform/v1/chat/completions')).toEqual({
+      route: 'openai-platform',
+      upstreamPath: '/v1/chat/completions',
+    });
+    expect(resolveProxyRoute('/omlx/v1/chat/completions')).toEqual({
+      route: 'omlx',
+      upstreamPath: '/v1/chat/completions',
+    });
+    expect(resolveProxyRoute('/clemson/v1/responses')).toEqual({ route: 'clemson', upstreamPath: '/v1/responses' });
+  });
+  it('routes googleapis (kept for the allowlist gate to reject)', () => {
+    expect(resolveProxyRoute('/googleapis/drive/v3/files')).toEqual({
+      route: 'googleapis',
+      upstreamPath: '/drive/v3/files',
+    });
+  });
+  it('returns null for the bare path and unrecognized prefixes (no catch-all)', () => {
+    expect(resolveProxyRoute('/v1/messages')).toBeNull();
+    expect(resolveProxyRoute('/')).toBeNull();
+    expect(resolveProxyRoute('/foo/bar')).toBeNull();
+  });
+  it('preserves query strings on the upstream path', () => {
+    expect(resolveProxyRoute('/anthropic/v1/messages?beta=true')).toEqual({
+      route: 'anthropic',
+      upstreamPath: '/v1/messages?beta=true',
+    });
+  });
+});
+
 describe('credential-proxy payload log', () => {
   let proxyServer: http.Server;
   let upstreamServer: http.Server;
@@ -377,7 +504,7 @@ describe('credential-proxy payload log', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: {
           'x-nanoclaw-agent-group': 'ag1',
           'x-nanoclaw-session-id': 'sess1',
@@ -417,7 +544,7 @@ describe('credential-proxy payload log', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: {
           'x-nanoclaw-agent-group': 'ag1',
           'x-nanoclaw-session-id': 'sess1',
@@ -452,7 +579,7 @@ describe('credential-proxy payload log', () => {
       proxyPort,
       {
         method: 'POST',
-        path: '/v1/messages',
+        path: '/anthropic/v1/messages',
         headers: {
           'x-nanoclaw-agent-group': 'ag1',
           'x-nanoclaw-session-id': 'sess1',

@@ -1,5 +1,7 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { Type } from '@earendil-works/pi-ai';
+import { lookup } from 'node:dns/promises';
+import net from 'node:net';
 
 const FETCH_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1_000;
@@ -64,6 +66,68 @@ function textResult(
   return { content: [{ type: 'text', text: finalText }], details: { ...details, truncated } };
 }
 
+/** True if `ip` is loopback / private / link-local / CGNAT / unspecified. */
+export function ipIsBlocked(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const p = ip.split('.').map(Number);
+    if (p[0] === 127) return true; // loopback
+    if (p[0] === 10) return true; // RFC1918
+    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true; // RFC1918
+    if (p[0] === 192 && p[1] === 168) return true; // RFC1918 (incl. the bridge gateway)
+    if (p[0] === 169 && p[1] === 254) return true; // link-local incl. cloud metadata
+    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true; // CGNAT
+    if (p[0] === 0) return true; // unspecified
+    return false;
+  }
+  const lower = ip.toLowerCase().split('%')[0]; // drop IPv6 zone id (e.g. fe80::1%eth0)
+  if (lower === '::1') return true; // loopback
+  if (lower.startsWith('fe80')) return true; // link-local
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA fc00::/7
+  // IPv4-mapped IPv6, dotted form: ::ffff:192.168.0.1
+  const dotted = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (dotted) return ipIsBlocked(dotted[1]);
+  // IPv4-mapped IPv6, hex form: ::ffff:c0a8:1  (URL parser compresses leading zeros)
+  const hex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hex) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return ipIsBlocked(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
+  }
+  return false;
+}
+
+/**
+ * Throw if `rawUrl` is not a safe public http(s) target. IP-literal hosts are
+ * checked directly (no DNS); hostnames are resolved and ALL addresses checked.
+ * Fail-closed: DNS failure or no addresses → throw.
+ */
+export async function assertUrlAllowed(rawUrl: string): Promise<void> {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    throw new Error('blocked by egress policy: invalid URL');
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error(`blocked by egress policy: scheme ${u.protocol} not allowed`);
+  }
+  const host = u.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+  let addrs: string[];
+  if (net.isIP(host)) {
+    addrs = [host];
+  } else {
+    try {
+      addrs = (await lookup(host, { all: true })).map((r) => r.address);
+    } catch {
+      throw new Error(`blocked by egress policy: DNS resolution failed for ${host}`);
+    }
+    if (addrs.length === 0) throw new Error(`blocked by egress policy: no addresses for ${host}`);
+  }
+  for (const a of addrs) {
+    if (ipIsBlocked(a)) throw new Error(`blocked by egress policy: internal address ${a}`);
+  }
+}
+
 export function createFetchTool(): AgentTool {
   const cache = new Map<string, CacheEntry>();
 
@@ -97,14 +161,28 @@ export function createFetchTool(): AgentTool {
       const timeoutHandle = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
       try {
-        const response = await fetch(url, {
-          signal: controller.signal,
-          redirect: 'follow',
-          headers: {
-            Accept: 'text/html,text/plain,text/markdown,application/json,*/*',
-            'User-Agent': 'Mozilla/5.0 (compatible; NanoclawAgent/1.0)',
-          },
-        });
+        let currentUrl = url;
+        let response: Response;
+        let redirects = 0;
+        for (;;) {
+          if (controller.signal.aborted) throw new Error('fetch aborted (timeout)');
+          await assertUrlAllowed(currentUrl); // throws on internal/blocked targets
+          response = await fetch(currentUrl, {
+            signal: controller.signal,
+            redirect: 'manual',
+            headers: {
+              Accept: 'text/html,text/plain,text/markdown,application/json,*/*',
+              'User-Agent': 'Mozilla/5.0 (compatible; NanoclawAgent/1.0)',
+            },
+          });
+          const location = response.headers.get('location');
+          if (response.status >= 300 && response.status < 400 && location) {
+            if (++redirects > MAX_REDIRECTS) throw new Error('too many redirects');
+            currentUrl = new URL(location, currentUrl).toString();
+            continue; // re-validate the redirect target on the next loop iteration
+          }
+          break;
+        }
 
         if (!response.ok) {
           const msg = `Fetch failed: HTTP ${response.status} ${response.statusText}`;

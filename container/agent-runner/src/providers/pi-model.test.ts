@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 
-import { resolvePiModel, resolvePiThinkingLevel } from './pi-model.js';
+import { resolvePiModel, resolvePiThinkingLevel, deriveProxyOrigin } from './pi-model.js';
+
+describe('deriveProxyOrigin', () => {
+  it('strips any path (incl. /anthropic) down to protocol//host', () => {
+    expect(deriveProxyOrigin('http://192.168.64.1:3001/anthropic')).toBe('http://192.168.64.1:3001');
+    expect(deriveProxyOrigin('http://192.168.64.1:3001')).toBe('http://192.168.64.1:3001');
+  });
+  it('falls back to the default proxy origin when unset or malformed', () => {
+    expect(deriveProxyOrigin(undefined)).toBe('http://host.docker.internal:3001');
+    expect(deriveProxyOrigin('not a url')).toBe('http://host.docker.internal:3001');
+  });
+});
 
 describe('resolvePiModel', () => {
   it('requires an explicit model provider', () => {
@@ -22,6 +33,20 @@ describe('resolvePiModel', () => {
     const model = resolvePiModel({ modelProvider: 'openrouter', model: 'openai/gpt-4.1-mini' });
     expect(model.provider).toBe('openrouter');
     expect(model.id).toBe('openai/gpt-4.1-mini');
+  });
+
+  it('builds omlx/clemson baseUrls from the proxy ORIGIN, ignoring the /anthropic path prefix', () => {
+    const prev = process.env.ANTHROPIC_BASE_URL;
+    process.env.ANTHROPIC_BASE_URL = 'http://192.168.64.1:3001/anthropic';
+    try {
+      const local = resolvePiModel({ modelProvider: 'local', model: 'Qwen3.6-35B' });
+      expect(local.baseUrl).toBe('http://192.168.64.1:3001/omlx/v1'); // NOT /anthropic/omlx/v1
+      const clemson = resolvePiModel({ modelProvider: 'clemson', model: 'some-model' });
+      expect(clemson.baseUrl).toBe('http://192.168.64.1:3001/clemson/v1');
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_BASE_URL;
+      else process.env.ANTHROPIC_BASE_URL = prev;
+    }
   });
 
   it('maps configured effort to anthropic thinking levels only', () => {

@@ -21,6 +21,7 @@
 
   <nav id="tab-bar">
     <button data-tab="home" class="tab active">Home</button>
+    <button data-tab="simple" class="tab">My Agent</button>
     <button data-tab="chat" class="tab">Chat</button>
     <button data-tab="persona" class="tab">Persona</button>
     <button data-tab="skills" class="tab">Skills</button>
@@ -29,6 +30,7 @@
     <button data-tab="sources" class="tab">Sources</button>
     <button data-tab="retrieval" class="tab">Retrieval</button>
     <button data-tab="benchmarks" class="tab">Benchmarks</button>
+    <button data-tab="status" class="tab">Status</button>
   </nav>
 
   <div id="draft-banner" hidden>
@@ -43,6 +45,7 @@
 
   <main id="root">
     <section id="tab-home" class="tab-body active"></section>
+    <section id="tab-simple" class="tab-body" hidden></section>
     <section id="tab-chat" class="tab-body" hidden></section>
     <section id="tab-persona" class="tab-body" hidden></section>
     <section id="tab-skills" class="tab-body" hidden></section>
@@ -51,6 +54,7 @@
     <section id="tab-sources" class="tab-body" hidden></section>
     <section id="tab-retrieval" class="tab-body" hidden></section>
     <section id="tab-benchmarks" class="tab-body" hidden></section>
+    <section id="tab-status" class="tab-body" hidden></section>
   </main>
 
   <div id="modal-root"></div>

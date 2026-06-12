@@ -8,7 +8,10 @@ dist/
 
 # Local data & auth
 store/
-data/
+data/*
+!data/searxng/
+data/searxng/*
+!data/searxng/settings.yml.example
 logs/
 
 # Groups - per-installation state, not tracked
