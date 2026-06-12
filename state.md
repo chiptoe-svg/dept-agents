@@ -163,21 +163,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `simple-tab-trace-rollup`
-- **Last tag:** `phase-c-complete-2026-05-28` (146 commits ahead)
+- **Current:** `main`
+- **Last tag:** `phase-c-complete-2026-05-28` (148 commits ahead)
 
 ### Working tree
 
 ```
-## simple-tab-trace-rollup
+## main...origin/main [ahead 8]
  M config/playground-seats.json
-M  state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+41c870c fix(playground): list the simple (My Agent) tab in the student-tabs checklist
+e459b49 docs(state): trace roll-up decision-log entry
 8a3a2f9 fix(playground): collapse panel bottom padding + rollup-btn focus affordance
 c2aea77 feat(playground): trace roll-up CSS — peek strip, .trace-open collapse, side-stack height chain
 7e28911 feat(playground): side-stack DOM + trace re-parent + roll-up wiring on simple tab
@@ -191,10 +192,8 @@ b898069 docs(plan): simple-tab trace roll-up implementation plan
 d87aa3f feat(simple-tab): layer labels + .agent-off toggle class
 4d0b2e4 docs(plan): simple-tab layering implementation plan
 63c32d0 docs(spec): agent-above-model layering for the simple tab
-2262642 test(simple-tab): cover Save flow and model-change PUT in happy-dom
-c587b09 docs(state): decision-log entry for the My Agent simple tab
 ```
 
 ### Last refresh
 
-2026-06-12T14:03:09Z
+2026-06-12T14:16:13Z
