@@ -163,7 +163,7 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `simple-tab-trace-rollup`
-- **Last tag:** `phase-c-complete-2026-05-28` (144 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (145 commits ahead)
 
 ### Working tree
 
@@ -177,6 +177,7 @@ M  src/channels/playground/public/style.css
 ### Recent commits (last 15)
 
 ```
+c2aea77 feat(playground): trace roll-up CSS — peek strip, .trace-open collapse, side-stack height chain
 7e28911 feat(playground): side-stack DOM + trace re-parent + roll-up wiring on simple tab
 0a7cce8 refactor(playground): capture chat trace element once at wiring time
 b898069 docs(plan): simple-tab trace roll-up implementation plan
@@ -191,9 +192,8 @@ d87aa3f feat(simple-tab): layer labels + .agent-off toggle class
 2262642 test(simple-tab): cover Save flow and model-change PUT in happy-dom
 c587b09 docs(state): decision-log entry for the My Agent simple tab
 f976147 fix(playground): harden simple-tab bubble labels and active-model preselect
-bd49bb2 feat(playground): simple tab model dropdown, hidden-select sync, labeled reply bubbles
 ```
 
 ### Last refresh
 
-2026-06-12T13:49:21Z
+2026-06-12T13:56:53Z

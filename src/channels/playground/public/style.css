@@ -1875,7 +1875,7 @@ select.model-changed {
   border-color: #bfe3c9;
   background: #fdfffe;
   box-shadow: 0 3px 10px rgba(46, 125, 70, 0.18);
-  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, padding-bottom 0.3s ease;
 }
 
 /* OFF — the agent layer retracts: chat flattens onto the model card
@@ -1927,6 +1927,8 @@ select.model-changed {
   font-size: 13px;
   padding: 0 2px;
 }
+.simple-rollup-btn:hover { color: var(--text-muted); }
+.simple-rollup-btn:focus-visible { outline: 2px solid #4b82e8; outline-offset: 2px; }
 .simple-trace-strip {
   font-size: 11px;
   color: var(--text-faint);
@@ -1946,6 +1948,9 @@ select.model-changed {
 }
 .simple-mode.trace-open .simple-panel-body {
   max-height: 0;
+}
+.simple-mode.trace-open .simple-panel {
+  padding-bottom: 0;
 }
 .simple-mode.trace-open .simple-trace-strip {
   max-height: 0;
