@@ -1987,7 +1987,7 @@ select.model-changed {
   margin: 0 10px; /* the base window = the layer the strip peeks from */
   border-color: #aab4d4;
   background: #fdfdff;
-  box-shadow: 0 3px 10px rgba(74, 90, 150, 0.16);
+  box-shadow: none; /* base layer sits flat on the surface — drop shadows belong to the agent windows on top */
   padding-bottom: 22px; /* = .simple-model-strip rendered height (max-height: 2em at 11px) */
   animation: simple-window-reveal 0.3s ease;
 }
@@ -2082,7 +2082,7 @@ select.model-changed {
   border-radius: 8px;
   overflow: hidden; /* clean rounded corners over the square trace panel */
   background: #fafafa; /* matches .trace-panel so the rounded frame reads as one surface */
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+  /* No drop shadow: base layer sits flat on the surface — shadows belong to the agent windows on top */
   animation: simple-window-reveal 0.3s ease; /* restarts on every open (display: none → flex) */
 }
 
