@@ -66,13 +66,18 @@ export function checkedSkills(container) {
 /**
  * Flip between agent and direct-model chat by clicking the embedded chat's
  * hidden mode buttons (chat.js's setMode handles the rest). OFF also grays
- * the panel body — you can't edit an agent you're not talking to.
+ * the panel body — you can't edit an agent you're not talking to — and adds
+ * .agent-off to the wrapper, which drives the layering CSS (the agent card
+ * flattens onto the model layer; see the layering block in style.css).
  */
 export function applyUseAgentToggle(wrapper, useAgent) {
   const btn = wrapper.querySelector(useAgent ? '#mode-agent' : '#mode-direct');
   if (btn) btn.click();
   const body = wrapper.querySelector('.simple-panel-body');
   if (body) body.classList.toggle('simple-disabled', !useAgent);
+  wrapper.classList.toggle('agent-off', !useAgent);
+  const nameEl = wrapper.querySelector('#simple-agent-name');
+  setLayerLabels(wrapper, (nameEl && nameEl.value.trim()) || 'Your agent', currentModelLabel(wrapper) || 'model');
 }
 
 export function mountSimple(el) {
@@ -246,6 +251,22 @@ export function setBubbleLabels(wrapper, agentName, modelLabel) {
   const esc = (s) => String(s).replace(/[\r\n\u2028\u2029]/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   wrapper.style.setProperty('--agent-label', `"🤖 ${esc(agentName)} — your agent"`);
   wrapper.style.setProperty('--model-label', `"⚡ ${esc(modelLabel)} — model only (no skills, no personality)"`);
+}
+
+/**
+ * Layering chrome text — the slim header on the agent card and the model
+ * strip peeking out beneath it. The header names whichever layer you're
+ * talking to (agent ON → the agent; .agent-off → the bare model).
+ */
+export function setLayerLabels(wrapper, agentName, modelLabel) {
+  const strip = wrapper.querySelector('.simple-model-strip');
+  const header = wrapper.querySelector('.simple-card-header');
+  if (strip) strip.textContent = `⚡ ${modelLabel} — underneath`;
+  if (header) {
+    header.textContent = wrapper.classList.contains('agent-off')
+      ? `⚡ ${modelLabel} — model only`
+      : `🤖 ${agentName}`;
+  }
 }
 
 function currentModelLabel(wrapper) {

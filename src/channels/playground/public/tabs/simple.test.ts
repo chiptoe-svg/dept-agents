@@ -6,6 +6,7 @@ import {
   applyUseAgentToggle,
   syncHiddenModelSelects,
   setBubbleLabels,
+  setLayerLabels,
   initPanel,
   initModelDropdown,
 } from './simple.js';
@@ -294,5 +295,48 @@ describe('initModelDropdown — model change', () => {
     // Hidden selects should be synced: openai-codex maps to PROVIDER_GROUP id 'openai'.
     expect((wrapper.querySelector('#provider-sel') as HTMLSelectElement).value).toBe('openai');
     expect((wrapper.querySelector('#model-sel') as HTMLSelectElement).value).toBe('gpt-5.5');
+  });
+});
+
+describe('setLayerLabels / applyUseAgentToggle layering', () => {
+  function layeredWrapper() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'simple-mode';
+    wrapper.innerHTML = `
+      <button id="mode-agent"></button>
+      <button id="mode-direct"></button>
+      <div class="simple-panel-body"></div>
+      <div class="simple-card-header"></div>
+      <div class="simple-model-strip"></div>
+      <input id="simple-agent-name" value="JaneBot">
+      <select id="simple-model-sel"><option selected>GPT-5.5</option></select>
+    `;
+    return wrapper;
+  }
+
+  it('writes the strip text and an ON header', () => {
+    const wrapper = layeredWrapper();
+    setLayerLabels(wrapper, 'JaneBot', 'GPT-5.5');
+    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('⚡ GPT-5.5 — underneath');
+    expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('🤖 JaneBot');
+  });
+
+  it('renders the model label in the header when the wrapper is .agent-off', () => {
+    const wrapper = layeredWrapper();
+    wrapper.classList.add('agent-off');
+    setLayerLabels(wrapper, 'JaneBot', 'GPT-5.5');
+    expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('⚡ GPT-5.5 — model only');
+    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('⚡ GPT-5.5 — underneath');
+  });
+
+  it('toggle OFF adds .agent-off and swaps the header; ON restores it', () => {
+    const wrapper = layeredWrapper();
+    applyUseAgentToggle(wrapper, false);
+    expect(wrapper.classList.contains('agent-off')).toBe(true);
+    expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('⚡ GPT-5.5 — model only');
+
+    applyUseAgentToggle(wrapper, true);
+    expect(wrapper.classList.contains('agent-off')).toBe(false);
+    expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('🤖 JaneBot');
   });
 });

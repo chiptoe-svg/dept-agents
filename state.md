@@ -161,21 +161,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (134 commits ahead)
+- **Current:** `simple-tab-layering`
+- **Last tag:** `phase-c-complete-2026-05-28` (135 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 18]
+## simple-tab-layering
  M config/playground-seats.json
-A  docs/superpowers/plans/2026-06-11-simple-tab-layering.md
+M  src/channels/playground/public/tabs/simple.js
+M  src/channels/playground/public/tabs/simple.test.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+4d0b2e4 docs(plan): simple-tab layering implementation plan
 63c32d0 docs(spec): agent-above-model layering for the simple tab
 2262642 test(simple-tab): cover Save flow and model-change PUT in happy-dom
 c587b09 docs(state): decision-log entry for the My Agent simple tab
@@ -190,9 +192,8 @@ b501b6c feat(playground): wire simple-config, name, and simple-restart routes
 e395217 fix(playground): reject control/invisible chars in agent names; tighten 400-path test
 cb9cd10 feat(playground): agent-name PUT + simple-restart handlers
 2e1e739 fix(playground): simple-config — YAML block-scalar description fallback, single skills readdir, empty-model contract test
-e0303ac feat(playground): GET /api/simple-config handler — template skill shortlist + model choices
 ```
 
 ### Last refresh
 
-2026-06-12T03:52:17Z
+2026-06-12T12:06:06Z
