@@ -1981,19 +1981,20 @@ select.model-changed {
    footprint is exactly the strip's: same 10px horizontal inset, same bottom
    edge (strip collapses + card pads down by the strip's rendered height —
    they cancel, so the bottom-left corner and the input row never move).
-   Solid blue-family border + white surface — you're talking straight to
-   the model, fully usable, NOT disabled. */
+   Neutral gray stroke + surface, matching the trace window — base layers
+   share one look. Fully usable, NOT disabled; the blue header text keeps
+   the model-accent identity. */
 .simple-mode.agent-off .simple-agent-card {
   margin: 0 10px; /* the base window = the layer the strip peeks from */
-  border-color: #aab4d4;
-  background: #fdfdff;
+  border-color: var(--border);
+  background: #fafafa;
   box-shadow: none; /* base layer sits flat on the surface — drop shadows belong to the agent windows on top */
   padding-bottom: 22px; /* = .simple-model-strip rendered height (max-height: 2em at 11px) */
   animation: simple-window-reveal 0.3s ease;
 }
 .simple-mode.agent-off .simple-card-header {
   color: #4a5a96;
-  border-bottom-color: #aab4d4;
+  border-bottom-color: var(--border);
 }
 .simple-mode.agent-off .simple-model-strip {
   max-height: 0;
