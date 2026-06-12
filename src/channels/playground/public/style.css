@@ -1891,11 +1891,9 @@ select.model-changed {
   border-bottom: 1px dashed #aab4d4;
 }
 .simple-mode.agent-off .simple-model-strip {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
+  /* Fade only — keep the strip's layout space so the chat card (and its
+     input row) sits at the same height in both toggle states. */
   opacity: 0;
-  border-width: 0;
 }
 .simple-mode.agent-off .simple-panel {
   border-color: var(--border);

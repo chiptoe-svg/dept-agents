@@ -164,20 +164,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (148 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (149 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 8]
+## main...origin/main [ahead 9]
  M config/playground-seats.json
-M  src/channels/playground/server.ts
+M  src/channels/playground/public/style.css
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+2d27f9c fix(playground): preserve query string on the / -> /playground/ redirect
 de154a6 fix(playground): list the simple (My Agent) tab in the student-tabs checklist
 e459b49 docs(state): trace roll-up decision-log entry
 8a3a2f9 fix(playground): collapse panel bottom padding + rollup-btn focus affordance
@@ -192,9 +193,8 @@ b898069 docs(plan): simple-tab trace roll-up implementation plan
 5159c81 feat(simple-tab): agent-card stack DOM + layering CSS
 d87aa3f feat(simple-tab): layer labels + .agent-off toggle class
 4d0b2e4 docs(plan): simple-tab layering implementation plan
-63c32d0 docs(spec): agent-above-model layering for the simple tab
 ```
 
 ### Last refresh
 
-2026-06-12T14:21:54Z
+2026-06-12T14:35:01Z
