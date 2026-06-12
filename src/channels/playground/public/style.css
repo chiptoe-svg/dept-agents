@@ -1969,8 +1969,12 @@ select.model-changed {
   border-color: #bfe3c9;
   background: #fdfffe;
   box-shadow: 0 3px 10px rgba(46, 125, 70, 0.18);
-  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, padding-bottom 0.3s ease,
-    flex-grow 0.3s ease;
+  /* Color transitions serve the agent ON/OFF gray-out only. The trace
+     roll-up is a layer swap, not a morph: geometry snaps and the entrance
+     keyframes carry the motion (same logic as the agent card / model
+     window on the left). */
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+  animation: simple-agent-land 0.3s ease;
 }
 
 /* OFF — the agent card lifts away, revealing the base window whole. Its
@@ -2015,24 +2019,21 @@ select.model-changed {
    model strip, the trace exists in both modes). */
 .simple-panel-body {
   /* Body fills the fixed-height panel; the persona textarea (flex: 1)
-     absorbs the slack. */
+     absorbs the slack. Collapse (.trace-open max-height: 0) snaps — no
+     transition; the trace window's reveal carries the motion. */
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  /* Collapse cap, not a size: must comfortably exceed the body's
-     flex-allocated height or it clamps short of the panel bottom and the
-     collapse animation jumps. */
-  max-height: 80vh;
   overflow: hidden;
-  transition: max-height 0.3s ease;
 }
 .simple-rollup-btn {
   border: none;
   background: none;
   cursor: pointer;
   color: var(--text-faint);
-  font-size: 13px;
+  font-size: 17px;
+  line-height: 1; /* don't let the bigger glyph grow the header row */
   padding: 0 2px;
 }
 .simple-rollup-btn:hover { color: var(--text-muted); }
@@ -2049,7 +2050,6 @@ select.model-changed {
   overflow: hidden;
   max-height: 2em;
   cursor: pointer;
-  transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
 }
 .simple-trace-host {
   display: none;
@@ -2059,7 +2059,8 @@ select.model-changed {
 }
 .simple-mode.trace-open .simple-panel {
   padding-bottom: 0;
-  flex-grow: 0; /* roll up to header height; the trace host takes the column */
+  flex-grow: 0; /* roll up to header height; the trace window takes the column */
+  animation: none; /* closing trace flips this back to simple-agent-land, restarting the entrance */
 }
 .simple-mode.trace-open .simple-trace-strip {
   max-height: 0;
@@ -2069,25 +2070,31 @@ select.model-changed {
   border-width: 0;
 }
 .simple-mode.trace-open .simple-trace-host {
-  display: flex; /* display swap doesn't animate — the body/strip collapse carries the motion */
+  display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0; /* height chain: host → .trace-panel (flex:1) → .trace-log (overflow-y: auto) */
-  margin-top: 8px;
-  margin-bottom: 22px; /* = model-strip footprint, so the open trace's bottom edge matches the agent card's */
+  /* Same logic as the model chat window: a self-standing base window, inset
+     to the strip's exact footprint (10px sides) and extending down through
+     the collapsed strip's edge — outline continuous with the peek strip. */
+  margin: 8px 10px 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden; /* clean rounded corners over the square trace panel */
   background: #fafafa; /* matches .trace-panel so the rounded frame reads as one surface */
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+  animation: simple-window-reveal 0.3s ease; /* restarts on every open (display: none → flex) */
 }
 
 @media (prefers-reduced-motion: reduce) {
   .simple-agent-card,
+  .simple-mode.agent-off .simple-agent-card,
   .simple-card-header,
   .simple-model-strip,
   .simple-mode .simple-panel,
   .simple-panel-body,
-  .simple-trace-strip {
+  .simple-trace-strip,
+  .simple-mode.trace-open .simple-trace-host {
     transition: none;
     animation: none;
   }
