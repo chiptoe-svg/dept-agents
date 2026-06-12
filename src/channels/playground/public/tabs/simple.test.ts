@@ -11,6 +11,7 @@ import {
   initModelDropdown,
   adoptTracePanel,
   wireTraceRollup,
+  updateDirtyUi,
 } from './simple.js';
 
 const SKILLS = [
@@ -172,6 +173,48 @@ function buildPanelWrapper() {
 function okJson(body: unknown) {
   return Promise.resolve({ ok: true, json: async () => body } as Response);
 }
+
+describe('updateDirtyUi', () => {
+  function dirtyWrapper() {
+    const wrapper = buildPanelWrapper();
+    renderSkillRows(wrapper.querySelector('#simple-skills')!, SKILLS);
+    return wrapper;
+  }
+
+  it('marks changed skill rows pending and lights the Save button', () => {
+    const wrapper = dirtyWrapper();
+    const baseline = { skills: new Set(['image-gen']), persona: '' };
+    expect(updateDirtyUi(wrapper, baseline)).toBe(false);
+
+    // Toggle pdf-reader on — its row goes pending, image-gen's doesn't.
+    const boxes = wrapper.querySelectorAll<HTMLInputElement>('input[data-skill]');
+    boxes[1]!.checked = true;
+    expect(updateDirtyUi(wrapper, baseline)).toBe(true);
+    const rows = wrapper.querySelectorAll('.simple-skill-row');
+    expect(rows[0]!.classList.contains('simple-pending')).toBe(false);
+    expect(rows[1]!.classList.contains('simple-pending')).toBe(true);
+    const saveBtn = wrapper.querySelector('#simple-save')!;
+    const status = wrapper.querySelector('#simple-save-status')!;
+    expect(saveBtn.classList.contains('btn-attention')).toBe(true);
+    expect(status.textContent).toContain('Unsaved changes');
+
+    // Toggle it back off — everything clears, stale hint blanked.
+    boxes[1]!.checked = false;
+    expect(updateDirtyUi(wrapper, baseline)).toBe(false);
+    expect(rows[1]!.classList.contains('simple-pending')).toBe(false);
+    expect(saveBtn.classList.contains('btn-attention')).toBe(false);
+    expect(status.textContent).toBe('');
+  });
+
+  it('persona edits count as dirty without marking any skill row', () => {
+    const wrapper = dirtyWrapper();
+    const baseline = { skills: new Set(['image-gen']), persona: 'original' };
+    (wrapper.querySelector('#simple-persona') as HTMLTextAreaElement).value = 'edited';
+    expect(updateDirtyUi(wrapper, baseline)).toBe(true);
+    expect(wrapper.querySelectorAll('.simple-pending').length).toBe(0);
+    expect(wrapper.querySelector('#simple-save')!.classList.contains('btn-attention')).toBe(true);
+  });
+});
 
 describe('initPanel — Save flow', () => {
   afterEach(() => {

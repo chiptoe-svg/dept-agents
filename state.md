@@ -164,27 +164,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (153 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (154 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 13]
+## main...origin/main [ahead 14]
  M config/playground-seats.json
-A  container/skills/weather/SKILL.md
-A  container/skills/weather/scripts/weather.py
-A  plans/simple-skills-weather-and-viewer.md
-M  src/channels/playground/api/simple-config.test.ts
-M  src/channels/playground/api/simple-config.ts
-A  src/channels/playground/public/skill-view.html
 M  src/channels/playground/public/style.css
 M  src/channels/playground/public/tabs/simple.js
+M  src/channels/playground/public/tabs/simple.test.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+ca265ca feat(playground): weather skill + 2-col shortlist + skill source viewer
 eb31efc feat(playground): demo model menu — friendly names + group-prefixed labels
 4af228a fix(playground): agent-off reveals the model layer instead of restyling in place
 3e59b6d feat(playground): split agent and model-only chats into separate transcripts
@@ -199,9 +195,8 @@ c2aea77 feat(playground): trace roll-up CSS — peek strip, .trace-open collapse
 b898069 docs(plan): simple-tab trace roll-up implementation plan
 5621af3 docs(spec): simple-tab trace roll-up design
 01f6075 docs(state): decision-log entry for simple-tab layering
-8948ed8 fix(simple-tab): constrain height chain so chat scrolls inside the agent card
 ```
 
 ### Last refresh
 
-2026-06-12T15:10:28Z
+2026-06-12T15:31:22Z

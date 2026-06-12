@@ -74,6 +74,40 @@ export function checkedSkills(container) {
 }
 
 /**
+ * Unsaved-changes indicator. Compares the panel's current state against
+ * `baseline` (what the agent actually has: skills enabled at last
+ * load/save + persona text) and lights up everything between the change
+ * and the Save button: changed skill rows get .simple-pending (yellow +
+ * ⏳), the button gets .btn-attention, and the status line explains.
+ * Returns whether anything is dirty. Name is excluded — it saves itself
+ * on blur; the model dropdown saves instantly.
+ */
+export function updateDirtyUi(wrapper, baseline) {
+  const skillsHost = wrapper.querySelector('#simple-skills');
+  const personaEl = wrapper.querySelector('#simple-persona');
+  const saveBtn = wrapper.querySelector('#simple-save');
+  const statusEl = wrapper.querySelector('#simple-save-status');
+
+  let dirty = false;
+  for (const cb of skillsHost.querySelectorAll('input[type="checkbox"]')) {
+    const pending = cb.checked !== baseline.skills.has(cb.dataset.skill);
+    cb.closest('.simple-skill-row').classList.toggle('simple-pending', pending);
+    if (pending) dirty = true;
+  }
+  if (personaEl.value !== baseline.persona) dirty = true;
+
+  saveBtn.classList.toggle('btn-attention', dirty);
+  const wasHint = statusEl.classList.contains('simple-dirty-hint');
+  statusEl.classList.toggle('simple-dirty-hint', dirty);
+  if (dirty) {
+    statusEl.textContent = "Unsaved changes — your agent doesn't have these yet.";
+  } else if (wasHint) {
+    statusEl.textContent = ''; // changes were undone by hand — drop the stale hint
+  }
+  return dirty;
+}
+
+/**
  * Flip between agent and direct-model chat by clicking the embedded chat's
  * hidden mode buttons (chat.js's setMode handles the rest). OFF also grays
  * the panel body — you can't edit an agent you're not talking to — and adds
@@ -190,8 +224,12 @@ export function initPanel(wrapper, folder) {
   const toggleEl = wrapper.querySelector('#simple-use-agent');
 
   let lastSavedName = '';
+  // What the agent actually has — refreshed on load and on every save.
+  const baseline = { skills: new Set(), persona: '' };
 
   toggleEl.addEventListener('change', () => applyUseAgentToggle(wrapper, toggleEl.checked));
+  skillsHost.addEventListener('change', () => updateDirtyUi(wrapper, baseline));
+  personaEl.addEventListener('input', () => updateDirtyUi(wrapper, baseline));
 
   // Load config + persona in parallel; render the panel when both land.
   Promise.all([
@@ -211,6 +249,8 @@ export function initPanel(wrapper, folder) {
       nameInput.value = lastSavedName;
       renderSkillRows(skillsHost, config.skills);
       personaEl.value = persona.text || '';
+      baseline.skills = new Set(config.skills.filter((s) => s.enabled).map((s) => s.name));
+      baseline.persona = personaEl.value;
       initModelDropdown(wrapper, folder, config); // Task 7
     })
     .catch(() => {
@@ -273,6 +313,11 @@ export function initPanel(wrapper, folder) {
         body: JSON.stringify({ folder }),
       });
       if (!skillsRes.ok || !personaRes.ok || !nameOk || !restartRes.ok) throw new Error('save failed');
+      // Saved state IS the new baseline — clear the pending highlights first,
+      // then write the confirmation (updateDirtyUi blanks a stale hint).
+      baseline.skills = new Set(checkedSkills(skillsHost));
+      baseline.persona = personaEl.value;
+      updateDirtyUi(wrapper, baseline);
       statusEl.textContent = 'Saved! Your agent will use this from its next reply.';
     } catch {
       statusEl.textContent = "Couldn't save — try again.";

@@ -1763,6 +1763,9 @@ select.model-changed {
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 10px;
+  /* Room for the pending ⏳ on the right column's longest row — without this
+     the ⓘ gets pushed past .simple-panel-body's overflow:hidden edge. */
+  padding-right: 16px;
 }
 .simple-skill-row {
   margin: 3px 0;
@@ -1792,6 +1795,40 @@ select.model-changed {
   margin-top: 4px;
   font-size: 11px;
   color: #4a5a96;
+}
+
+/* Unsaved-changes ("dirty") state — classes set by updateDirtyUi (simple.js). */
+.simple-skill-row.simple-pending {
+  background: #fff3d6;
+  border-radius: 4px;
+  position: relative;
+}
+/* ⏳ sits just past the cell's right edge (in the grid padding / column gap) so it
+   never pushes the ⓘ button into .simple-panel-body's overflow:hidden clip. */
+.simple-skill-row.simple-pending::after {
+  content: '⏳';
+  font-size: 11px;
+  position: absolute;
+  right: -15px;
+  top: 1px;
+}
+#simple-save.btn-attention {
+  background: #e8920a;
+  border-color: #c97f08;
+  animation: simple-save-pulse 1.6s ease-in-out infinite;
+}
+@keyframes simple-save-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(232, 146, 10, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(232, 146, 10, 0);
+  }
+}
+.simple-save-status.simple-dirty-hint {
+  color: #b36b00;
+  font-weight: 600;
 }
 
 #simple-persona {
