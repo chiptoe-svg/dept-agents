@@ -89,7 +89,13 @@ export function mountSimple(el) {
         <label>model <select id="simple-model-sel"></select></label>
       </div>
       <div class="simple-layout">
-        <div class="simple-chat-host"></div>
+        <div class="simple-stack">
+          <div class="simple-agent-card">
+            <div class="simple-card-header"></div>
+            <div class="simple-chat-host"></div>
+          </div>
+          <div class="simple-model-strip"></div>
+        </div>
         <aside class="simple-panel">
           <div class="simple-panel-header">
             <label class="simple-toggle" title="Off = talk to the raw model — no skills, no personality">
