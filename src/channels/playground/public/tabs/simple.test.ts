@@ -9,6 +9,8 @@ import {
   setLayerLabels,
   initPanel,
   initModelDropdown,
+  adoptTracePanel,
+  wireTraceRollup,
 } from './simple.js';
 
 const SKILLS = [
@@ -302,6 +304,61 @@ describe('initModelDropdown — model change', () => {
     // ON-state header shows the agent name.
     expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('⚡ GPT-5.5 — underneath');
     expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('🤖 TestBot');
+  });
+});
+
+describe('trace roll-up', () => {
+  function rollupWrapper() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'simple-mode';
+    wrapper.innerHTML = `
+      <div class="simple-chat-host">
+        <aside class="trace-panel"><ul id="trace-log"></ul></aside>
+      </div>
+      <button type="button" class="simple-rollup-btn" aria-expanded="false" title="Show trace">▴</button>
+      <div class="simple-trace-strip">🔍 trace — underneath</div>
+      <div class="simple-trace-host"></div>
+    `;
+    return wrapper;
+  }
+
+  it('adoptTracePanel moves the SAME trace-panel node into the side host', () => {
+    const wrapper = rollupWrapper();
+    const panel = wrapper.querySelector('.trace-panel')!;
+    const log = wrapper.querySelector('#trace-log')!;
+    adoptTracePanel(wrapper);
+    // Same node, not a copy — chat.js's captured references must survive.
+    expect(wrapper.querySelector('.simple-trace-host .trace-panel')).toBe(panel);
+    expect(wrapper.querySelector('.simple-trace-host #trace-log')).toBe(log);
+    expect(wrapper.querySelector('.simple-chat-host .trace-panel')).toBeNull();
+  });
+
+  it('chevron click toggles .trace-open, aria-expanded, glyph, and title', () => {
+    const wrapper = rollupWrapper();
+    wireTraceRollup(wrapper);
+    const btn = wrapper.querySelector('.simple-rollup-btn') as HTMLButtonElement;
+
+    btn.click();
+    expect(wrapper.classList.contains('trace-open')).toBe(true);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    expect(btn.textContent).toBe('▾');
+    expect(btn.title).toBe('Hide trace');
+
+    btn.click();
+    expect(wrapper.classList.contains('trace-open')).toBe(false);
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    expect(btn.textContent).toBe('▴');
+    expect(btn.title).toBe('Show trace');
+  });
+
+  it('clicking the peek strip rolls up (opens only, never toggles closed)', () => {
+    const wrapper = rollupWrapper();
+    wireTraceRollup(wrapper);
+    const strip = wrapper.querySelector('.simple-trace-strip') as HTMLElement;
+    strip.click();
+    expect(wrapper.classList.contains('trace-open')).toBe(true);
+    strip.click(); // strip is CSS-collapsed when open, but must not toggle closed either way
+    expect(wrapper.classList.contains('trace-open')).toBe(true);
   });
 });
 

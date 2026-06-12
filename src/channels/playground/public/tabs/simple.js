@@ -2,8 +2,10 @@
  * "My Agent" — the beginner tab. One chat window + one side panel.
  *
  * The chat is the REAL chat tab embedded unchanged (mountChat) inside a
- * `.simple-mode` wrapper; scoped CSS hides the advanced chrome (toolbar,
- * trace panel). The panel drives chat.js's hidden controls programmatically:
+ * `.simple-mode` wrapper; scoped CSS hides the advanced chrome (toolbar).
+ * The trace panel is re-parented into the side stack (adoptTracePanel) after
+ * mountChat so chat.js's captured element references keep working. The panel
+ * drives chat.js's hidden controls programmatically:
  *   - Use-agent toggle → clicks the hidden #mode-agent / #mode-direct
  *   - model dropdown   → PUT active-model + silently sync the hidden
  *     #provider-sel / #model-sel (NO change event — chat.js's own change
@@ -80,6 +82,43 @@ export function applyUseAgentToggle(wrapper, useAgent) {
   setLayerLabels(wrapper, (nameEl && nameEl.value.trim()) || 'Your agent', currentModelLabel(wrapper) || 'model');
 }
 
+/**
+ * Move the embedded chat's live trace panel into the side stack's
+ * .simple-trace-host. chat.js wires ALL trace rendering against element
+ * references captured at wiring time (see wireSse/wireChatForm/
+ * wireTraceClear), so the moved node — same node, not a copy — keeps
+ * receiving SSE events, direct-mode turns, and Clear clicks. Must run
+ * after mountChat.
+ */
+export function adoptTracePanel(wrapper) {
+  const host = wrapper.querySelector('.simple-trace-host');
+  const panel = wrapper.querySelector('.simple-chat-host .trace-panel');
+  if (host && panel) host.appendChild(panel);
+}
+
+/**
+ * Roll the panel body up (open=true: body + peek strip collapse, the trace
+ * underneath expands to the chat's bottom edge) or back down. All visuals
+ * are CSS keyed off .trace-open — same pattern as .agent-off.
+ */
+export function applyTraceRollup(wrapper, open) {
+  wrapper.classList.toggle('trace-open', open);
+  const btn = wrapper.querySelector('.simple-rollup-btn');
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(open));
+    btn.textContent = open ? '▾' : '▴';
+    btn.title = open ? 'Hide trace' : 'Show trace';
+  }
+}
+
+/** Chevron toggles; clicking the peek strip only ever opens. */
+export function wireTraceRollup(wrapper) {
+  const btn = wrapper.querySelector('.simple-rollup-btn');
+  const strip = wrapper.querySelector('.simple-trace-strip');
+  if (btn) btn.addEventListener('click', () => applyTraceRollup(wrapper, !wrapper.classList.contains('trace-open')));
+  if (strip) strip.addEventListener('click', () => applyTraceRollup(wrapper, true));
+}
+
 export function mountSimple(el) {
   const folder = window.__pg.agent.folder;
 
@@ -96,30 +135,37 @@ export function mountSimple(el) {
           </div>
           <div class="simple-model-strip"></div>
         </div>
-        <aside class="simple-panel">
-          <div class="simple-panel-header">
-            <label class="simple-toggle" title="Off = talk to the raw model — no skills, no personality">
-              <input type="checkbox" id="simple-use-agent" checked>
-              <span>Use agent</span>
-            </label>
-            <input id="simple-agent-name" class="simple-name-input" maxlength="40"
-                   title="Your agent's name — click to edit" aria-label="Agent name">
-          </div>
-          <div class="simple-panel-body">
-            <div class="simple-section-label">Skills <span class="simple-hint">(click ⓘ to learn)</span></div>
-            <div id="simple-skills"></div>
-            <div class="simple-section-label">Personality</div>
-            <textarea id="simple-persona" rows="6"></textarea>
-            <button id="simple-save" class="btn btn-primary" type="button">Save my agent</button>
-            <div id="simple-save-status" class="simple-save-status" role="status"></div>
-          </div>
-        </aside>
+        <div class="simple-side-stack">
+          <aside class="simple-panel">
+            <div class="simple-panel-header">
+              <label class="simple-toggle" title="Off = talk to the raw model — no skills, no personality">
+                <input type="checkbox" id="simple-use-agent" checked>
+                <span>Use agent</span>
+              </label>
+              <input id="simple-agent-name" class="simple-name-input" maxlength="40"
+                     title="Your agent's name — click to edit" aria-label="Agent name">
+              <button type="button" class="simple-rollup-btn" aria-expanded="false" title="Show trace">▴</button>
+            </div>
+            <div class="simple-panel-body">
+              <div class="simple-section-label">Skills <span class="simple-hint">(click ⓘ to learn)</span></div>
+              <div id="simple-skills"></div>
+              <div class="simple-section-label">Personality</div>
+              <textarea id="simple-persona" rows="6"></textarea>
+              <button id="simple-save" class="btn btn-primary" type="button">Save my agent</button>
+              <div id="simple-save-status" class="simple-save-status" role="status"></div>
+            </div>
+          </aside>
+          <div class="simple-trace-strip">🔍 trace — underneath</div>
+          <div class="simple-trace-host"></div>
+        </div>
       </div>
     </div>
   `;
 
   const wrapper = el.querySelector('.simple-mode');
   mountChat(el.querySelector('.simple-chat-host'));
+  adoptTracePanel(wrapper); // after mountChat: handlers wired, references captured
+  wireTraceRollup(wrapper);
 
   initPanel(wrapper, folder);
 }
