@@ -278,7 +278,7 @@ function loadModelDropdowns(el, folder) {
           }
         } else {
           lastModel = newModel;
-          appendChatNote(log, `— model changed to ${newModel}; next reply will use it —`);
+          appendChatNote(log, `— model changed to ${newModel}; next reply will use it —`, true);
         }
         // Pulse the dropdown briefly to signal the change.
         modelSel.classList.add('model-changed');
@@ -392,6 +392,15 @@ function wireChatForm(el, folder) {
     modeDirectBtn.classList.toggle('active', mode === 'direct');
     modeDirectBtn.setAttribute('aria-selected', mode === 'direct');
     input.placeholder = mode === 'agent' ? 'ask your agent…' : 'direct LLM call — no agent, no skills, no tools';
+    // Each mode keeps its own transcript: entries are tagged .from-direct at
+    // creation, and these view classes drive the CSS filter (style.css) that
+    // shows only the active mode's messages and trace turns. Classes go on
+    // the log nodes themselves (not `el`) because the simple tab re-parents
+    // the trace panel out of this mount root (adoptTracePanel, simple.js).
+    log.classList.toggle('direct-view', mode === 'direct');
+    if (trace) trace.classList.toggle('direct-view', mode === 'direct');
+    log.scrollTop = log.scrollHeight;
+    if (trace) trace.scrollTop = trace.scrollHeight;
   }
   modeAgentBtn.addEventListener('click', () => setMode('agent'));
   modeDirectBtn.addEventListener('click', () => setMode('direct'));
@@ -450,12 +459,12 @@ function wireChatForm(el, folder) {
     const remaining = TWENTY_FIVE_MB - attached.reduce((sum, a) => sum + a.file.size, 0);
     for (const file of attachInput.files) {
       if (file.size > remaining) {
-        appendSystemNote(log, `${file.name} (${Math.round(file.size / 1024)} KB) skipped — total attachments would exceed 25 MB`);
+        appendSystemNote(log, `${file.name} (${Math.round(file.size / 1024)} KB) skipped — total attachments would exceed 25 MB`, currentMode === 'direct');
         continue;
       }
       const allowed = file.type.startsWith('image/') || file.type === 'application/pdf';
       if (!allowed) {
-        appendSystemNote(log, `${file.name} (${file.type || 'unknown'}) skipped — only images and PDFs supported`);
+        appendSystemNote(log, `${file.name} (${file.type || 'unknown'}) skipped — only images and PDFs supported`, currentMode === 'direct');
         continue;
       }
       attached.push({ file, base64: null });
@@ -468,7 +477,7 @@ function wireChatForm(el, folder) {
     e.preventDefault();
     const text = input.value.trim();
     if (!text && attached.length === 0) return;
-    appendUserBubble(log, text || `(${attached.length} attachment${attached.length === 1 ? '' : 's'})`);
+    appendUserBubble(log, text || `(${attached.length} attachment${attached.length === 1 ? '' : 's'})`, currentMode === 'direct');
     input.value = '';
 
     if (currentMode === 'direct') {
@@ -477,14 +486,14 @@ function wireChatForm(el, folder) {
       // mode (would need to be forwarded as image_url content blocks);
       // skip them with a note if the user dropped files in here.
       if (attached.length > 0) {
-        appendSystemNote(log, 'Attachments are not yet wired in direct mode — text-only sends through.');
+        appendSystemNote(log, 'Attachments are not yet wired in direct mode — text-only sends through.', true);
         attached.length = 0;
         renderChips();
       }
       directHistory.push({ role: 'user', content: text });
       const provSel = el.querySelector('#provider-sel');
       const modelSel = el.querySelector('#model-sel');
-      startNewTurn(trace);
+      startNewTurn(trace, true);
       const traceLi = appendDirectTraceCall(trace, provSel.value, modelSel.value, directHistory.length);
       // Client-side timing — direct-chat.ts doesn't return latencyMs (it's a
       // synchronous HTTP round-trip) so we measure wall-clock from the fetch
@@ -509,7 +518,7 @@ function wireChatForm(el, folder) {
         const latencyMs = Date.now() - startedAt;
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
-          appendSystemNote(log, `Direct chat failed: ${err.error || r.status}`);
+          appendSystemNote(log, `Direct chat failed: ${err.error || r.status}`, true);
           finalizeDirectTraceCall(traceLi, { error: err.error || `HTTP ${r.status}`, latencyMs });
           return;
         }
@@ -518,7 +527,7 @@ function wireChatForm(el, folder) {
         appendDirectReply(log, data);
         finalizeDirectTraceCall(traceLi, { ...data, latencyMs });
       } catch (err) {
-        appendSystemNote(log, `Direct chat failed: ${String(err)}`);
+        appendSystemNote(log, `Direct chat failed: ${String(err)}`, true);
         finalizeDirectTraceCall(traceLi, { error: String(err), latencyMs: Date.now() - startedAt });
       }
       return;
@@ -571,7 +580,7 @@ function wireChatForm(el, folder) {
 
 function appendDirectReply(log, data) {
   const li = document.createElement('li');
-  li.className = 'bubble bubble-agent bubble-direct';
+  li.className = 'bubble bubble-agent bubble-direct from-direct';
   const text = data.text || '(empty reply)';
   const cost =
     data.costUsd < 0.001 ? `$${data.costUsd.toFixed(5)}` : `$${data.costUsd.toFixed(4)}`;
@@ -648,9 +657,11 @@ function finalizeTurn(turnEl) {
 /**
  * Start a new turn group in the trace pane. Finalizes the previous turn if
  * one exists, then appends a new .trace-turn container. Returns the inner
- * <ul> that events should be appended to.
+ * <ul> that events should be appended to. `direct` tags the whole turn into
+ * the direct transcript (mode-split filter) — a turn belongs to the mode
+ * that started it.
  */
-function startNewTurn(trace) {
+function startNewTurn(trace, direct) {
   if (!trace) return null;
   // Remove the empty-state placeholder if present.
   const placeholder = trace.querySelector('.trace-empty');
@@ -662,7 +673,7 @@ function startNewTurn(trace) {
   }
 
   const turnLi = document.createElement('li');
-  turnLi.className = 'trace-turn';
+  turnLi.className = direct ? 'trace-turn from-direct' : 'trace-turn';
 
   const head = document.createElement('div');
   head.className = 'trace-turn-head';
@@ -683,9 +694,13 @@ function startNewTurn(trace) {
   return ul;
 }
 
-function appendUserBubble(log, text) {
+// `direct` tags the bubble as belonging to the direct-mode transcript — the
+// mode-split CSS filter (see setMode) hides it from the agent view. Tagging
+// happens at the SOURCE, not from the current view class, so a late agent
+// SSE reply landing while the user sits in direct view stays agent-tagged.
+function appendUserBubble(log, text, direct) {
   const li = document.createElement('li');
-  li.className = 'msg user';
+  li.className = direct ? 'msg user from-direct' : 'msg user';
   li.textContent = text;
   log.appendChild(li);
   log.scrollTop = log.scrollHeight;
@@ -1471,9 +1486,10 @@ export function previewForToolResult(name, result, status) {
   return formatTracePreview(result);
 }
 
-function appendSystemNote(log, text) {
+// `direct` — see appendUserBubble: tags the note into the direct transcript.
+function appendSystemNote(log, text, direct) {
   const li = document.createElement('li');
-  li.className = 'msg system';
+  li.className = direct ? 'msg system from-direct' : 'msg system';
   li.textContent = text;
   log.appendChild(li);
 }
@@ -1522,9 +1538,10 @@ function showProviderSwitchModal(from, to) {
   });
 }
 
-function appendChatNote(log, text) {
+// `direct` — see appendUserBubble: tags the note into the direct transcript.
+function appendChatNote(log, text, direct) {
   const li = document.createElement('li');
-  li.className = 'chat-note';
+  li.className = direct ? 'chat-note from-direct' : 'chat-note';
   li.textContent = text;
   log.appendChild(li);
   log.scrollTop = log.scrollHeight;
