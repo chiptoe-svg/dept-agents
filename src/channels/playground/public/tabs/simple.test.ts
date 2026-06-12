@@ -300,9 +300,9 @@ describe('initModelDropdown — model change', () => {
     expect((wrapper.querySelector('#provider-sel') as HTMLSelectElement).value).toBe('openai');
     expect((wrapper.querySelector('#model-sel') as HTMLSelectElement).value).toBe('gpt-5.5');
 
-    // Layer labels track the dropdown: strip shows the new model,
-    // ON-state header shows the agent name.
-    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('⚡ GPT-5.5 — underneath');
+    // Layer labels track the dropdown (group-prefixed option label): strip
+    // shows the new model, ON-state header shows the agent name.
+    expect(wrapper.querySelector('.simple-model-strip')!.textContent).toBe('⚡ OpenAI GPT-5.5 — underneath');
     expect(wrapper.querySelector('.simple-card-header')!.textContent).toBe('🤖 TestBot');
   });
 });

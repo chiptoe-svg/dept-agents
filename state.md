@@ -164,20 +164,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (151 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (152 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 11]
+## main...origin/main [ahead 12]
+M  config/model-catalog-local.json
  M config/playground-seats.json
-M  src/channels/playground/public/style.css
+M  src/channels/playground/public/tabs/simple.js
+M  src/channels/playground/public/tabs/simple.test.ts
+M  src/providers/clemson-spec.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+4af228a fix(playground): agent-off reveals the model layer instead of restyling in place
 3e59b6d feat(playground): split agent and model-only chats into separate transcripts
 661fa4c fix(playground): keep chat card fixed when simple-tab agent is toggled
 2d27f9c fix(playground): preserve query string on the / -> /playground/ redirect
@@ -192,9 +196,8 @@ b898069 docs(plan): simple-tab trace roll-up implementation plan
 01f6075 docs(state): decision-log entry for simple-tab layering
 8948ed8 fix(simple-tab): constrain height chain so chat scrolls inside the agent card
 64c2527 feat(simple-tab): layer labels track model change and rename
-5159c81 feat(simple-tab): agent-card stack DOM + layering CSS
 ```
 
 ### Last refresh
 
-2026-06-12T14:48:31Z
+2026-06-12T15:00:06Z

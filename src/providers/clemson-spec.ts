@@ -38,7 +38,7 @@ registerProvider({
     {
       id: 'qwen3.6-35b-a3b-fp8',
       modelProvider: 'clemson',
-      displayName: 'qwen3.6-35b-a3b-fp8',
+      displayName: 'Qwen 35B-A3B',
       origin: 'cloud',
       costPer1kTokensUsd: 0,
       paramCount: '35B (sparse A3B)',

@@ -46,6 +46,34 @@
     "bestFor": "Cross-checking Qwen output with a different model family."
   },
   {
+    "id": "gemma-4-12B-it-8bit",
+    "modelProvider": "local",
+    "displayName": "Gemma 12B",
+    "origin": "local",
+    "costPer1kTokensUsd": 0,
+    "paramCount": "12B",
+    "modalities": ["text", "image"],
+    "host": "http://localhost:8000",
+    "contextSize": 262144,
+    "quantization": "8-bit",
+    "chips": ["🆓 free", "💻 mlx local", "⚡ fast"],
+    "bestFor": "Quick local responses; good default for the demo."
+  },
+  {
+    "id": "gemma-4-26B-A4B-it-QAT-MLX-4bit",
+    "modelProvider": "local",
+    "displayName": "Gemma 26B-A4B",
+    "origin": "local",
+    "costPer1kTokensUsd": 0,
+    "paramCount": "26B (sparse A4B)",
+    "modalities": ["text", "image"],
+    "host": "http://localhost:8000",
+    "contextSize": 262144,
+    "quantization": "QAT MLX 4-bit",
+    "chips": ["🆓 free", "💻 mlx local"],
+    "bestFor": "Stronger local reasoning than the 12B at modest extra latency."
+  },
+  {
     "id": "claude-opus-4-7",
     "provider": "claude",
     "displayName": "claude-opus-4-7",

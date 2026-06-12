@@ -337,8 +337,15 @@ function currentModelLabel(wrapper) {
 export function initModelDropdown(wrapper, folder, config) {
   const sel = wrapper.querySelector('#simple-model-sel');
   sel.innerHTML = '';
+  // Label each option "<Group> <model>" (e.g. "OpenAI gpt-5.5", "Local Gemma
+  // 12B") — the group displayName minus any parenthetical, looked up via the
+  // model's provider in PROVIDER_GROUPS.
+  const prefixFor = (provider) => {
+    const g = PROVIDER_GROUPS.find((g) => g.memberModelProviders.includes(provider));
+    return g ? `${g.displayName.replace(/\s*\(.*\)$/, '')} ` : '';
+  };
   for (const m of config.models) {
-    const opt = new Option(m.displayName, m.id);
+    const opt = new Option(`${prefixFor(m.provider)}${m.displayName}`, m.id);
     opt.dataset.provider = m.provider;
     sel.add(opt);
   }
