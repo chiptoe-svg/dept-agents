@@ -162,21 +162,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `simple-tab-layering`
-- **Last tag:** `phase-c-complete-2026-05-28` (139 commits ahead)
+- **Current:** `main`
+- **Last tag:** `phase-c-complete-2026-05-28` (140 commits ahead)
 
 ### Working tree
 
 ```
-## simple-tab-layering
+## main...origin/main
  M config/playground-seats.json
-M  state.md
+A  docs/superpowers/specs/2026-06-12-simple-tab-trace-rollup-design.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+01f6075 docs(state): decision-log entry for simple-tab layering
 8948ed8 fix(simple-tab): constrain height chain so chat scrolls inside the agent card
 64c2527 feat(simple-tab): layer labels track model change and rename
 5159c81 feat(simple-tab): agent-card stack DOM + layering CSS
@@ -191,9 +192,8 @@ c8e178b fix(playground): guard simple-tab Save against double-click and lost nam
 9de9da9 feat(playground): simple tab side panel — skills checklist, persona, toggle, save
 54bacb6 fix(playground): hide chat toolbar/trace in simple mode; use design tokens
 4064a8e chore(playground): undo collateral prettier reformat of public assets — keep diffs minimal
-986f42c feat(playground): My Agent simple tab skeleton — registration, layout, embedded chat, CSS hiding
 ```
 
 ### Last refresh
 
-2026-06-12T12:29:18Z
+2026-06-12T13:27:29Z
