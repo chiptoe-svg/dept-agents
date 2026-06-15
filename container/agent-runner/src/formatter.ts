@@ -207,10 +207,11 @@ function formatSingleChat(msg: MessageInRow): string {
   const replyAttr = content.replyTo?.id ? ` reply_to="${escapeXml(String(content.replyTo.id))}"` : '';
   const replyPrefix = formatReplyContext(content.replyTo);
   const attachmentsSuffix = formatAttachments(content.attachments);
+  const imagesSuffix = formatImages(content.images);
 
   const fromAttr = originAttr(msg);
 
-  return `<message${idAttr}${fromAttr} sender="${escapeXml(sender)}" time="${escapeXml(time)}"${replyAttr}>${replyPrefix}${escapeXml(text)}${attachmentsSuffix}</message>`;
+  return `<message${idAttr}${fromAttr} sender="${escapeXml(sender)}" time="${escapeXml(time)}"${replyAttr}>${replyPrefix}${escapeXml(text)}${attachmentsSuffix}${imagesSuffix}</message>`;
 }
 
 /**
@@ -272,6 +273,27 @@ function formatReplyContext(replyTo: any): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/**
+ * Render image attachments as a text path marker so the agent receives the
+ * file location in its prompt — e.g. `[image: x.jpg — saved to /workspace/...]`.
+ * Images arrive in `content.images[]` (stamped with a container-visible
+ * `containerPath` by the host) rather than `content.attachments`. pi has no
+ * native vision forwarding, so without this marker the agent never learns an
+ * image was sent. A skill's script then reads the file at this path.
+ */
+function formatImages(images: any[] | undefined): string {
+  if (!Array.isArray(images) || images.length === 0) return '';
+  const parts = images
+    .map((im) => {
+      const p = typeof im?.containerPath === 'string' ? im.containerPath : '';
+      if (!p) return '';
+      const name = p.slice(p.lastIndexOf('/') + 1) || 'image';
+      return `[image: ${escapeXml(name)} — saved to ${escapeXml(p)}]`;
+    })
+    .filter(Boolean);
+  return parts.length > 0 ? '\n' + parts.join('\n') : '';
+}
+
 function formatAttachments(attachments: any[] | undefined): string {
   if (!Array.isArray(attachments) || attachments.length === 0) return '';
   const parts = attachments.map((a) => {

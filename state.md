@@ -164,22 +164,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (174 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (175 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 34]
+## main...origin/main [ahead 35]
  M config/playground-seats.json
-M  src/channels/playground/api-routes.ts
-M  src/channels/playground/api/simple-config.ts
-M  src/channels/playground/public/tabs/simple.js
+M  container/agent-runner/src/formatter.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+62d1def feat(simple): "Start over" resets agent memory + trace, not just the window
 81b4af8 fix(agent-runner): strip stray message tags from folded trailing text
 6b79f3e fix(agent-runner): deliver trailing text models leave outside <message>
 91a2b79 fix(agent-runner): retry transient readonly-DB writes instead of crashing
@@ -194,9 +193,8 @@ f1ba19f feat(playground): base model window matches the trace window's look
 3e57b64 feat(playground): trace window gets the base-layer treatment + bigger rollup glyph
 c3f4008 feat(playground): fixed-height simple panel matching the chat card
 faa2bed fix(playground): agent toggle reads as a layer landing, not a morph
-fb84887 fix(playground): base chat window matches the strip's footprint exactly
 ```
 
 ### Last refresh
 
-2026-06-15T17:38:31Z
+2026-06-15T21:13:01Z
