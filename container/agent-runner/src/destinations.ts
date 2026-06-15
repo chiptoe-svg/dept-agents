@@ -142,7 +142,12 @@ function buildDestinationsSection(): string {
   lines.push('');
   lines.push('**Every response must be wrapped** in a `<message to="name">...</message>` block.');
   lines.push('You can include multiple `<message>` blocks in one response to send to multiple destinations.');
-  lines.push('Text outside of `<message>` blocks is scratchpad — logged but not sent anywhere.');
+  lines.push(
+    '**Everything the recipient should see goes INSIDE the `<message>` block** — the complete reply, including any greeting, sign-off, joke, or closing remark. Do not leave any user-facing text after the `</message>` tag.',
+  );
+  lines.push(
+    'Text outside of `<message>` blocks is scratchpad — your private reasoning, logged but NEVER delivered. If it would be dropped silently and the user would miss it, it belongs inside the `<message>` block instead.',
+  );
   lines.push('Use `<internal>...</internal>` to make scratchpad intent explicit.');
   lines.push('');
   lines.push(

@@ -164,23 +164,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (171 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (172 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 31]
+## main...origin/main [ahead 32]
  M config/playground-seats.json
-M  container/agent-runner/src/db/connection.ts
-M  container/agent-runner/src/db/messages-in.ts
-M  container/agent-runner/src/db/messages-out.ts
-M  container/agent-runner/src/db/session-state.ts
+M  container/agent-runner/src/destinations.ts
+M  container/agent-runner/src/poll-loop.ts
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
+91a2b79 fix(agent-runner): retry transient readonly-DB writes instead of crashing
 3ab3567 feat(simple): "Built in" tools row; web tools always-on; relabel agent-browser
 c68dbf9 fix(agent-runner): compose per-group persona into the system prompt
 b17dbc3 fix(simple): don't auto-roll the trace panel on agent toggle
@@ -195,9 +194,8 @@ faa2bed fix(playground): agent toggle reads as a layer landing, not a morph
 fb84887 fix(playground): base chat window matches the strip's footprint exactly
 a8fa515 fix(playground): model window is the base layer; agent card lays on top
 9af4a05 fix(playground): restore the card-over-strip layering hint
-27536c3 fix(playground): use-agent toggle keeps the window's exact shape
 ```
 
 ### Last refresh
 
-2026-06-15T16:33:13Z
+2026-06-15T16:44:49Z

@@ -630,6 +630,9 @@ export function dispatchResultText(text: string, routing: RoutingContext, cost?:
   // scratchpadParts so the fallback can use it without including
   // "[dropped: unknown destination …]" debug markers from rejected blocks.
   const bareParts: string[] = [];
+  // Parsed blocks are collected (not sent inline) so trailing bare text can
+  // be folded into the reply before anything is dispatched — see below.
+  const blocks: Array<{ dest: DestinationEntry; body: string }> = [];
 
   while ((match = MESSAGE_RE.exec(text)) !== null) {
     if (match.index > lastIndex) {
@@ -647,13 +650,31 @@ export function dispatchResultText(text: string, routing: RoutingContext, cost?:
       scratchpadParts.push(`[dropped: unknown destination "${toName}"] ${body}`);
       continue;
     }
-    sendToDestination(dest, body, routing, cost);
-    sent++;
+    blocks.push({ dest, body });
   }
   if (lastIndex < text.length) {
     const tail = text.slice(lastIndex);
     scratchpadParts.push(tail);
     bareParts.push(tail);
+  }
+
+  // Bare text the model left OUTSIDE every <message> block (but not inside
+  // <internal>) is almost always user-facing content it forgot to wrap — a
+  // sign-off or joke tacked on after the </message>. Smaller models do this
+  // routinely. When we DID parse blocks, fold that leftover into the reply
+  // instead of silently dropping it as scratchpad. Matches the system-prompt
+  // contract that only <internal> is private; <internal> is already stripped
+  // here so genuine reasoning never leaks.
+  const bareText = stripInternalTags(bareParts.join('')).trim();
+  if (blocks.length > 0 && bareText) {
+    const replyDest = findByRouting(routing.channelType, routing.platformId);
+    const target = (replyDest && blocks.find((b) => b.dest.name === replyDest.name)) || blocks[blocks.length - 1];
+    target.body = target.body ? `${target.body}\n\n${bareText}` : bareText;
+  }
+
+  for (const b of blocks) {
+    sendToDestination(b.dest, b.body, routing, cost);
+    sent++;
   }
 
   const scratchpad = stripInternalTags(scratchpadParts.join(''));
