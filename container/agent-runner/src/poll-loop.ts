@@ -665,7 +665,12 @@ export function dispatchResultText(text: string, routing: RoutingContext, cost?:
   // instead of silently dropping it as scratchpad. Matches the system-prompt
   // contract that only <internal> is private; <internal> is already stripped
   // here so genuine reasoning never leaks.
-  const bareText = stripInternalTags(bareParts.join('')).trim();
+  // Strip stray <message>/<internal> tags too: bare text often carries an
+  // unmatched closing tag when the model malforms its envelope, and we don't
+  // want that leaking into the delivered reply.
+  const bareText = stripInternalTags(bareParts.join(''))
+    .replace(/<\/?message[^>]*>/gi, '')
+    .trim();
   if (blocks.length > 0 && bareText) {
     const replyDest = findByRouting(routing.channelType, routing.platformId);
     const target = (replyDest && blocks.find((b) => b.dest.name === replyDest.name)) || blocks[blocks.length - 1];
