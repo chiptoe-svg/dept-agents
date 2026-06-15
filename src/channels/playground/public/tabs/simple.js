@@ -184,7 +184,7 @@ export function mountSimple(el) {
           <aside class="simple-panel">
             <div class="simple-panel-header">
               <label class="simple-toggle" title="Off = talk to the raw model — no skills, no personality">
-                <input type="checkbox" id="simple-use-agent" checked>
+                <input type="checkbox" id="simple-use-agent">
                 <span>Use agent</span>
               </label>
               <input id="simple-agent-name" class="simple-name-input" maxlength="40"
@@ -235,9 +235,21 @@ export function initPanel(wrapper, folder) {
   // What the agent actually has — refreshed on load and on every save.
   const baseline = { skills: new Set(), persona: '' };
 
-  toggleEl.addEventListener('change', () => applyUseAgentToggle(wrapper, toggleEl.checked));
+  toggleEl.addEventListener('change', () => {
+    applyUseAgentToggle(wrapper, toggleEl.checked);
+    // ON → unroll the panel so skills/personality are editable; OFF → roll it
+    // back up so the live trace is what shows underneath.
+    applyTraceRollup(wrapper, !toggleEl.checked);
+  });
   skillsHost.addEventListener('change', () => updateDirtyUi(wrapper, baseline));
   personaEl.addEventListener('input', () => updateDirtyUi(wrapper, baseline));
+
+  // Default page state: start by talking to the raw model (agent OFF), with
+  // the panel rolled up so the trace is visible underneath. Flipping the
+  // toggle on (handler above) unrolls the panel to reveal the agent's setup.
+  toggleEl.checked = false;
+  applyUseAgentToggle(wrapper, false);
+  applyTraceRollup(wrapper, true);
 
   // Load config + persona in parallel; render the panel when both land.
   Promise.all([
@@ -254,12 +266,21 @@ export function initPanel(wrapper, folder) {
         return;
       }
       lastSavedName = config.agentName || '';
-      nameInput.value = lastSavedName;
+      // Suggest "<FirstName>Bot" (e.g. "John Doe" → "JohnBot") while the name
+      // is still the un-personalized seat label; leave a student's chosen name
+      // alone. Only for "First Last"-style labels, and never double-suffix a
+      // name that already ends in "Bot" (e.g. the owner's "InstructorBot").
+      const seatLabel = ((window.__pg && window.__pg.agent && window.__pg.agent.name) || '').trim();
+      const firstName = /\s/.test(seatLabel) ? seatLabel.split(/\s+/)[0] : '';
+      const suggestedName = firstName && !/bot$/i.test(firstName) ? `${firstName}Bot` : '';
+      nameInput.value = suggestedName && lastSavedName === seatLabel ? suggestedName : lastSavedName;
       renderSkillRows(skillsHost, config.skills);
       personaEl.value = persona.text || '';
       baseline.skills = new Set(config.skills.filter((s) => s.enabled).map((s) => s.name));
       baseline.persona = personaEl.value;
       initModelDropdown(wrapper, folder, config); // Task 7
+      // Persist the suggested name so the agent's real identity matches the UI.
+      if (nameInput.value !== lastSavedName) saveName();
     })
     .catch(() => {
       statusEl.textContent = "Couldn't load your agent's setup — refresh to retry.";

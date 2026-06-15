@@ -522,6 +522,10 @@ html, body {
 .mode-btn:hover:not(.active) { background: #f0f0f0; }
 .bubble-direct { border-left: 3px solid #4a90e2; }
 .bubble-meta { font-size: 11px; color: #777; margin-top: 4px; font-family: ui-monospace, monospace; }
+/* On the simple tab the per-reply model/token/cost footer is redundant — the
+   trace panel already shows model + tokens + cost. Hide it here only; the
+   advanced Chat tab keeps the footer. */
+.simple-mode .bubble-meta { display: none; }
 .reasoning-label { display: inline-flex; align-items: center; gap: 4px; }
 .reasoning-badge { display: inline-block; background: #e8edf5; color: #3a5b8a; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, monospace; }
 .trace-event { padding: 6px 8px; margin-bottom: 4px; border-left: 3px solid #ccc; background: #f8f8f8; border-radius: 2px; font-size: 11px; }
@@ -1750,9 +1754,48 @@ select.model-changed {
 .simple-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   white-space: nowrap;
   font-weight: 600;
+  cursor: pointer;
+}
+/* The "Use agent" control is a large iOS-style switch: the native checkbox
+   IS the track, ::before is the knob. Green when the agent is engaged. The
+   #simple-use-agent id / checkbox contract is unchanged (pinned by tests). */
+.simple-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 28px;
+  margin: 0;
+  border-radius: 14px;
+  background: #c2c7d0;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.simple-toggle input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease;
+}
+.simple-toggle input[type="checkbox"]:checked {
+  background: #2e7d46;
+}
+.simple-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(20px);
+}
+.simple-toggle input[type="checkbox"]:focus-visible {
+  outline: 2px solid #4b82e8;
+  outline-offset: 2px;
 }
 .simple-name-input {
   flex: 1;
