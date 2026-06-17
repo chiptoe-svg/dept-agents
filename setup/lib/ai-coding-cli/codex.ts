@@ -57,31 +57,78 @@ function handoff(prompt: string): SpawnArgs {
 }
 
 /**
- * Wire nanoclaw's project skills into ~/.codex/skills/ and add the
- * codegraph MCP server to ~/.codex/config.toml.
+ * Generate a single "router" skill at ~/.codex/skills/nanoclaw-features/.
  *
- * Skills: per-file symlinks from ~/.codex/skills/<name> → <projectRoot>/.claude/skills/<name>.
- * Per-file (not a directory symlink) so skills a Codex user adds land in
- * ~/.codex/skills/ directly rather than flowing back into .claude/skills/.
+ * Why one router instead of symlinking all ~54 skills: Codex's skill
+ * discovery is machine-global and injects the name+description of every
+ * skill it finds into the developer message of *every* Codex session,
+ * whether or not you're touching nanoclaw. Symlinking all 54 added ~20KB
+ * of dead context to every request on the machine. Instead we expose ONE
+ * skill whose own listing is a single line; its tightly-scoped description
+ * only matches "add/install a nanoclaw channel or integration", so it
+ * doesn't fire during unrelated work. Codex reads this skill's BODY only
+ * on demand once the router fires — i.e. only when you're actually adding
+ * a feature.
  *
- * CodeGraph: appends [mcp_servers.codegraph] only if the codegraph binary
- * is on PATH and the section is not already present.
+ * The body does NOT embed a snapshot index of the skills (that would go
+ * stale, since this is regenerated only at install / --reconfigure-cli,
+ * not on every Codex launch). Instead it tells Codex to enumerate the live
+ * .claude/skills/ directory at invocation time, so newly pulled or edited
+ * skills are always picked up. Only the absolute skills path is baked in —
+ * stable unless the install moves, which re-runs setup anyway. Idempotent.
+ */
+function writeNanoclawSkillRouter(projectRoot: string): void {
+  const skillsDir = path.join(projectRoot, '.claude', 'skills');
+  if (!fs.existsSync(skillsDir)) return;
+
+  const body = `---
+name: nanoclaw-features
+description: Add, install, or configure a feature in this NanoClaw agent install — a chat channel (Telegram, Slack, Discord, WhatsApp, iMessage, Signal, Matrix, etc.), an agent provider (Codex, OpenCode, Ollama), a classroom, or any other nanoclaw integration. Use ONLY when the user wants to add/wire/install such a capability.
+---
+
+# NanoClaw feature installers
+
+NanoClaw ships its install/configure workflows as skills under
+\`${skillsDir}/<name>/SKILL.md\`. They are the equivalent of Claude Code's
+\`/add-telegram\`-style slash commands.
+
+## How to use
+
+1. Enumerate what's available *right now* (don't rely on a cached list —
+   skills get added/edited between setup runs):
+
+   \`\`\`bash
+   grep -L '^description: DEPRECATED' ${skillsDir}/*/SKILL.md \\
+     | xargs grep -h -m1 '^\\(name\\|description\\):' 2>/dev/null
+   \`\`\`
+
+   For skills without YAML frontmatter, fall back to their first \`#\` heading:
+   \`head -n1 ${skillsDir}/<name>/SKILL.md\`.
+
+2. Pick the skill whose description matches the user's request, read its full
+   \`${skillsDir}/<name>/SKILL.md\`, and follow it exactly. Skip any whose
+   description starts with \`DEPRECATED\`.
+
+3. These SKILL.md files were written for Claude Code. Apply the Codex
+   tool-equivalents from \`${path.join(projectRoot, 'AGENTS.md')}\` (use
+   \`apply_patch\` for edits, \`rg\` for search, shell \`cat\`/\`sed\` for reads).
+`;
+
+  const dest = path.join(os.homedir(), '.codex', 'skills', 'nanoclaw-features');
+  fs.mkdirSync(dest, { recursive: true });
+  fs.writeFileSync(path.join(dest, 'SKILL.md'), body);
+}
+
+/**
+ * Prepare the Codex environment for working on this nanoclaw repo:
+ *   1. Generate the on-demand `nanoclaw-features` router skill.
+ *   2. Add the codegraph MCP server to ~/.codex/config.toml (only if the
+ *      codegraph binary is on PATH and the section isn't already present).
  *
  * Both operations are idempotent.
  */
 function prepareEnvironment(projectRoot: string): void {
-  const codexSkillsDir = path.join(os.homedir(), '.codex', 'skills');
-  const nanoclaWSkillsDir = path.join(projectRoot, '.claude', 'skills');
-
-  if (fs.existsSync(nanoclaWSkillsDir)) {
-    fs.mkdirSync(codexSkillsDir, { recursive: true });
-    for (const entry of fs.readdirSync(nanoclaWSkillsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const dest = path.join(codexSkillsDir, entry.name);
-      if (fs.existsSync(dest)) continue;
-      fs.symlinkSync(path.join(nanoclaWSkillsDir, entry.name), dest);
-    }
-  }
+  writeNanoclawSkillRouter(projectRoot);
 
   const codexConfigPath = path.join(os.homedir(), '.codex', 'config.toml');
   let hasCodegraph = false;
