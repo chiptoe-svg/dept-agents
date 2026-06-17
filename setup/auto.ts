@@ -864,10 +864,14 @@ function appendEnvLine(line: string): void {
 // the prompt.
 async function runNativeAuthStep(): Promise<void> {
   // ── 1. Agent provider selection ──────────────────────────────────────────
-  // Persisted to .env so re-runs skip the prompt. Defaults to 'anthropic'.
+  // Persisted to .env so re-runs skip the prompt. Inferred from existing keys
+  // when not set (OPENAI_PLATFORM_API_KEY present → openai-platform;
+  // any Anthropic key present → anthropic).
   let agentProvider =
     (process.env.NANOCLAW_DEFAULT_AGENT_PROVIDER as string | undefined) ??
     (readEnvKey('NANOCLAW_DEFAULT_AGENT_PROVIDER') as string | null) ??
+    (readEnvKey('OPENAI_PLATFORM_API_KEY') ? 'openai-platform' : null) ??
+    (readEnvKey('ANTHROPIC_API_KEY') || readEnvKey('CLAUDE_CODE_OAUTH_TOKEN') || readEnvKey('ANTHROPIC_AUTH_TOKEN') ? 'anthropic' : null) ??
     '';
 
   if (!agentProvider) {
