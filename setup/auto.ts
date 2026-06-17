@@ -161,6 +161,15 @@ async function main(): Promise<void> {
   if (!skip.has('container')) {
     const containerRuntime = await pickContainerRuntime();
 
+    // Ensure the runtime is installed and running BEFORE entering the windowed
+    // step — the windowed runner spawns a child with stdin closed, so any
+    // interactive prompt (e.g. Apple Container's kernel-extension sudo) hangs
+    // or fails silently. We handle that here in the parent process where stdin
+    // is a real terminal.
+    if (containerRuntime === 'apple-container') {
+      await ensureAppleContainerReady();
+    }
+
     p.log.message(brandBody(dimWrap('Your assistant lives in its own sandbox. It can only see what you explicitly share.', 4)));
     p.log.message(
       brandBody(
@@ -855,6 +864,21 @@ async function runNativeAuthStep(): Promise<void> {
     return;
   }
 
+  // When Codex (or another non-Claude coding CLI) is the setup helper, make it
+  // clear that this credential is for the NanoClaw AGENTS — it has nothing to
+  // do with the Codex CLI chosen above. The agents talk to Anthropic's API by
+  // default, which requires a Claude credential even if you edit code with Codex.
+  if (process.env.NANOCLAW_AI_CODING_CLI && process.env.NANOCLAW_AI_CODING_CLI !== 'claude') {
+    p.log.message(
+      brandBody(
+        dimWrap(
+          `Your coding tool is ${process.env.NANOCLAW_AI_CODING_CLI}, but your NanoClaw agents talk to Claude (Anthropic) by default and need a separate credential. This is for the agents — not for ${process.env.NANOCLAW_AI_CODING_CLI}.`,
+          4,
+        ),
+      ),
+    );
+  }
+
   // Pre-flight probe: detect which methods are available right now so the
   // menu can hint accurately and pre-focus the most likely option. Catches
   // platform-specific gaps (e.g. Claude Code creds in macOS Keychain vs
@@ -1260,6 +1284,49 @@ async function pickAiCodingCli(opts: { force?: boolean } = {}): Promise<void> {
   if (!chosen) return;
   persistAiCodingCli(chosen);
   setupLog.userInput('setup_cli', `${chosen.name} (picked)`);
+}
+
+/**
+ * Ensure Apple Container is installed and the runtime is running before we
+ * hand off to the windowed container step. Must run in the PARENT process
+ * (setup:auto) where stdin is a real terminal — the windowed runner spawns
+ * children with stdin closed, so kernel-extension prompts would hang there.
+ */
+async function ensureAppleContainerReady(): Promise<void> {
+  const { commandExists } = await import('./platform.js');
+
+  if (!commandExists('container')) {
+    if (!commandExists('brew')) {
+      await fail(
+        'container',
+        'Apple Container not found and Homebrew is not installed.',
+        'Install Apple Container manually from https://developer.apple.com/documentation/virtualization, then retry.',
+      );
+    }
+    p.log.step(brandBody('Installing Apple Container via Homebrew…'));
+    const installRes = spawnSync('brew', ['install', 'container'], { stdio: 'inherit' });
+    if (installRes.status !== 0 || !commandExists('container')) {
+      await fail(
+        'container',
+        "Couldn't install Apple Container.",
+        'Try: brew install container — then retry setup.',
+      );
+    }
+  }
+
+  const running = spawnSync('container', ['system', 'status'], { stdio: 'pipe' }).status === 0;
+  if (!running) {
+    p.log.step(brandBody('Starting Apple Container (may ask for your password to install the kernel extension)…'));
+    const startRes = spawnSync('container', ['system', 'start'], { stdio: 'inherit' });
+    if (startRes.status !== 0) {
+      await fail(
+        'container',
+        "Couldn't start Apple Container.",
+        'Try: container system start — then retry setup.',
+      );
+    }
+    p.log.success(brandBody('Apple Container runtime started.'));
+  }
 }
 
 /**

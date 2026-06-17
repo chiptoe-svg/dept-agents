@@ -164,50 +164,40 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (177 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (178 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 37]
+## main...origin/main
  M config/playground-seats.json
  M container/CLAUDE.md
  M container/skills/make-website/SKILL.md
-M  package.json
-M  setup.sh
 M  setup/auto.ts
-M  setup/container.ts
-M  setup/lib/ai-coding-cli/codex.ts
-M  setup/lib/ai-coding-cli/types.ts
-M  setup/peer-cleanup.ts
-M  setup/platform.test.ts
-M  setup/service.ts
  M src/channels/playground/public/tabs/skills.js
-M  src/container-runtime.ts
- M state.md
 ?? .codegraph/
 ```
 
 ### Recent commits (last 15)
 
 ```
-eea9795 feat(skills): image-vision + image-metadata container skills
-1c76d15 fix(agent-runner): surface uploaded image paths to the agent
-62d1def feat(simple): "Start over" resets agent memory + trace, not just the window
-81b4af8 fix(agent-runner): strip stray message tags from folded trailing text
-6b79f3e fix(agent-runner): deliver trailing text models leave outside <message>
-91a2b79 fix(agent-runner): retry transient readonly-DB writes instead of crashing
-3ab3567 feat(simple): "Built in" tools row; web tools always-on; relabel agent-browser
-c68dbf9 fix(agent-runner): compose per-group persona into the system prompt
-b17dbc3 fix(simple): don't auto-roll the trace panel on agent toggle
-3f30ff0 feat(simple): switch toggle, FirstName+Bot default name, trace-first default
-cd10ab6 feat(pi): gate skills and web tools on the enabled-skill set
-3c26bf4 feat(playground): friendlier model-only wording
-f1ba19f feat(playground): base model window matches the trace window's look
-8e42bbb fix(playground): base-layer windows sit flat — no drop shadow
-3e57b64 feat(playground): trace window gets the base-layer treatment + bigger rollup glyph
+ce65b3c6 feat(setup): Apple Container + Codex support; LaunchDaemon; Node <26 cap
+eea9795e feat(skills): image-vision + image-metadata container skills
+1c76d15f fix(agent-runner): surface uploaded image paths to the agent
+62d1def2 feat(simple): "Start over" resets agent memory + trace, not just the window
+81b4af81 fix(agent-runner): strip stray message tags from folded trailing text
+6b79f3e4 fix(agent-runner): deliver trailing text models leave outside <message>
+91a2b79b fix(agent-runner): retry transient readonly-DB writes instead of crashing
+3ab35671 feat(simple): "Built in" tools row; web tools always-on; relabel agent-browser
+c68dbf9e fix(agent-runner): compose per-group persona into the system prompt
+b17dbc3c fix(simple): don't auto-roll the trace panel on agent toggle
+3f30ff0d feat(simple): switch toggle, FirstName+Bot default name, trace-first default
+cd10ab69 feat(pi): gate skills and web tools on the enabled-skill set
+3c26bf45 feat(playground): friendlier model-only wording
+f1ba19fe feat(playground): base model window matches the trace window's look
+8e42bbb2 fix(playground): base-layer windows sit flat — no drop shadow
 ```
 
 ### Last refresh
 
-2026-06-17T15:27:26Z
+2026-06-17T15:50:31Z
