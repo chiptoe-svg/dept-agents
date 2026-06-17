@@ -164,12 +164,12 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (180 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (181 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
+## main...origin/main
  M config/playground-seats.json
  M container/CLAUDE.md
  M container/skills/make-website/SKILL.md
@@ -181,6 +181,7 @@ M  setup/auto.ts
 ### Recent commits (last 15)
 
 ```
+14bbd0d5 fix(setup): infer agent provider from existing .env keys on re-run
 ede7ef1f feat(setup): agent provider selection — Anthropic or OpenAI
 4b762fb3 fix(setup): add ensureAppleContainerReady + Codex auth clarification
 ce65b3c6 feat(setup): Apple Container + Codex support; LaunchDaemon; Node <26 cap
@@ -195,9 +196,8 @@ c68dbf9e fix(agent-runner): compose per-group persona into the system prompt
 b17dbc3c fix(simple): don't auto-roll the trace panel on agent toggle
 3f30ff0d feat(simple): switch toggle, FirstName+Bot default name, trace-first default
 cd10ab69 feat(pi): gate skills and web tools on the enabled-skill set
-3c26bf45 feat(playground): friendlier model-only wording
 ```
 
 ### Last refresh
 
-2026-06-17T16:00:04Z
+2026-06-17T16:03:36Z

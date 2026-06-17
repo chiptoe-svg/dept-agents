@@ -875,6 +875,8 @@ async function runNativeAuthStep(): Promise<void> {
     '';
 
   if (!agentProvider) {
+    const cliIsCodex =
+      (process.env.NANOCLAW_AI_CODING_CLI ?? readEnvKey('NANOCLAW_AI_CODING_CLI')) === 'codex';
     agentProvider = ensureAnswer(
       await brightSelect<string>({
         message: 'Which AI provider will your agents use?',
@@ -890,7 +892,7 @@ async function runNativeAuthStep(): Promise<void> {
             hint: 'API key from platform.openai.com',
           },
         ],
-        initialValue: 'anthropic',
+        initialValue: cliIsCodex ? 'openai-platform' : 'anthropic',
       }),
     ) as string;
     appendEnvLine(`NANOCLAW_DEFAULT_AGENT_PROVIDER=${agentProvider}`);
