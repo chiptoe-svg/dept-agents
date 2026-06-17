@@ -35,8 +35,8 @@ beforeEach(() => {
 // --- Pure functions ---
 
 describe('CONTAINER_RUNTIME_BIN', () => {
-  it('targets the Apple Container CLI', () => {
-    expect(CONTAINER_RUNTIME_BIN).toBe('container');
+  it('targets the Apple Container executable', () => {
+    expect(CONTAINER_RUNTIME_BIN === 'container' || CONTAINER_RUNTIME_BIN.endsWith('/container')).toBe(true);
   });
 });
 

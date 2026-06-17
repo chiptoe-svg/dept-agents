@@ -12,15 +12,7 @@ import path from 'path';
 import { log } from '../src/log.js';
 import { getLaunchdLabel, getSystemdUnit } from '../src/install-slug.js';
 import { cleanupUnhealthyPeers } from './peer-cleanup.js';
-import {
-  commandExists,
-  getPlatform,
-  getNodePath,
-  getServiceManager,
-  hasSystemd,
-  isRoot,
-  isWSL,
-} from './platform.js';
+import { commandExists, getPlatform, getNodePath, getServiceManager, hasSystemd, isRoot, isWSL } from './platform.js';
 import { emitStatus } from './status.js';
 
 export async function run(_args: string[]): Promise<void> {
@@ -119,11 +111,7 @@ function installCliSymlink(projectRoot: string, homeDir: string): void {
   }
 }
 
-function setupLaunchd(
-  projectRoot: string,
-  nodePath: string,
-  homeDir: string,
-): void {
+function setupLaunchd(projectRoot: string, nodePath: string, homeDir: string): void {
   // Per-checkout service label so multiple NanoClaw installs can coexist
   // without clobbering each other's plist.
   const label = getLaunchdLabel(projectRoot);
@@ -137,10 +125,17 @@ function setupLaunchd(
   const plistPath = path.join('/Library', 'LaunchDaemons', `${label}.plist`);
 
   // Include the node binary's parent directory first so child processes
-  // (e.g. container spawns) inherit the correct runtime. On Apple Silicon
-  // this is /opt/homebrew/bin; on Intel Macs it's /usr/local/bin.
+  // (e.g. container spawns) inherit the correct runtime. Apple Container is
+  // installed by Homebrew at /opt/homebrew/bin on Apple Silicon.
   const nodeDir = path.dirname(nodePath);
-  const envPath = [nodeDir, '/usr/local/bin', '/usr/bin', '/bin', path.join(homeDir, '.local', 'bin')]
+  const envPath = [
+    nodeDir,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    path.join(homeDir, '.local', 'bin'),
+  ]
     .filter((v, i, arr) => arr.indexOf(v) === i)
     .join(':');
 
@@ -185,20 +180,26 @@ function setupLaunchd(
 
   const installResult = spawnSync(
     'sudo',
-    ['install', '-m', '644', '-o', 'root', '-g', 'wheel', tmpPlist, plistPath],
-    { stdio: ['inherit', 'ignore', 'inherit'] },
+    ['-n', 'install', '-m', '644', '-o', 'root', '-g', 'wheel', tmpPlist, plistPath],
+    { encoding: 'utf-8', stdio: ['ignore', 'ignore', 'pipe'] },
   );
-  try { fs.unlinkSync(tmpPlist); } catch { /* best-effort cleanup */ }
+  try {
+    fs.unlinkSync(tmpPlist);
+  } catch {
+    /* best-effort cleanup */
+  }
 
   if (installResult.status !== 0) {
-    log.error('Failed to install LaunchDaemon plist');
+    const stderr = (installResult.stderr ?? '').trim();
+    const sudoRequired = /password is required|a terminal is required|no tty/i.test(stderr);
+    log.error('Failed to install LaunchDaemon plist', { stderr });
     emitStatus('SETUP_SERVICE', {
       SERVICE_TYPE: 'launchd-daemon',
       SERVICE_LABEL: label,
       NODE_PATH: nodePath,
       PROJECT_PATH: projectRoot,
       STATUS: 'failed',
-      ERROR: 'plist_install_failed',
+      ERROR: sudoRequired ? 'sudo_required' : 'plist_install_failed',
       LOG: 'logs/setup.log',
     });
     process.exit(1);
@@ -210,7 +211,7 @@ function setupLaunchd(
   // - system domain: existing LaunchDaemon being refreshed
   const uid = os.userInfo().uid;
   spawnSync('launchctl', ['bootout', `gui/${uid}/${label}`], { stdio: 'ignore' });
-  spawnSync('sudo', ['launchctl', 'bootout', `system/${label}`], { stdio: 'ignore' });
+  spawnSync('sudo', ['-n', 'launchctl', 'bootout', `system/${label}`], { stdio: 'ignore' });
 
   // Remove old LaunchAgent plist if present (migration: user agent → system daemon)
   const agentPlist = path.join(homeDir, 'Library', 'LaunchAgents', `${label}.plist`);
@@ -220,20 +221,19 @@ function setupLaunchd(
   }
 
   // Bootstrap the system daemon
-  const bootstrapResult = spawnSync(
-    'sudo',
-    ['launchctl', 'bootstrap', 'system', plistPath],
-    { stdio: ['inherit', 'ignore', 'inherit'] },
-  );
+  const bootstrapResult = spawnSync('sudo', ['-n', 'launchctl', 'bootstrap', 'system', plistPath], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
   if (bootstrapResult.status !== 0) {
-    log.error('launchctl bootstrap failed');
+    log.error('launchctl bootstrap failed', { stderr: (bootstrapResult.stderr ?? '').trim() });
   } else {
     log.info('launchctl bootstrap succeeded');
   }
 
   // Verify
   let serviceLoaded = false;
-  const check = spawnSync('sudo', ['launchctl', 'list', label], { stdio: 'pipe' });
+  const check = spawnSync('sudo', ['-n', 'launchctl', 'list', label], { stdio: 'pipe' });
   serviceLoaded = check.status === 0;
 
   emitStatus('SETUP_SERVICE', {
@@ -248,11 +248,7 @@ function setupLaunchd(
   });
 }
 
-function setupLinux(
-  projectRoot: string,
-  nodePath: string,
-  homeDir: string,
-): void {
+function setupLinux(projectRoot: string, nodePath: string, homeDir: string): void {
   const serviceManager = getServiceManager();
 
   if (serviceManager === 'systemd') {
@@ -305,11 +301,7 @@ function checkDockerGroupStale(): boolean {
   }
 }
 
-function setupSystemd(
-  projectRoot: string,
-  nodePath: string,
-  homeDir: string,
-): void {
+function setupSystemd(projectRoot: string, nodePath: string, homeDir: string): void {
   const runningAsRoot = isRoot();
   const unitName = getSystemdUnit(projectRoot);
   const unitFileName = `${unitName}.service`;
@@ -327,9 +319,7 @@ function setupSystemd(
     try {
       execSync('systemctl --user daemon-reload', { stdio: 'pipe' });
     } catch {
-      log.warn(
-        'systemd user session not available — falling back to nohup wrapper',
-      );
+      log.warn('systemd user session not available — falling back to nohup wrapper');
       setupNohupFallback(projectRoot, nodePath, homeDir);
       return;
     }
@@ -370,18 +360,14 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
   // normal group perms apply again).
   let dockerGroupStale = !runningAsRoot && checkDockerGroupStale();
   if (dockerGroupStale) {
-    log.warn(
-      'Docker group not active in systemd session — user was likely added to docker group mid-session',
-    );
+    log.warn('Docker group not active in systemd session — user was likely added to docker group mid-session');
     if (commandExists('setfacl')) {
       const user = execSync('whoami', { encoding: 'utf-8' }).trim();
       try {
         execSync(`sudo setfacl -m u:${user}:rw /var/run/docker.sock`, {
           stdio: 'inherit',
         });
-        log.info(
-          'Applied temporary ACL to /var/run/docker.sock (resets on docker restart or reboot)',
-        );
+        log.info('Applied temporary ACL to /var/run/docker.sock (resets on docker restart or reboot)');
         dockerGroupStale = false;
       } catch (err) {
         log.warn('Failed to apply setfacl workaround', { err });
@@ -401,10 +387,7 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
       execSync('loginctl enable-linger', { stdio: 'ignore' });
       log.info('Enabled loginctl linger for current user');
     } catch (err) {
-      log.warn(
-        'loginctl enable-linger failed — service may stop on SSH logout',
-        { err },
-      );
+      log.warn('loginctl enable-linger failed — service may stop on SSH logout', { err });
     }
   }
 
@@ -455,11 +438,7 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
   });
 }
 
-function setupNohupFallback(
-  projectRoot: string,
-  nodePath: string,
-  homeDir: string,
-): void {
+function setupNohupFallback(projectRoot: string, nodePath: string, homeDir: string): void {
   log.warn('No systemd detected — generating nohup wrapper script');
 
   const wrapperPath = path.join(projectRoot, 'start-nanoclaw.sh');

@@ -5,6 +5,7 @@
  * Runtime: Apple Container (macOS-only). For Docker, see git history.
  */
 import { execSync, spawnSync } from 'child_process';
+import fs from 'fs';
 import os from 'os';
 
 import { INSTALL_SLUG } from './config.js';
@@ -16,10 +17,20 @@ import { log } from './log.js';
  * Reads NANOCLAW_CONTAINER_RUNTIME from env; defaults to 'container' (Apple Container).
  * Set to 'docker' for Linux installs or macOS installs that prefer Docker.
  */
-export const CONTAINER_RUNTIME_BIN: string =
-  process.env.NANOCLAW_CONTAINER_RUNTIME ??
-  readEnvFile(['NANOCLAW_CONTAINER_RUNTIME']).NANOCLAW_CONTAINER_RUNTIME ??
-  'container';
+const CONFIGURED_CONTAINER_RUNTIME =
+  process.env.NANOCLAW_CONTAINER_RUNTIME ?? readEnvFile(['NANOCLAW_CONTAINER_RUNTIME']).NANOCLAW_CONTAINER_RUNTIME;
+
+export const CONTAINER_RUNTIME_BIN: string = resolveContainerRuntimeBin(CONFIGURED_CONTAINER_RUNTIME);
+
+function resolveContainerRuntimeBin(runtime: string | undefined): string {
+  if (!runtime || runtime === 'apple-container' || runtime === 'container') {
+    for (const candidate of ['/opt/homebrew/bin/container', '/usr/local/bin/container']) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return 'container';
+  }
+  return runtime;
+}
 
 /**
  * IP address containers use to reach the host machine.
@@ -79,12 +90,12 @@ export function ensureContainerRuntimeRunning(): void {
 
 function ensureAppleContainerRunning(): void {
   try {
-    execSync('container system status', { stdio: 'pipe' });
+    execSync(`${CONTAINER_RUNTIME_BIN} system status`, { stdio: 'pipe' });
     log.debug('Container runtime already running');
   } catch {
     log.info('Starting container runtime');
     try {
-      execSync('container system start', { stdio: 'pipe', timeout: 30000 });
+      execSync(`${CONTAINER_RUNTIME_BIN} system start`, { stdio: 'pipe', timeout: 30000 });
       log.info('Container runtime started');
     } catch (err) {
       log.error('Failed to start container runtime', { err });

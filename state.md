@@ -164,23 +164,25 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (181 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (183 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
- M config/playground-seats.json
- M container/CLAUDE.md
- M container/skills/make-website/SKILL.md
+A  plans/setup-service-sudo-prompt.md
 M  setup/auto.ts
- M src/channels/playground/public/tabs/skills.js
-?? .codegraph/
+M  setup/service.ts
+M  src/admin-handlers/index.ts
+M  src/container-runtime.test.ts
+M  src/container-runtime.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+01ecb657 fix(setup): Codex skills via on-demand router, not global symlinks
+c7ab8604 fix(setup): default agent provider to OpenAI when CLI is Codex
 14bbd0d5 fix(setup): infer agent provider from existing .env keys on re-run
 ede7ef1f feat(setup): agent provider selection — Anthropic or OpenAI
 4b762fb3 fix(setup): add ensureAppleContainerReady + Codex auth clarification
@@ -194,10 +196,8 @@ eea9795e feat(skills): image-vision + image-metadata container skills
 3ab35671 feat(simple): "Built in" tools row; web tools always-on; relabel agent-browser
 c68dbf9e fix(agent-runner): compose per-group persona into the system prompt
 b17dbc3c fix(simple): don't auto-roll the trace panel on agent toggle
-3f30ff0d feat(simple): switch toggle, FirstName+Bot default name, trace-first default
-cd10ab69 feat(pi): gate skills and web tools on the enabled-skill set
 ```
 
 ### Last refresh
 
-2026-06-17T16:03:36Z
+2026-06-17T17:19:36Z

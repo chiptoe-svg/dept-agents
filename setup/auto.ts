@@ -377,6 +377,7 @@ async function main(): Promise<void> {
   }
 
   if (!skip.has('service')) {
+    await ensureMacSudoForService();
     const res = await runQuietStep('service', {
       running: 'Starting NanoClaw in the background…',
       done: 'NanoClaw is running.',
@@ -1797,6 +1798,25 @@ function maybeReexecUnderSg(): void {
     env: { ...process.env, NANOCLAW_REEXEC_SG: '1', ...(skipList ? { NANOCLAW_SKIP: skipList } : {}) },
   });
   process.exit(res.status ?? 1);
+}
+
+async function ensureMacSudoForService(): Promise<void> {
+  if (process.platform !== 'darwin') return;
+
+  const cached = spawnSync('sudo', ['-n', 'true'], { stdio: 'ignore' });
+  if (cached.status === 0) return;
+
+  p.log.message(brandBody('macOS needs administrator permission to install NanoClaw as a background service.'));
+  p.log.message(brandBody(dimWrap('You may be prompted for your Mac password now; it is handled by sudo, not NanoClaw.', 4)));
+
+  const result = spawnSync('sudo', ['-v'], { stdio: 'inherit' });
+  if (result.status === 0) return;
+
+  await fail(
+    'service',
+    "Couldn't get administrator permission for the background service install.",
+    'Run `sudo -v` in your terminal, then re-run setup.',
+  );
 }
 
 // ─── intro + progression-log init ──────────────────────────────────────
