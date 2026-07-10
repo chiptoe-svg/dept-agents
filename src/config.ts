@@ -33,10 +33,18 @@ export const STUDENT_LIBRARIES_DIR = path.resolve(PROJECT_ROOT, 'data', 'student
 export const MODEL_CATALOG_LOCAL_PATH = path.resolve(PROJECT_ROOT, 'config', 'model-catalog-local.json');
 export const DEFAULT_MCP_SERVERS_PATH = path.resolve(PROJECT_ROOT, 'config', 'default-mcp-servers.json');
 // Web-hosting mount source for the make-website skill (container-runner.ts
-// mounts SITES_DIR/<groupName> RW into that group's container, scoped to
-// its own subtree). Exported (rather than an inline literal) so tests can
-// point it at a sandbox instead of the real Homebrew path.
+// mounts SITES_DIR/<folder> RW into that group's container, scoped to
+// its own subtree). Keyed by agentGroup.folder — the DB-unique, path-safe
+// identifier — NOT agentGroup.name, which is user-settable to duplicates
+// (two groups with the same display name must never share a writable host
+// path). Exported (rather than an inline literal) so tests can point it
+// at a sandbox instead of the real Homebrew path.
 export const SITES_DIR = process.env.NANOCLAW_SITES_DIR || '/opt/homebrew/var/www/sites';
+// Container-side root the per-group sites subtree is mounted under. The
+// make-website skill reads the full per-group path from container.json's
+// `sitesPath` (set in configFromDb) — keep the two in agreement via this
+// constant.
+export const CONTAINER_SITES_ROOT = '/var/www/sites';
 
 // Per-checkout image tag so two installs on the same host don't share
 // `nanoclaw-agent:latest` and clobber each other on rebuild.

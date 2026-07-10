@@ -167,22 +167,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (57 commits ahead)
+- **Last tag:** `classroom-2026-07` (58 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 5]
+## main...origin/main [ahead 6]
+M  container/skills/make-website/SKILL.md
 M  src/config.ts
+M  src/container-config.ts
 M  src/container-runner-provider-persistence.test.ts
 M  src/container-runner.ts
-M  src/container-token-lifecycle.test.ts
 M  src/skills-confinement.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+62a7abcf fix(container-runner): scope the web-hosting mount to each group's own subtree
 02eead0e fix(playground): budget-gate the knowledge/RAG spend routes
 d55dbd39 fix(knowledge): resolve corpus/benchmark storage under GROUPS_DIR
 ffdeed34 fix(agent-runner): retry inbound.db reads on transient readonly errors
@@ -197,9 +199,8 @@ ac246117 feat(skills): port the five skills that drive the curated MCP servers
 95589948 fix(pi-mcp-bridge): isolate per-server MCP connect failures
 91ae4b49 feat(mcp): curated default server set (cuassistant public+catalog, gc-alumni, gc-wiki)
 2b89b43b fix(pi): test env wiring through to the MCP bridge; dedupe comment
-7070232c feat(mcp): HTTP transport, gateway rewrite, and scoped header-secret forwarding
 ```
 
 ### Last refresh
 
-2026-07-10T16:54:41Z
+2026-07-10T17:10:59Z

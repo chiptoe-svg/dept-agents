@@ -48,7 +48,7 @@ const configOverrides = vi.hoisted(() => {
     dataDir: `/tmp/nanoclaw-crtest-data-${suffix}`,
     groupsDir: `/tmp/nanoclaw-crtest-groups-${suffix}`,
     // buildMounts() (via wakeContainer -> spawnContainer) mkdirs + mounts
-    // SITES_DIR/<groupName> for the make-website skill. Redirect it into
+    // SITES_DIR/<folder> for the make-website skill. Redirect it into
     // the same ephemeral tmp tree — without this override it would
     // silently create a real directory under the developer's actual
     // /opt/homebrew/var/www/sites on any machine that has it set up.

@@ -209,13 +209,15 @@ describe('buildMounts confinement', () => {
 // "don't write outside your folder" instruction — a real cross-tenant
 // write channel (one group could read/overwrite/delete another group's
 // published site files). buildMounts() now scopes the host source to
-// SITES_DIR/<groupName>, one subtree per group.
+// SITES_DIR/<folder>, one subtree per group — keyed by the DB-unique
+// `folder`, NOT the display `name`, which is user-settable to duplicates
+// (playground rename route does not check collisions).
 describe('web-hosting (make-website) mount confinement', () => {
   function siteMountOf(mounts: ReturnType<typeof buildMounts>) {
     return mounts.find((m) => m.containerPath.startsWith('/var/www/sites'));
   }
 
-  it("mounts only this group's own SITES_DIR subtree, RW, at /var/www/sites/<groupName>", () => {
+  it("mounts only this group's own SITES_DIR subtree, RW, at /var/www/sites/<folder>", () => {
     const groupA = makeGroup('ag_sites_a', 'sites_a');
     const sessionA = makeSession(groupA.id, 'sess_sites_a');
 
@@ -223,11 +225,39 @@ describe('web-hosting (make-website) mount confinement', () => {
     const siteMount = siteMountOf(mounts);
 
     expect(siteMount).toBeDefined();
-    // groupName (what the make-website skill reads from container.json and
-    // joins its writes onto) is agentGroup.name — makeGroup() sets name=id.
-    expect(path.resolve(siteMount!.hostPath)).toBe(path.resolve(SITES, groupA.name));
-    expect(siteMount!.containerPath).toBe(`/var/www/sites/${groupA.name}`);
+    // Keyed by folder (DB-unique, path-safe) — makeGroup() sets name=id,
+    // which differs from folder, so this assertion also proves the mount
+    // is NOT keyed by the display name.
+    expect(path.resolve(siteMount!.hostPath)).toBe(path.resolve(SITES, groupA.folder));
+    expect(siteMount!.containerPath).toBe(`/var/www/sites/${groupA.folder}`);
     expect(siteMount!.readonly).toBe(false);
+  });
+
+  it('two groups with the SAME display name but different folders get different writable host paths', () => {
+    // `name` is not unique — the DB enforces uniqueness only on `folder`
+    // (001-initial.ts), and the playground rename route sets `name` to
+    // arbitrary duplicates without a collision check. If the mount were
+    // keyed by name, both these groups would resolve SITES_DIR/Marketing
+    // and share an RW host dir — the exact cross-tenant channel Step 6
+    // set out to close.
+    const groupA = makeGroup('ag_sites_dup_a', 'sites_dup_alice');
+    const groupB = makeGroup('ag_sites_dup_b', 'sites_dup_bob');
+    (groupA as { name: string }).name = 'Marketing';
+    (groupB as { name: string }).name = 'Marketing';
+
+    const sessionA = makeSession(groupA.id, 'sess_sites_dup_a');
+    const sessionB = makeSession(groupB.id, 'sess_sites_dup_b');
+
+    const siteMountA = siteMountOf(buildMounts(groupA, sessionA, emptyConfig(), {}));
+    const siteMountB = siteMountOf(buildMounts(groupB, sessionB, emptyConfig(), {}));
+    expect(siteMountA).toBeDefined();
+    expect(siteMountB).toBeDefined();
+
+    const hostA = path.resolve(siteMountA!.hostPath);
+    const hostB = path.resolve(siteMountB!.hostPath);
+    expect(hostA).not.toBe(hostB);
+    expect(isConfinedTo(hostB, hostA)).toBe(false);
+    expect(isConfinedTo(hostA, hostB)).toBe(false);
   });
 
   it('group A and group B site mounts never resolve to the same, or a nested, writable host path — the fix under test', () => {
@@ -258,14 +288,16 @@ describe('web-hosting (make-website) mount confinement', () => {
     expect(siteMountB!.readonly).toBe(false);
   });
 
-  it('rejects a group name that would escape the per-group subtree (path traversal guard)', () => {
+  it('rejects a group folder that would escape the per-group subtree (path traversal guard)', () => {
     const groupA = makeGroup('ag_sites_traversal', 'sites_traversal');
     const sessionA = makeSession(groupA.id, 'sess_sites_traversal');
-    // makeGroup sets name = id, which is safe; force an unsafe name to
-    // exercise the guard directly (a group's display name is admin-set,
-    // not agent-controlled, but must still fail loud rather than silently
-    // mounting outside SITES_DIR).
-    (groupA as { name: string }).name = '../../escaped';
+    // Folders are created sanitized, so this is defense in depth: force an
+    // unsafe folder to exercise the guard directly — it must fail loud
+    // rather than silently mounting outside SITES_DIR. One level of "../"
+    // only: buildMounts scaffolds the group dir (initGroupFilesystem)
+    // before the sites guard runs, and GROUPS/../escaped resolves to
+    // TMP/escaped — still inside the sandbox afterEach removes.
+    (groupA as { folder: string }).folder = '../escaped';
 
     expect(() => buildMounts(groupA, sessionA, emptyConfig(), {})).toThrow(/not a safe path segment/);
   });
