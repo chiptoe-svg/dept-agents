@@ -1177,6 +1177,12 @@ export async function route(
     if (deniedIngest) return send(res, 403, { error: 'Forbidden' });
     const decision = checkDraftMutation(folder, 'file_put', session.userId);
     if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    // Ingest embeds every chunk of the corpus (dense/hybrid strategies) —
+    // unbounded spend without this gate. requireGroupAccess above already
+    // proved the group exists.
+    const ingestGroup = getAgentGroupByFolder(folder)!;
+    const ingestBudget = assertWithinBudget(folder, ingestGroup.id);
+    if (!ingestBudget.ok) return send(res, 429, { error: ingestBudget.reason });
     const r = await handleIngest(folder, id);
     return send(res, r.status, r.body);
   }
@@ -1201,6 +1207,16 @@ export async function route(
     const folder = knowledgeQueryMatch[1]!;
     const id = knowledgeQueryMatch[2]!;
     if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    // Dense/hybrid queries embed the query text — unbounded spend without
+    // this gate. canReadDraft (unlike requireGroupAccess) falls through
+    // open when the folder has no agent_groups row, so only gate when a
+    // group actually exists; a query against a nonexistent group 404s
+    // inside handleQuery before it would ever embed anything.
+    const queryGroup = getAgentGroupByFolder(folder);
+    if (queryGroup) {
+      const queryBudget = assertWithinBudget(folder, queryGroup.id);
+      if (!queryBudget.ok) return send(res, 429, { error: queryBudget.reason });
+    }
     const body = await readJsonBody(req);
     const { query = '', k = 5 } = body as { query?: string; k?: number };
     const r = await handleQuery(folder, id, query, k);
@@ -1271,6 +1287,12 @@ export async function route(
     if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     const denied = requireGroupAccess(folder, session.userId);
     if (denied) return send(res, 403, { error: 'Forbidden' });
+    // A benchmark run embeds the query for every query in the benchmark
+    // (dense/hybrid corpora) — unbounded spend without this gate.
+    // requireGroupAccess above already proved the group exists.
+    const runGroup = getAgentGroupByFolder(folder)!;
+    const runBudget = assertWithinBudget(folder, runGroup.id);
+    if (!runBudget.ok) return send(res, 429, { error: runBudget.reason });
     const body = await readJsonBody(req);
     const k = typeof body.k === 'number' ? body.k : 5;
     const r = await handleRunBenchmark(folder, id, k);

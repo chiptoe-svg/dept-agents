@@ -167,25 +167,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (55 commits ahead)
+- **Last tag:** `classroom-2026-07` (56 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-M  src/knowledge/api-handlers.test.ts
-M  src/knowledge/benchmarks/api-handlers.test.ts
-M  src/knowledge/benchmarks/store.test.ts
-M  src/knowledge/benchmarks/store.ts
-M  src/knowledge/corpus.test.ts
-M  src/knowledge/corpus.ts
-M  src/knowledge/pipeline-pdf.test.ts
-M  src/knowledge/pipeline.test.ts
+## main...origin/main [ahead 4]
+A  src/channels/playground/api-routes.knowledge-budget.test.ts
+M  src/channels/playground/api-routes.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+d55dbd39 fix(knowledge): resolve corpus/benchmark storage under GROUPS_DIR
 ffdeed34 fix(agent-runner): retry inbound.db reads on transient readonly errors
 8926d31f fix(container-runner): resolveProviderName throws instead of a dead 'claude' fallback
 ccdde699 fix(container-runner): run ensureRuntimeFields after buildMounts
@@ -200,9 +195,8 @@ ac246117 feat(skills): port the five skills that drive the curated MCP servers
 2b89b43b fix(pi): test env wiring through to the MCP bridge; dedupe comment
 7070232c feat(mcp): HTTP transport, gateway rewrite, and scoped header-secret forwarding
 c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, gateway fix
-488da89f fix(container-runtime): resolve host gateway via runtime query, not a hardcoded constant
 ```
 
 ### Last refresh
 
-2026-07-10T16:43:24Z
+2026-07-10T16:46:44Z
