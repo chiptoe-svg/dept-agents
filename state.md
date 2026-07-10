@@ -163,20 +163,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (22 commits ahead)
+- **Last tag:** `classroom-2026-07` (23 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 9]
-A  src/gws-mcp-relay.authz.test.ts
-M  src/gws-mcp-relay.test.ts
-M  src/gws-mcp-relay.ts
+## main...origin/main [ahead 10]
+M  src/gws-mcp-relay.authz.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+8a621c47 fix(gws-relay): derive agent group from container token (C7)
 b48b90c1 test(credential-proxy): pin token-derived agentGroupId, 401 gate, and token strip
 e0f88be7 fix(proxy): derive agent group from container token, reject unauthenticated non-loopback (C5)
 3b383eef fix(security): attach container exit handlers before bookkeeping; tighten proxy-origin match
@@ -191,9 +190,8 @@ bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
 a565f0d2 chore: repo renamed to dept-agents — update origin refs and clear tracked action
 f84f48bf docs(plans): Plan 2 scope — Apple Container 1.1.0 upgrade after dual-shape fix, + T8 follow-ups
 075e1804 docs(state): post-Plan-1 reconciliation — refresh volatile state, URL fix, auth-revert + rename tracking
-dcb60c1d Merge remote-tracking branch 'origin/main'
 ```
 
 ### Last refresh
 
-2026-07-10T04:53:40Z
+2026-07-10T05:02:46Z

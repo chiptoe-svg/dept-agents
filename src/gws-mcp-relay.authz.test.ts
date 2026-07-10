@@ -67,6 +67,18 @@ describe('resolveRelayIdentity', () => {
   it('returns null for an unknown token', () => {
     expect(resolveRelayIdentity({ 'x-nanoclaw-agent-token': 'deadbeef' })).toBeNull();
   });
+
+  it('returns null for an array-valued token header, even when it contains a valid token', () => {
+    // Direct coverage of the `typeof raw === 'string' ? raw : null` guard.
+    // A comma-joined string (what Node actually delivers for repeated
+    // headers) can never collide with a minted token, so that path can't
+    // demonstrate the guard is doing anything. Passing a genuinely valid
+    // token inside an array is the assertion that actually pins it: if the
+    // guard were ever loosened to accept arrays (e.g. `raw[0]`), this would
+    // start resolving to 'ag_alice' instead of null.
+    const t = mintContainerToken('ag_alice', 'sess_1');
+    expect(resolveRelayIdentity({ 'x-nanoclaw-agent-token': [t, 'x'] })).toBeNull();
+  });
 });
 
 describe('GWS relay request path — token authorization (C7)', () => {
@@ -115,7 +127,13 @@ describe('GWS relay request path — token authorization (C7)', () => {
   // handler ever read the header instead of (or in addition to) the
   // token, dispatchTool would see ag_bob and this assertion fails.
   it('dispatches with the token-derived group, ignoring a spoofed agent-group header', async () => {
+    // Register the spoofed target group too — otherwise a mutated resolver
+    // that trusted the header would be caught by the group-existence check
+    // (401, dispatchTool never called) before the identity assertion below
+    // ever runs. Registering ag_bob makes that assertion the thing actually
+    // pinning the behavior.
     knownAgentGroups.add('ag_alice');
+    knownAgentGroups.add('ag_bob');
     const aliceToken = mintContainerToken('ag_alice', 'sess_alice');
 
     const res = await request({
@@ -170,11 +188,16 @@ describe('GWS relay request path — token authorization (C7)', () => {
     expect(dispatched).toHaveLength(0);
   });
 
-  it('rejects an array-valued token header (Node gives string[] for repeated headers) → 401', async () => {
-    // node:http's OutgoingHttpHeaders allows string[] values, which Node
-    // serializes as repeated headers — the server sees req.headers[...] as
-    // string[] on the way in, exactly like a duplicated header from a
-    // misbehaving/hostile client.
+  it('rejects a comma-joined value from a repeated token header → 401', async () => {
+    // node:http coalesces repeated ordinary headers into a single
+    // comma-joined string on the way in (set-cookie is the documented
+    // exception, not this header) — so http.request({headers: {..: [a,b]}})
+    // is observed server-side as req.headers['x-nanoclaw-agent-token'] ===
+    // 'tok1, tok2', a plain string. This test exercises that comma-joined
+    // value as an unknown-token miss; it does NOT exercise the
+    // `typeof raw === 'string' ? raw : null` array-branch of
+    // resolveRelayIdentity — see the direct pure-function test below for
+    // that.
     const res = await request({
       method: 'POST',
       path: '/tools/drive_doc_read_as_markdown',
