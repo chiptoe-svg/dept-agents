@@ -32,6 +32,11 @@ export const LIBRARY_DIR = path.resolve(PROJECT_ROOT, 'library');
 export const STUDENT_LIBRARIES_DIR = path.resolve(PROJECT_ROOT, 'data', 'student-libraries');
 export const MODEL_CATALOG_LOCAL_PATH = path.resolve(PROJECT_ROOT, 'config', 'model-catalog-local.json');
 export const DEFAULT_MCP_SERVERS_PATH = path.resolve(PROJECT_ROOT, 'config', 'default-mcp-servers.json');
+// Web-hosting mount source for the make-website skill (container-runner.ts
+// mounts SITES_DIR/<groupName> RW into that group's container, scoped to
+// its own subtree). Exported (rather than an inline literal) so tests can
+// point it at a sandbox instead of the real Homebrew path.
+export const SITES_DIR = process.env.NANOCLAW_SITES_DIR || '/opt/homebrew/var/www/sites';
 
 // Per-checkout image tag so two installs on the same host don't share
 // `nanoclaw-agent:latest` and clobber each other on rebuild.

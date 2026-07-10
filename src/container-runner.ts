@@ -15,6 +15,7 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   GWS_MCP_RELAY_PORT,
+  SITES_DIR,
   TIMEZONE,
 } from './config.js';
 import { collectContainerEnv } from './container-env-registry.js';
@@ -423,16 +424,42 @@ export function buildMounts(
     mounts.push(...providerContribution.mounts);
   }
 
-  // Mount web hosting directory so agents can create and deploy websites.
-  // Host path lives under /opt/homebrew/var/www/sites — user-writable
-  // (no sudo needed), served by the user-level Homebrew Caddy on :8080.
-  // Container path stays /var/www/sites so the make-website skill keeps
-  // one canonical in-container path regardless of host OS conventions.
-  const sitesDir = '/opt/homebrew/var/www/sites';
-  if (fs.existsSync(sitesDir)) {
+  // Mount web hosting directory so agents can create and deploy websites —
+  // scoped to THIS group's own subtree only. Host path lives under
+  // /opt/homebrew/var/www/sites/<groupName> — user-writable (no sudo
+  // needed); the user-level Homebrew Caddy on :8080 serves
+  // /opt/homebrew/var/www/sites/ as a single static root, so URLs are
+  // http://.../  <groupName>/<sitename>/... The container path mirrors the
+  // host layout (/var/www/sites/<groupName>) so the make-website skill's
+  // own path construction — it reads `groupName` from container.json and
+  // always writes to /var/www/sites/<groupName>/<sitename>/ — keeps
+  // working unmodified; `groupName` here is agentGroup.name, exactly what
+  // ensureRuntimeFields writes into container.json's `groupName` field.
+  //
+  // Previously this mounted the ENTIRE shared sitesDir RW into every
+  // group's container at the identical container path (/var/www/sites),
+  // with isolation enforced only by the skill's own "don't write outside
+  // your folder" instruction — a real cross-tenant write channel: one
+  // group's agent could read, overwrite, or delete another group's site
+  // files. Scoping the host source to this group's own subdir closes
+  // that — no two groups' containers can share a writable host path.
+  const sitesBaseDir = SITES_DIR;
+  if (fs.existsSync(sitesBaseDir)) {
+    const siteGroupName = agentGroup.name;
+    // A single path segment — the skill joins it directly onto
+    // /var/www/sites/ and this joins it onto the host sitesBaseDir, so a
+    // "/" or ".." in the group name could otherwise escape either root.
+    if (!siteGroupName || /[/\\]/.test(siteGroupName) || siteGroupName === '.' || siteGroupName === '..') {
+      throw new Error(
+        `Agent group name "${siteGroupName}" is not a safe path segment for the web-hosting mount ` +
+          `(no "/", "\\", or ".."). Rename the group before it can spawn.`,
+      );
+    }
+    const groupSitesDir = path.join(sitesBaseDir, siteGroupName);
+    fs.mkdirSync(groupSitesDir, { recursive: true });
     mounts.push({
-      hostPath: sitesDir,
-      containerPath: '/var/www/sites',
+      hostPath: groupSitesDir,
+      containerPath: `/var/www/sites/${siteGroupName}`,
       readonly: false,
     });
   }

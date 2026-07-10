@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // vi.mock factories are hoisted above top-level const declarations, so the
 // paths must be computed inside vi.hoisted() and re-derived below for the
 // rest of the test file to reference the same values.
-const { TMP, GROUPS, DATA, DEFAULT_MCP_SERVERS_PATH } = vi.hoisted(() => {
+const { TMP, GROUPS, DATA, DEFAULT_MCP_SERVERS_PATH, SITES } = vi.hoisted(() => {
   const fs = require('fs') as typeof import('fs');
   const os = require('os') as typeof import('os');
   const path = require('path') as typeof import('path');
@@ -31,6 +31,11 @@ const { TMP, GROUPS, DATA, DEFAULT_MCP_SERVERS_PATH } = vi.hoisted(() => {
     GROUPS: path.join(tmp, 'groups'),
     DATA: path.join(tmp, 'data'),
     DEFAULT_MCP_SERVERS_PATH: path.join(tmp, 'config', 'default-mcp-servers.json'),
+    // Sandbox for the make-website mount (SITES_DIR) — real Homebrew path
+    // is never touched by this test; existence of this dir is what turns
+    // the sites mount on in buildMounts(), same as the real fs.existsSync
+    // check against SITES_DIR in production.
+    SITES: path.join(tmp, 'sites'),
   };
 });
 
@@ -41,6 +46,7 @@ vi.mock('./config.js', async () => {
     GROUPS_DIR: GROUPS,
     DATA_DIR: DATA,
     DEFAULT_MCP_SERVERS_PATH,
+    SITES_DIR: SITES,
   };
 });
 
@@ -85,6 +91,7 @@ beforeEach(() => {
   fs.rmSync(TMP, { recursive: true, force: true });
   fs.mkdirSync(GROUPS, { recursive: true });
   fs.mkdirSync(path.dirname(DEFAULT_MCP_SERVERS_PATH), { recursive: true });
+  fs.mkdirSync(SITES, { recursive: true });
   initTestDb();
   runMigrations(getDb());
 });
@@ -193,5 +200,73 @@ describe('buildMounts confinement', () => {
     for (const m of mountsB) {
       expect(isConfinedTo(dirA, path.resolve(m.hostPath))).toBe(false);
     }
+  });
+});
+
+// task-p2-9 Step 6: /var/www/sites (the make-website skill's publish
+// target, mounted RW) was previously the SAME host directory for every
+// group's container, with isolation resting only on the skill's own
+// "don't write outside your folder" instruction — a real cross-tenant
+// write channel (one group could read/overwrite/delete another group's
+// published site files). buildMounts() now scopes the host source to
+// SITES_DIR/<groupName>, one subtree per group.
+describe('web-hosting (make-website) mount confinement', () => {
+  function siteMountOf(mounts: ReturnType<typeof buildMounts>) {
+    return mounts.find((m) => m.containerPath.startsWith('/var/www/sites'));
+  }
+
+  it("mounts only this group's own SITES_DIR subtree, RW, at /var/www/sites/<groupName>", () => {
+    const groupA = makeGroup('ag_sites_a', 'sites_a');
+    const sessionA = makeSession(groupA.id, 'sess_sites_a');
+
+    const mounts = buildMounts(groupA, sessionA, emptyConfig(), {});
+    const siteMount = siteMountOf(mounts);
+
+    expect(siteMount).toBeDefined();
+    // groupName (what the make-website skill reads from container.json and
+    // joins its writes onto) is agentGroup.name — makeGroup() sets name=id.
+    expect(path.resolve(siteMount!.hostPath)).toBe(path.resolve(SITES, groupA.name));
+    expect(siteMount!.containerPath).toBe(`/var/www/sites/${groupA.name}`);
+    expect(siteMount!.readonly).toBe(false);
+  });
+
+  it('group A and group B site mounts never resolve to the same, or a nested, writable host path — the fix under test', () => {
+    const groupA = makeGroup('ag_sites_cross_a', 'sites_cross_a');
+    const groupB = makeGroup('ag_sites_cross_b', 'sites_cross_b');
+    const sessionA = makeSession(groupA.id, 'sess_sites_cross_a');
+    const sessionB = makeSession(groupB.id, 'sess_sites_cross_b');
+
+    const mountsA = buildMounts(groupA, sessionA, emptyConfig(), {});
+    const mountsB = buildMounts(groupB, sessionB, emptyConfig(), {});
+
+    const siteMountA = siteMountOf(mountsA);
+    const siteMountB = siteMountOf(mountsB);
+    expect(siteMountA).toBeDefined();
+    expect(siteMountB).toBeDefined();
+
+    const hostA = path.resolve(siteMountA!.hostPath);
+    const hostB = path.resolve(siteMountB!.hostPath);
+
+    // The core confinement guarantee: no two groups' containers may share a
+    // writable host path — not identical, and not one nested inside the
+    // other (which would let A traverse into B's subtree via `../<groupB>`
+    // starting from a shared parent mount).
+    expect(hostA).not.toBe(hostB);
+    expect(isConfinedTo(hostB, hostA)).toBe(false);
+    expect(isConfinedTo(hostA, hostB)).toBe(false);
+    expect(siteMountA!.readonly).toBe(false);
+    expect(siteMountB!.readonly).toBe(false);
+  });
+
+  it('rejects a group name that would escape the per-group subtree (path traversal guard)', () => {
+    const groupA = makeGroup('ag_sites_traversal', 'sites_traversal');
+    const sessionA = makeSession(groupA.id, 'sess_sites_traversal');
+    // makeGroup sets name = id, which is safe; force an unsafe name to
+    // exercise the guard directly (a group's display name is admin-set,
+    // not agent-controlled, but must still fail loud rather than silently
+    // mounting outside SITES_DIR).
+    (groupA as { name: string }).name = '../../escaped';
+
+    expect(() => buildMounts(groupA, sessionA, emptyConfig(), {})).toThrow(/not a safe path segment/);
   });
 });

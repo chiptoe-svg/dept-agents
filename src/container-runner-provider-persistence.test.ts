@@ -47,6 +47,12 @@ const configOverrides = vi.hoisted(() => {
   return {
     dataDir: `/tmp/nanoclaw-crtest-data-${suffix}`,
     groupsDir: `/tmp/nanoclaw-crtest-groups-${suffix}`,
+    // buildMounts() (via wakeContainer -> spawnContainer) mkdirs + mounts
+    // SITES_DIR/<groupName> for the make-website skill. Redirect it into
+    // the same ephemeral tmp tree — without this override it would
+    // silently create a real directory under the developer's actual
+    // /opt/homebrew/var/www/sites on any machine that has it set up.
+    sitesDir: `/tmp/nanoclaw-crtest-sites-${suffix}`,
   };
 });
 
@@ -60,7 +66,12 @@ vi.mock('./log.js', () => ({
 
 vi.mock('./config.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./config.js')>();
-  return { ...actual, DATA_DIR: configOverrides.dataDir, GROUPS_DIR: configOverrides.groupsDir };
+  return {
+    ...actual,
+    DATA_DIR: configOverrides.dataDir,
+    GROUPS_DIR: configOverrides.groupsDir,
+    SITES_DIR: configOverrides.sitesDir,
+  };
 });
 
 vi.mock('./db/agent-groups.js', () => ({
@@ -207,6 +218,7 @@ describe('container.json provider survives composeGroupClaudeMd (Fix: clobber or
   afterAll(() => {
     fs.rmSync(configOverrides.dataDir, { recursive: true, force: true });
     fs.rmSync(configOverrides.groupsDir, { recursive: true, force: true });
+    fs.rmSync(configOverrides.sitesDir, { recursive: true, force: true });
   });
 
   it('writes a non-empty provider to the materialized container.json after spawn', async () => {
