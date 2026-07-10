@@ -134,7 +134,7 @@ export async function resolveUserCreds(agentGroupId: string, providerId: string)
   // No usable per-user credential → the credential proxy attaches the
   // department .env credential (the backstop). Record it so the operator can
   // see who is running on the department account. Connect is OPTIONAL: there is
-  // no class-controls policy and no forbidden/connect_required branch here.
+  // no per-class policy and no forbidden/connect_required branch here.
   recordBackstop(agentGroupId, providerId);
   return null;
 }

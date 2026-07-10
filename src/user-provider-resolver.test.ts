@@ -122,37 +122,18 @@ describe('user-provider-resolver (entity model, connect-optional)', () => {
 });
 
 describe('user-provider-resolver: connect is OPTIONAL — never forbidden / connect_required', () => {
-  // Hostile fixtures: a class-controls policy file AND a classroom_roster
-  // binding, both of which the OLD resolver consulted. The rewritten
-  // resolver must ignore both — no input may produce a policy sentinel.
-  async function seedHostileClassControls(policy: Record<string, unknown>) {
+  // Hostile fixture: a classroom_roster binding, which the OLD resolver
+  // consulted (the per-class policy module it also read is deleted).
+  // The rewritten resolver must ignore it — no input may produce a policy
+  // sentinel.
+  async function seedHostileRosterBinding() {
     const { upsertRosterEntry } = await import('./db/classroom-roster.js');
     upsertRosterEntry({ email: 'alice@x.edu', user_id: 'playground:alice', agent_group_id: 'g1' });
-    fs.writeFileSync(
-      path.join(tmpRoot, 'config', 'class-controls.json'),
-      JSON.stringify({
-        classes: {
-          default: {
-            tabsVisibleToStudents: [],
-            authModesAvailable: [],
-            providers: { claude: policy },
-          },
-        },
-      }),
-    );
   }
 
-  it('never returns forbidden, even with an allow=false class-controls policy present', async () => {
+  it('never returns forbidden or connect_required, even with a roster binding present', async () => {
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await seedHostileClassControls({ allow: false, provideDefault: false, allowByo: false });
-    const r = await resolveUserCreds('g1', 'claude');
-    expect(r).toBeNull();
-    expect(r === null || (r.kind !== 'forbidden' && r.kind !== 'connect_required')).toBe(true);
-  });
-
-  it('never returns connect_required, even with a provideDefault=false allowByo=true policy present', async () => {
-    const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await seedHostileClassControls({ allow: true, provideDefault: false, allowByo: true });
+    await seedHostileRosterBinding();
     const r = await resolveUserCreds('g1', 'claude');
     expect(r).toBeNull();
     expect(r === null || (r.kind !== 'forbidden' && r.kind !== 'connect_required')).toBe(true);

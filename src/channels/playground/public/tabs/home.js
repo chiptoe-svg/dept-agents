@@ -23,18 +23,6 @@ export function mountHome(el) {
     history.replaceState({}, '', cleaned.pathname + (cleaned.search === '?' ? '' : cleaned.search));
   }
 
-  // Owner-only "Class controls" card. Toggles tabs/providers/auth modes
-  // for non-owners. Inserted just below Profile so it's the first thing
-  // the instructor sees when they land. Hidden entirely for students.
-  const classControlsCard = isOwner
-    ? `
-      <section class="home-card" id="class-controls-card">
-        <h2>Class controls</h2>
-        <p class="muted">Choose what students see in the playground. You always see everything.</p>
-        <div id="class-controls-body"><p class="muted">Loading…</p></div>
-      </section>`
-    : '';
-
   const defaultParticipantCard = isOwner
     ? `
       <section class="home-card" id="default-participant-card">
@@ -66,8 +54,6 @@ export function mountHome(el) {
           ${isOwner ? `<dt>Role</dt><dd><strong>owner</strong> <span class="muted">(class instructor)</span></dd>` : ''}
         </dl>
       </section>
-
-      ${classControlsCard}
 
       ${defaultParticipantCard}
 
@@ -149,7 +135,6 @@ export function mountHome(el) {
   renderUsageCard(el.querySelector('#usage-card-body'), agent.folder);
 
   if (isOwner) {
-    renderClassControlsCard(el.querySelector('#class-controls-body'));
     renderDefaultParticipantCard(el.querySelector('#default-participant-body'));
     renderWebSearchCard(el.querySelector('#web-search-body'));
   }
@@ -222,14 +207,6 @@ async function renderUsageCard(body, folder) {
     body.innerHTML = `<p class="muted">Couldn't load usage: ${escapeHtml(String(err))}</p>`;
   }
 }
-
-const ALL_TABS = ['home', 'simple', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks'];
-const ALL_AUTH = ['api-key', 'oauth', 'claude-code-oauth'];
-const AUTH_LABEL = {
-  'api-key': 'API key',
-  oauth: 'OAuth (Anthropic Console / OpenAI)',
-  'claude-code-oauth': 'Claude Code OAuth',
-};
 
 // ── Default Participant Template card ────────────────────────────────────────
 
@@ -410,169 +387,6 @@ function renderWebSearchForm(body, data) {
         statusEl.textContent = `Switch failed: ${String(err)}`;
       }
     });
-  });
-}
-
-async function renderClassControlsCard(body) {
-  if (!body) return;
-  try {
-    const res = await fetch('/api/class-controls', { credentials: 'same-origin' });
-    if (!res.ok) {
-      body.innerHTML = `<p class="muted">Couldn't load class controls (${res.status}).</p>`;
-      return;
-    }
-    const cfg = await res.json();
-    renderClassControlsForm(body, cfg);
-  } catch (err) {
-    body.innerHTML = `<p class="muted">Couldn't load class controls: ${escapeHtml(String(err))}</p>`;
-  }
-}
-
-function renderClassControlsForm(body, cfg) {
-  // v2 shape: cfg.classes.default.{tabsVisibleToStudents, authModesAvailable,
-  //   providers: { [id]: { allow, provideDefault, allowByo } } }
-  const DEFAULT_CLASS_ID = 'default';
-  const cls = (cfg.classes && cfg.classes[DEFAULT_CLASS_ID]) || {
-    tabsVisibleToStudents: [],
-    authModesAvailable: [],
-    providers: {},
-  };
-  const tabsChecks = ALL_TABS.map(
-    (t) => `
-    <label class="cc-check"><input type="checkbox" data-cc-tab="${t}" ${cls.tabsVisibleToStudents.includes(t) ? 'checked' : ''}> ${t}</label>
-  `,
-  ).join('');
-  // ── classroom-provider-auth:class-controls-providers START ────────────
-  // Group toggles use AND-on-read / broadcast-on-write across underlying
-  // spec ids — see plans/class-controls-provider-grouping.md.
-  const policies = cls.providers || {};
-  const unconfigured = !cls.providers || Object.keys(cls.providers).length === 0;
-  const unconfiguredBanner = unconfigured
-    ? `<div class="cc-banner-warn">⚠ Class mode not yet configured — pick provider policies below, then Save.</div>`
-    : '';
-  const groupFlag = (group, field) =>
-    group.specIds.length > 0 && group.specIds.every((sid) => !!(policies[sid] && policies[sid][field]));
-  // providedReady is shipped on the GET response — true when the owner
-  // has a usable credential for at least one member spec (sibling
-  // fallback included). Used to disable the Provided checkbox so the
-  // instructor can't accidentally promise students access to a provider
-  // whose class-pool key isn't actually connected.
-  const providedReady = cfg.providedReady || {};
-  const groupProvidedReady = (group) => group.specIds.some((sid) => providedReady[sid]);
-  const providerRows = PROVIDER_GROUPS.map((g) => {
-    const ready = groupProvidedReady(g);
-    const provided = groupFlag(g, 'provideDefault');
-    const providedCell = ready
-      ? `<input type="checkbox" data-cc-group-provided="${g.id}" ${provided ? 'checked' : ''}>`
-      : `<input type="checkbox" data-cc-group-provided="${g.id}" disabled ${provided ? 'checked' : ''} title="Connect a ${escapeHtml(g.displayName)} credential in the LLM Providers card first">`;
-    return `
-        <tr ${ready ? '' : 'class="cc-row-provided-blocked"'}>
-          <td>${escapeHtml(g.displayName)}</td>
-          <td><input type="checkbox" data-cc-group-visible="${g.id}" ${groupFlag(g, 'allow') ? 'checked' : ''}></td>
-          <td>${providedCell}</td>
-          <td><input type="checkbox" data-cc-group-byo="${g.id}" ${groupFlag(g, 'allowByo') ? 'checked' : ''}></td>
-        </tr>`;
-  }).join('');
-  const providersBlock = `
-    <table class="cc-providers-table">
-      <thead><tr><th>Provider</th><th>Visible</th><th>Provided</th><th>Let students auth themselves</th></tr></thead>
-      <tbody>${providerRows}</tbody>
-    </table>
-  `;
-  // ── classroom-provider-auth:class-controls-providers END ──────────────
-
-  body.innerHTML = `
-    ${unconfiguredBanner}
-    <div class="cc-group">
-      <h3>Tabs visible to students</h3>
-      <div class="cc-row">${tabsChecks}</div>
-    </div>
-    <div class="cc-group">
-      <h3>Providers available</h3>
-      ${providersBlock}
-    </div>
-    <div class="home-actions">
-      <button class="btn btn-primary" id="cc-save" disabled>Apply</button>
-      <span class="muted" id="cc-status"></span>
-    </div>
-  `;
-
-  // Dirty tracking: snapshot the rendered form's checked state, then on
-  // any change compare and enable/disable the Apply button. Recapture
-  // after a successful save so the button greys out again.
-  const snapshotForm = () => {
-    const snap = {};
-    body.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-      const key = cb.dataset.ccTab
-        ? `tab:${cb.dataset.ccTab}`
-        : cb.dataset.ccGroupVisible
-          ? `vis:${cb.dataset.ccGroupVisible}`
-          : cb.dataset.ccGroupProvided
-            ? `prov:${cb.dataset.ccGroupProvided}`
-            : cb.dataset.ccGroupByo
-              ? `byo:${cb.dataset.ccGroupByo}`
-              : null;
-      if (key) snap[key] = cb.checked;
-    });
-    return snap;
-  };
-  let initialSnap = snapshotForm();
-  const applyBtn = body.querySelector('#cc-save');
-  const refreshApplyState = () => {
-    const current = snapshotForm();
-    const dirty = Object.keys(current).some((k) => current[k] !== initialSnap[k]);
-    applyBtn.disabled = !dirty;
-  };
-  body.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-    cb.addEventListener('change', refreshApplyState);
-  });
-
-  applyBtn.addEventListener('click', async () => {
-    // Preserve unknown-spec entries (e.g. future specs registered on the
-    // host but not yet in PROVIDER_GROUPS) so a UI save doesn't clobber
-    // them. Then broadcast each group toggle to every underlying spec id.
-    const providers = { ...policies };
-    for (const g of PROVIDER_GROUPS) {
-      const visible = body.querySelector(`[data-cc-group-visible="${g.id}"]`)?.checked || false;
-      const provided = body.querySelector(`[data-cc-group-provided="${g.id}"]`)?.checked || false;
-      const byo = body.querySelector(`[data-cc-group-byo="${g.id}"]`)?.checked || false;
-      for (const sid of g.specIds) {
-        providers[sid] = { allow: visible, provideDefault: provided, allowByo: byo };
-      }
-    }
-    const next = {
-      classes: {
-        default: {
-          tabsVisibleToStudents: [...body.querySelectorAll('[data-cc-tab]')]
-            .filter((i) => i.checked)
-            .map((i) => i.dataset.ccTab),
-          authModesAvailable: cls.authModesAvailable || [],
-          providers,
-        },
-      },
-    };
-    const status = body.querySelector('#cc-status');
-    status.textContent = 'Saving…';
-    try {
-      const res = await fetch('/api/class-controls', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(next),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        status.textContent = `Save failed: ${err.error || res.status}`;
-        return;
-      }
-      status.textContent = 'Applied. Students will see the new settings on their next page load.';
-      // Reset the dirty baseline so the button greys out again until
-      // the next edit.
-      initialSnap = snapshotForm();
-      refreshApplyState();
-    } catch (err) {
-      status.textContent = `Apply failed: ${String(err)}`;
-    }
   });
 }
 

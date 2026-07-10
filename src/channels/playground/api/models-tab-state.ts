@@ -12,9 +12,10 @@
  *   6. policy.allowByo                -> GREYED + "add api key" or "connect"
  *   7. (else)                         -> GREYED + "ask instructor"
  *
- * handleGetModelsTabState composes the pure function with the live
- * class-controls config, per-student credential store, and a 30-second
- * reachability cache.
+ * handleGetModelsTabState composes the pure function with the fixed
+ * department policy (every provider allowed, backstop provided, BYO
+ * allowed — there is no per-class policy on the department server),
+ * the per-user credential store, and a 30-second reachability cache.
  */
 
 export type ProviderState = 'AVAILABLE' | 'GREYED' | 'HIDDEN';
@@ -94,7 +95,6 @@ export function deriveProviderState(input: {
 // ---------------------------------------------------------------------------
 
 import { listProviderSpecs } from '../../../providers/auth-registry.js';
-import { DEFAULT_CLASS_ID, readClassControls } from './class-controls.js';
 import { loadUserProviderCreds } from '../../../user-provider-auth.js';
 import { getOwnerUserId } from '../../../modules/permissions/db/user-roles.js';
 import { listAllForProvider, resetCacheForProvider } from '../../../model-discovery.js';
@@ -107,6 +107,12 @@ import type { ModelEntry } from '../../../model-catalog.js';
 function classPoolReadyForSpec(ownerId: string | null, specId: string): boolean {
   return ownerHasCredsForSpec(specId, ownerId);
 }
+
+// Department policy — constant for every provider. There is no per-class
+// (classroom) provider policy on the department server: nothing is hidden,
+// the department backstop provides default credentials, and connecting
+// your own account is always allowed (and optional).
+const DEPT_POLICY: ProviderPolicy = { allow: true, provideDefault: true, allowByo: true };
 
 /**
  * For OMLX (local server) only — augment the static catalog with whatever
@@ -310,14 +316,11 @@ export interface ModelsTabStateResponse {
 export async function handleGetModelsTabState(input: {
   userId: string;
   agentGroupId: string;
-  classId: string;
   /** Bust caches for one spec before computing. Used by the Models tab
    *  per-section refresh button — clears the reachability cache + the
    *  upstream /v1/models discovery cache for that provider. */
   refreshSpec?: string;
 }): Promise<{ status: number; body: ModelsTabStateResponse }> {
-  const cc = readClassControls();
-  const policies = cc.classes[input.classId]?.providers ?? {};
   const specs = listProviderSpecs();
   const ownerId = getOwnerUserId();
 
@@ -339,7 +342,7 @@ export async function handleGetModelsTabState(input: {
 
   const providers = await Promise.all(
     specs.map(async (spec) => {
-      const policy = policies[spec.id] ?? { allow: false, provideDefault: false, allowByo: false };
+      const policy = DEPT_POLICY;
       const credsRaw = loadUserProviderCreds(input.userId, spec.id);
       const creds: CredState = credsRaw
         ? { hasOAuth: !!credsRaw.oauth, hasApiKey: !!credsRaw.apiKey }
@@ -411,20 +414,15 @@ export async function handleGetModelsTabState(input: {
 /**
  * Per-spec availability snapshot — same composition as `handleGetModelsTabState`
  * but stripped to `{ [specId]: state === 'AVAILABLE' }`. Used by the Chat tab
- * to filter the provider dropdown to what the student can actually use right
- * now (class policy + personal creds + reachability).
+ * to filter the provider dropdown to what the user can actually use right
+ * now (personal creds + reachability; no per-class policy).
  */
-export async function computeProviderAvailability(input: {
-  userId: string;
-  classId: string;
-}): Promise<Record<string, boolean>> {
-  const cc = readClassControls();
-  const policies = cc.classes[input.classId]?.providers ?? {};
+export async function computeProviderAvailability(input: { userId: string }): Promise<Record<string, boolean>> {
   const specs = listProviderSpecs();
   const ownerId = getOwnerUserId();
   const entries = await Promise.all(
     specs.map(async (spec) => {
-      const policy = policies[spec.id] ?? { allow: false, provideDefault: false, allowByo: false };
+      const policy = DEPT_POLICY;
       const credsRaw = loadUserProviderCreds(input.userId, spec.id);
       const creds: CredState = credsRaw
         ? { hasOAuth: !!credsRaw.oauth, hasApiKey: !!credsRaw.apiKey }

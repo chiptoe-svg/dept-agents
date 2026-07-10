@@ -40,7 +40,6 @@
 import fs from 'fs';
 import path from 'path';
 
-import { readClassControls } from '../channels/playground/api/class-controls.js';
 import { extractRefreshedFromAuthJson, userCredsToCodexAuthJson } from '../codex-auth-json.js';
 import { lookupRosterByAgentGroupId } from '../db/classroom-roster.js';
 import { readEnvFile } from '../env.js';
@@ -92,22 +91,9 @@ function provisionPiAuth(piAuthDir: string, agentGroupId: string, hostHome: stri
   }
 
   if (rosterEntry) {
-    // Class Controls gate — mirrors the credential-proxy resolver contract
-    // for proxy-routed providers. If the instructor has disabled codex for
-    // this class (`allow: false`), we deliberately leave auth.json empty
-    // so pi-ai 401s on first request. The container still starts; the
-    // failure surfaces to the student as a model error.
-    const controls = readClassControls();
-    // The roster row's classId is currently fixed to the default class;
-    // when multi-class lands we'll thread the class id off the roster
-    // entry. Until then DEFAULT_CLASS_ID matches what the resolver uses.
-    const policy = controls.classes['default']?.providers['codex'];
-    if (policy && policy.allow === false) {
-      // Clear any prior auth.json so a stale token doesn't survive the
-      // toggle flip.
-      if (fs.existsSync(targetFile)) fs.rmSync(targetFile);
-      return;
-    }
+    // No per-class provider policy on the department server — connect is
+    // optional. A user's own codex OAuth is used when present; otherwise
+    // we fall through to the owner's auth.json backstop below.
 
     // Reconcile any post-refresh tokens pi left behind on the prior spawn,
     // BEFORE we overwrite the file with the current per-student creds.
@@ -135,15 +121,7 @@ function provisionPiAuth(piAuthDir: string, agentGroupId: string, hostHome: stri
       fs.writeFileSync(targetFile, JSON.stringify(studentAuth, null, 2), { mode: 0o600 });
       return;
     }
-
-    // Student has no codex OAuth. Honor `provideDefault` like the proxy
-    // resolver does — if the instructor explicitly disabled class-pool
-    // fallback, leave auth.json empty rather than handing the student the
-    // owner's tokens.
-    if (policy && policy.provideDefault === false) {
-      if (fs.existsSync(targetFile)) fs.rmSync(targetFile);
-      return;
-    }
+    // User has no codex OAuth — fall through to the owner auth.json backstop.
   }
 
   // Class pool: owner's ~/.codex/auth.json. Same behaviour as pre-Phase-X.7

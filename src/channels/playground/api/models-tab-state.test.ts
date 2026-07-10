@@ -149,23 +149,11 @@ describe('handleGetModelsTabState — integration', () => {
       apiKey: { placeholder: 'sk-…' },
     });
 
-    // Write class controls: claude is allowed+provideDefault; openai-platform allowByo only.
-    const { writeClassControls, DEFAULT_CLASS_ID } = await import('./class-controls.js');
-    writeClassControls({
-      classes: {
-        [DEFAULT_CLASS_ID]: {
-          tabsVisibleToStudents: ['models'],
-          authModesAvailable: ['api-key'],
-          providers: {
-            claude: { allow: true, provideDefault: true, allowByo: false },
-            'openai-platform': { allow: true, provideDefault: false, allowByo: true },
-          },
-        },
-      },
-    });
+    // Department policy is a constant (allow + provideDefault + allowByo for
+    // every spec) — no per-class config to write.
 
     // Seed an owner with a claude credential so classPoolReady=true. The
-    // class-pool path returns AVAILABLE only when the instructor actually
+    // class-pool path returns AVAILABLE only when the owner actually
     // has creds for the spec — see deriveProviderState's classPoolReady gate.
     vi.doMock('../../../modules/permissions/db/user-roles.js', () => ({
       getOwnerUserId: () => 'owner:test',
@@ -173,12 +161,11 @@ describe('handleGetModelsTabState — integration', () => {
     const { addApiKey } = await import('../../../user-provider-auth.js');
     addApiKey('owner:test', 'claude', 'sk-ant-instructor');
 
-    // Student has no personal creds (no cred files in tmpRoot/data/).
+    // The user has no personal creds (no cred files in tmpRoot/data/).
     const { handleGetModelsTabState } = await import('./models-tab-state.js');
     const res = await handleGetModelsTabState({
       userId: 'user:test',
       agentGroupId: 'ag-test',
-      classId: DEFAULT_CLASS_ID,
     });
 
     expect(res.status).toBe(200);
@@ -206,12 +193,13 @@ describe('handleGetModelsTabState — integration', () => {
       if (p.state === 'HIDDEN') expect(p.catalogModels).toHaveLength(0);
     }
 
-    // claude: provideDefault → AVAILABLE source=class-pool
+    // claude: owner has creds (classPoolReady) → AVAILABLE source=class-pool
     const claude = body.providers.find((p) => p.id === 'claude')!;
     expect(claude.state).toBe('AVAILABLE');
     expect(claude.source).toBe('class-pool');
 
-    // openai-platform: allowByo, no creds, apiKey method → GREYED + "add api key"
+    // openai-platform: owner has no creds (classPoolReady=false), user has
+    // no creds, apiKey method → GREYED + "add api key"
     const openai = body.providers.find((p) => p.id === 'openai-platform')!;
     expect(openai.state).toBe('GREYED');
     expect(openai.actionLabel).toBe('add api key');

@@ -121,7 +121,6 @@ import {
   handlePutModels,
   handleToggleDefaultModel,
 } from './api/models.js';
-import { handleGetClassControls, handlePutClassControls, DEFAULT_CLASS_ID } from './api/class-controls.js';
 import { handleGetModelsTabState } from './api/models-tab-state.js';
 import {
   handleGetDefaultParticipant,
@@ -153,7 +152,7 @@ import {
   handleSimpleReset,
 } from './api/simple-config.js';
 import { handleGetProviderStatus } from './api/provider-auth.js';
-import { pushToAll, registerSseClient } from './sse.js';
+import { registerSseClient } from './sse.js';
 
 export async function route(
   req: http.IncomingMessage,
@@ -417,15 +416,14 @@ export async function route(
     return send(res, r.status, r.body);
   }
 
-  // GET /api/me/models-tab-state — per-student greying state for every
-  // registered provider (class policy + personal creds + reachability).
+  // GET /api/me/models-tab-state — per-user greying state for every
+  // registered provider (personal creds + reachability).
   if (method === 'GET' && url.pathname === '/api/me/models-tab-state') {
     const agentGroupId = url.searchParams.get('agentGroupId') ?? '';
     const refreshSpec = url.searchParams.get('refresh') || undefined;
     const r = await handleGetModelsTabState({
       userId: session.userId ?? '',
       agentGroupId,
-      classId: DEFAULT_CLASS_ID,
       refreshSpec,
     });
     return send(res, r.status, r.body);
@@ -792,23 +790,6 @@ export async function route(
     }
     const body = await readJsonBody(req);
     const r = handleToggleDefaultModel(body);
-    return send(res, r.status, r.body);
-  }
-
-  // GET /api/class-controls — read instructor's tab/provider/auth gates.
-  // Open to anyone signed in — students need it to know what UI to render.
-  if (method === 'GET' && url.pathname === '/api/class-controls') {
-    const r = handleGetClassControls();
-    return send(res, r.status, r.body);
-  }
-  // PUT /api/class-controls — owner-only, mutates config/class-controls.json.
-  if (method === 'PUT' && url.pathname === '/api/class-controls') {
-    if (!session.userId || !isOwner(session.userId)) {
-      return send(res, 403, { error: 'owner role required' });
-    }
-    const body = await readJsonBody(req);
-    const r = handlePutClassControls(body);
-    if (r.status === 200) pushToAll('class-controls-changed', r.body);
     return send(res, r.status, r.body);
   }
 

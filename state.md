@@ -177,19 +177,34 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (80 commits ahead)
+- **Last tag:** `classroom-2026-07` (81 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
-M  src/channels/playground/api-routes.authz.test.ts
+## main...origin/main [ahead 5]
+M  .gitignore
 M  src/channels/playground/api-routes.ts
+D  src/channels/playground/api/class-controls.test.ts
+D  src/channels/playground/api/class-controls.ts
+M  src/channels/playground/api/models-tab-state.test.ts
+M  src/channels/playground/api/models-tab-state.ts
+M  src/channels/playground/api/models.ts
+M  src/channels/playground/public/app.js
+M  src/channels/playground/public/provider-groups.js
+M  src/channels/playground/public/style.css
+M  src/channels/playground/public/tabs/chat.js
+M  src/channels/playground/public/tabs/home.js
+M  src/owner-creds-ready.ts
+M  src/providers/pi.ts
+M  src/user-provider-resolver.test.ts
+M  src/user-provider-resolver.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+7b6f8e1f fix(playground): drop dead provider-auth start/exchange mounts, fix vacuous status test
 55b0e7a5 feat(provider-auth): mount session-gated status route, close /provider-auth path
 9db53335 fix(backstop-usage): debounce per group, not per (group, provider)
 cfb10f5b feat(backstop): record when a group's turn runs on the department key (debounced)
@@ -204,9 +219,8 @@ a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login li
 76e7875b docs(auth): bypass retired — operator+canary login and anonymous-refused verified live
 42c952a6 fix(classroom-pin): default PIN-required to false, gate via env flag
 2f290492 feat(cli): ncl users provision — one-command invite that prints the login URL
-641b04ce fix(provisioning): playground messaging group must use unknown_sender_policy 'public'
 ```
 
 ### Last refresh
 
-2026-07-10T23:12:52Z
+2026-07-10T23:29:22Z

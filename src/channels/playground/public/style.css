@@ -1150,21 +1150,6 @@ select.model-changed {
 .status-dot--none { color: var(--text-muted, #6b6479); }
 .active-badge { margin-left: auto; font-size: 12px; color: #1a7a1a; font-weight: 600; }
 .default-badge { margin-left: 8px; font-size: 11px; color: #6b5b1a; background: #fff8dc; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
-.cc-group { margin: 8px 0 12px; }
-.cc-group h3 { font-size: 12px; margin: 4px 0 4px; color: #555; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
-.cc-row { display: flex; flex-wrap: wrap; gap: 12px; }
-.cc-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
-.cc-check input { margin: 0; }
-.cc-providers-table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0; }
-.cc-providers-table th, .cc-providers-table td { padding: 4px 8px; border-bottom: 1px solid #eee; text-align: left; }
-.cc-providers-table th { color: #555; font-weight: 600; font-size: 11px; }
-/* Provided checkbox disabled because the owner hasn't connected a
-   credential for this group yet — tooltip on the input itself points
-   the instructor at the LLM Providers card. */
-.cc-providers-table tr.cc-row-provided-blocked td:nth-child(3) input[type="checkbox"] {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
 .provider-row { padding: 8px 0; border-bottom: 1px solid #eee; }
 .provider-row:last-child { border-bottom: none; }
 .provider-active { font-size: 12px; color: #555; margin-top: 4px; }
@@ -1412,7 +1397,6 @@ select.model-changed {
 /* ── Add-a-student card ──────────────────────────────────────────────────── */
 .home-form { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
 .home-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #555; }
-.home-form label.cc-check { flex-direction: row; align-items: center; gap: 6px; }
 .home-form input[type="text"],
 .home-form input[type="email"] { font-size: 13px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 4px; }
 .add-student-result { margin-top: 12px; padding: 10px 12px; background: #f0f7f1; border: 1px solid #cfe6d3; border-radius: 6px; font-size: 13px; }
@@ -1574,10 +1558,6 @@ select.model-changed {
 /* Toast variants (base .toast already defined above) */
 .toast-error { background: var(--danger); }
 
-/* ── classroom-provider-auth:class-controls-providers START ──────────────────── */
-.cc-banner-warn { padding: 8px 12px; background: #fff7e6; color: #b8741a; border: 1px solid #f0d49a; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
-/* ── classroom-provider-auth:class-controls-providers END ──────────────────── */
-
 /* ── classroom-provider-auth:models-status-pill START ──────────────────────── */
 .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; margin-left: 8px; }
 .pill-good    { background: #e6f5ee; color: #2f7d50; }
@@ -1589,19 +1569,9 @@ select.model-changed {
 
 /* ── TA view (.pg-ta-view on body) ─────────────────────────────────────── */
 /* Lock only class-admin controls; TAs can edit their own agent freely */
-.pg-ta-view #cc-save,
 .pg-ta-view #as-submit,
 .pg-ta-view #rotate-passcode-btn {
   display: none !important;
-}
-
-.pg-ta-view [data-cc-tab],
-.pg-ta-view [data-cc-auth],
-.pg-ta-view [data-cc-provider-allow],
-.pg-ta-view [data-cc-provider-default],
-.pg-ta-view [data-cc-provider-byo] {
-  pointer-events: none;
-  opacity: 0.5;
 }
 /* ── TA view END ──────────────────────────────────────────────────────── */
 

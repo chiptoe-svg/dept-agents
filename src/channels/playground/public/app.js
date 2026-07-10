@@ -31,11 +31,13 @@ function showTab(name) {
   }
 }
 
-function applyClassControls(classControls, user) {
-  const activeClass = classControls.classes['default'];
-  window.__pg.classControls = classControls;
-  window.__pg.activeClass = activeClass;
-  allowedTabs = (user.role === 'owner' || user.role === 'ta') ? TABS : TABS.filter((t) => activeClass.tabsVisibleToStudents.includes(t));
+// Department tab gating: owners/TAs see every tab; everyone else gets the
+// single "simple" (My Agent) surface. No per-class config on the
+// department server.
+const MEMBER_TABS = ['simple'];
+
+function applyTabGating(user) {
+  allowedTabs = (user.role === 'owner' || user.role === 'ta') ? TABS : MEMBER_TABS;
   for (const t of TABS) {
     const btn = document.querySelector(`[data-tab="${t}"]`);
     if (btn) btn.hidden = !allowedTabs.includes(t);
@@ -46,7 +48,7 @@ function applyClassControls(classControls, user) {
   if (currentTab && !allowedTabs.includes(currentTab)) {
     showTab(allowedTabs[0] || 'home');
   }
-  // A student stripped down to exactly one tab gets a single uncluttered
+  // A user stripped down to exactly one tab gets a single uncluttered
   // page — no tab strip at all.
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.hidden = allowedTabs.length === 1;
@@ -71,35 +73,7 @@ async function init() {
     /* /api/me/agent not yet wired or user not signed in */
   }
 
-  // Pull the class-controls config so we can gate tabs (and Models/auth UIs
-  // later). Owner always sees every tab. Other roles see only what the
-  // instructor authorized — empty/missing config falls back to "everything"
-  // so installs that never touched the file behave as before.
-  // v2 shape: { classes: { default: { tabsVisibleToStudents, authModesAvailable,
-  //   providers: { [id]: { allow, provideDefault, allowByo } } } } }
-  const DEFAULT_CLASS_ID = 'default';
-  let classControls = {
-    classes: {
-      [DEFAULT_CLASS_ID]: {
-        tabsVisibleToStudents: ['home', 'chat', 'persona', 'skills', 'models', 'agents'],
-        authModesAvailable: ['api-key', 'oauth', 'claude-code-oauth'],
-        providers: {
-          codex:  { allow: true, provideDefault: true,  allowByo: true  },
-          claude: { allow: true, provideDefault: false, allowByo: true  },
-          local:  { allow: true, provideDefault: true,  allowByo: false },
-        },
-      },
-    },
-  };
-  try {
-    const r = await fetch('/api/class-controls', { credentials: 'same-origin' });
-    if (r.ok) classControls = await r.json();
-  } catch {
-    /* default stands */
-  }
-  const activeClass = classControls.classes[DEFAULT_CLASS_ID];
-
-  window.__pg = { agent, user, classControls, activeClass, DEFAULT_CLASS_ID };
+  window.__pg = { agent, user };
   if (user.role === 'ta') document.body.classList.add('pg-ta-view');
   document.getElementById('active-agent-name').textContent = agent.name;
   document.getElementById('who').textContent = user.email || user.id || '';
@@ -117,19 +91,11 @@ async function init() {
     if (btn) btn.addEventListener('click', () => showTab(t));
   }
 
-  applyClassControls(classControls, user);
+  applyTabGating(user);
   initDraftBanner();
 
   // First visible tab — home if allowed, else whatever's available.
   showTab(allowedTabs.includes('home') ? 'home' : allowedTabs[0] || 'home');
-
-  // Listen for live class-controls updates pushed by the instructor.
-  const es = new EventSource(`/api/drafts/${agent.folder}/stream`);
-  es.addEventListener('class-controls-changed', (e) => {
-    try {
-      applyClassControls(JSON.parse(e.data), window.__pg.user);
-    } catch { /* malformed push — ignore */ }
-  });
 }
 
 init();
