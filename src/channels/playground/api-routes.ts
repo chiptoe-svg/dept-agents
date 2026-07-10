@@ -122,8 +122,6 @@ import {
 } from './api/models.js';
 import { handleGetClassControls, handlePutClassControls, DEFAULT_CLASS_ID } from './api/class-controls.js';
 import { handleGetModelsTabState } from './api/models-tab-state.js';
-import { handleGetClassBase, handlePutClassBase } from './api/class-base.js';
-import { handleAddStudent, handleGetTunnel, handleStopTunnel } from './api/students-admin.js';
 import {
   handleGetDefaultParticipant,
   handleSaveDefaultParticipant,
@@ -760,21 +758,6 @@ export async function route(
     const r = handleGetClassControls();
     return send(res, r.status, r.body);
   }
-  // GET /api/class-base — read the shared class base persona (all can read).
-  if (method === 'GET' && url.pathname === '/api/class-base') {
-    const r = handleGetClassBase();
-    return send(res, r.status, r.body);
-  }
-  // PUT /api/class-base — owner-only, writes data/class-shared-students.md.
-  if (method === 'PUT' && url.pathname === '/api/class-base') {
-    if (!session.userId || !isOwner(session.userId)) {
-      return send(res, 403, { error: 'owner role required' });
-    }
-    const body = await readJsonBody(req);
-    const r = handlePutClassBase(body);
-    return send(res, r.status, r.body);
-  }
-
   // PUT /api/class-controls — owner-only, mutates config/class-controls.json.
   if (method === 'PUT' && url.pathname === '/api/class-controls') {
     if (!session.userId || !isOwner(session.userId)) {
@@ -831,24 +814,6 @@ export async function route(
     if (!folder) return send(res, 400, { error: 'folder required' });
     const result = await handleGetStudentDetail(folder);
     return send(res, result.status, result.body);
-  }
-
-  // POST /api/admin/students — provision one new class student. Owner-only;
-  // the handler does its own role check.
-  if (method === 'POST' && url.pathname === '/api/admin/students') {
-    const body = await readJsonBody(req);
-    const r = await handleAddStudent(session, body);
-    return send(res, r.status, r.body);
-  }
-  // GET /api/admin/tunnel — current guest-tunnel status. Owner-only.
-  if (method === 'GET' && url.pathname === '/api/admin/tunnel') {
-    const r = handleGetTunnel(session);
-    return send(res, r.status, r.body);
-  }
-  // POST /api/admin/tunnel/stop — tear down the guest tunnel. Owner-only.
-  if (method === 'POST' && url.pathname === '/api/admin/tunnel/stop') {
-    const r = handleStopTunnel(session);
-    return send(res, r.status, r.body);
   }
 
   // GET /api/default-participant — owner/admin: template status

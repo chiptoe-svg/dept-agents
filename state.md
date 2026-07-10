@@ -164,32 +164,28 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (1 commits ahead)
+- **Last tag:** `classroom-2026-07` (2 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4, behind 2]
-M  src/channels/playground/api/cost-budgets.ts
-M  src/channels/playground/api/default-participant.ts
-D  src/channels/playground/api/enrollment.test.ts
-D  src/channels/playground/api/enrollment.ts
-M  src/channels/playground/api/status.ts
-M  src/channels/playground/api/web-search-config.ts
-M  src/channels/playground/public/login.html
-M  src/channels/playground/public/login.js
-M  src/channels/playground/public/tabs/home.js
-M  src/channels/playground/server.ts
-D  src/class-enrollment-passcode.test.ts
-D  src/class-enrollment-passcode.ts
-M  src/db/migrations/016-classroom-roster.ts
-M  src/db/migrations/index.ts
-D  src/db/migrations/module-class-enrollment-passcode.ts
+## main...origin/main [ahead 5, behind 2]
+D  scripts/class-skeleton.ts
+D  scripts/refresh-student-personas.ts
+M  src/channels/playground/api-routes.ts
+D  src/channels/playground/api/class-base.ts
+D  src/channels/playground/api/students-admin.test.ts
+D  src/channels/playground/api/students-admin.ts
+M  src/channels/playground/public/tabs/persona.js
+M  src/channels/playground/public/tabs/status.js
+D  src/class-student-provision.test.ts
+D  src/class-student-provision.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+6a887da2 refactor: delete classroom enrollment-passcode surface
 7d99b2cc refactor: delete classroom scenario profile (frozen on classroom-freeze)
 e537607f chore: commit pending seminar-install state before classroom freeze
 cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
@@ -204,9 +200,8 @@ eea9795e feat(skills): image-vision + image-metadata container skills
 62d1def2 feat(simple): "Start over" resets agent memory + trace, not just the window
 81b4af81 fix(agent-runner): strip stray message tags from folded trailing text
 6b79f3e4 fix(agent-runner): deliver trailing text models leave outside <message>
-91a2b79b fix(agent-runner): retry transient readonly-DB writes instead of crashing
 ```
 
 ### Last refresh
 
-2026-07-10T01:04:00Z
+2026-07-10T01:12:13Z
