@@ -16,10 +16,14 @@ import path from 'path';
 import Database from 'better-sqlite3';
 
 import { CREDENTIAL_PROXY_PORT } from '../../../config.js';
+import { configFromDb } from '../../../container-config.js';
 import { getAgentGroupByFolder } from '../../../db/agent-groups.js';
+import { getContainerConfig } from '../../../db/container-configs.js';
 import { readEnvFile } from '../../../env.js';
 import { type ModelEntry, getModelCatalog } from '../../../model-catalog.js';
+import { findGroupById } from '../../../provider-groups.js';
 import { sessionsBaseDir } from '../../../session-manager.js';
+import type { AgentGroup } from '../../../types.js';
 import type { ApiResult } from './me.js';
 
 /**
@@ -281,6 +285,28 @@ async function fetchOrThrow(url: string, init: RequestInit): Promise<Response> {
   return resp;
 }
 
+/**
+ * Check (rawProvider, model) against the agent group's `allowedModels`
+ * allowlist (the same one the Models tab edits — `container-config.ts`'s
+ * `configFromDb`, do not re-derive the JSON parsing here).
+ *
+ * `rawProvider` is the frontend's provider-*group* id (openai / anthropic /
+ * local / clemson — see `provider-groups.ts`), not necessarily the catalog
+ * `modelProvider` name: they diverge for OpenAI (group id 'openai' vs.
+ * catalog 'openai-codex' / 'openai-platform'). Resolve through
+ * `findGroupById` to the member `modelProvider`s before comparing against
+ * allowlist entries, which are stored using catalog `modelProvider` names
+ * (see migration 022). An unconfigured/empty allowlist means unrestricted —
+ * same "no restriction" semantics the Models tab already uses.
+ */
+function isModelAllowed(agentGroup: AgentGroup, rawProvider: string, model: string): boolean {
+  const row = getContainerConfig(agentGroup.id);
+  const allowedModels = row ? (configFromDb(row, agentGroup).allowedModels ?? []) : [];
+  if (allowedModels.length === 0) return true;
+  const candidateProviders = new Set(findGroupById(rawProvider)?.members.map((m) => m.modelProvider) ?? [rawProvider]);
+  return allowedModels.some((e) => candidateProviders.has(e.provider) && e.model === model);
+}
+
 export async function handleDirectChat(body: {
   provider?: unknown;
   model?: unknown;
@@ -298,6 +324,17 @@ export async function handleDirectChat(body: {
       : undefined;
   if (!rawProvider || !model) return { status: 400, body: { error: 'provider and model required' } };
   if (messages.length === 0) return { status: 400, body: { error: 'messages array required' } };
+  // Every direct-chat turn belongs to some agent group — this is what lets
+  // the route authorize the caller (requireGroupAccess) and enforce the
+  // per-group model allowlist below. Also re-checked here (not just in the
+  // route) so this function fails closed even if a future caller invokes it
+  // directly. See src/channels/playground/require-group-access.ts.
+  if (!agentFolder) return { status: 400, body: { error: 'agentFolder required' } };
+  const group = getAgentGroupByFolder(agentFolder);
+  if (!group) return { status: 404, body: { error: `no agent group for folder ${agentFolder}` } };
+  if (!isModelAllowed(group, rawProvider, model)) {
+    return { status: 403, body: { error: `model ${rawProvider}/${model} is not on this group's allowlist` } };
+  }
 
   // Chat tab sends catalog `modelProvider` names (openai-codex, anthropic,
   // local, clemson, openai-platform). The dispatch branches below are keyed
@@ -342,11 +379,9 @@ export async function handleDirectChat(body: {
   const costUsd = priceFor(entry, tokensIn, tokensOut, tokensCached);
 
   // Best-effort: record into the agent's pseudo session-outbound so usage
-  // aggregation picks it up. Failure is non-fatal.
-  if (agentFolder) {
-    const group = getAgentGroupByFolder(agentFolder);
-    if (group) recordDirectChatUsage(group.id, rawProvider, model, text, tokensIn, tokensOut);
-  }
+  // aggregation picks it up. Failure is non-fatal. `group` was resolved
+  // above (agentFolder is required) — no need to look it up again.
+  recordDirectChatUsage(group.id, rawProvider, model, text, tokensIn, tokensOut);
 
   return {
     status: 200,

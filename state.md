@@ -163,20 +163,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (25 commits ahead)
+- **Last tag:** `classroom-2026-07` (26 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 12]
-M  container/agent-runner/src/mcp-tools/cli.instructions.md
-M  src/cli/crud.ts
-M  src/cli/scope.test.ts
+## main...origin/main [ahead 13]
+A  src/channels/playground/api-routes.direct-chat.test.ts
+M  src/channels/playground/api-routes.ts
+M  src/channels/playground/api/direct-chat.ts
+A  src/modules/budgets/enforce.test.ts
+A  src/modules/budgets/enforce.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+87f12327 fix(cli): add genericGet mutation-test coverage, push scope predicate into LIMIT query, fix agent instructions
 8e7be465 fix(cli): scope ncl reads to the caller agent group (C6)
 9f6ff357 test(gws-mcp-relay): fix authz test gaps in spoof and array-header cases
 8a621c47 fix(gws-relay): derive agent group from container token (C7)
@@ -191,9 +194,8 @@ bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
 6094be37 feat(authz): requireGroupAccess — fail-closed folder authorization helper
 5f848ee4 docs(plans): Plan 1.5 — isolation hardening before any pilot invite
 8a7d50d1 docs(review): full code review — cross-tenant isolation defects, verified findings
-a565f0d2 chore: repo renamed to dept-agents — update origin refs and clear tracked action
 ```
 
 ### Last refresh
 
-2026-07-10T05:27:09Z
+2026-07-10T05:38:45Z

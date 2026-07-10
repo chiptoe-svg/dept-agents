@@ -132,6 +132,7 @@ import { handleGetWebSearchConfig, handlePostWebSearchConfig } from './api/web-s
 import { handleGetStatus, handlePostStatusRestart } from './api/status.js';
 import { handleGetBudgets, handlePostBudgets } from './api/cost-budgets.js';
 import { handleDirectChat } from './api/direct-chat.js';
+import { assertWithinBudget } from '../../modules/budgets/enforce.js';
 import { handleGetStudentDetail, handleGetStudentsUsage, handleGetUsage } from './api/usage.js';
 import { isOwner } from '../../modules/permissions/db/user-roles.js';
 import { canAccessAgentGroup } from '../../modules/permissions/access.js';
@@ -803,15 +804,26 @@ export async function route(
 
   // POST /api/direct-chat — bypass agent, call upstream directly via the
   // credential proxy. Used by the Chat tab's "Chat (no agent)" mode.
+  // agentFolder is REQUIRED (not just used for usage-recording as before):
+  // every turn belongs to some group, and that group is what authorizes the
+  // caller (requireGroupAccess — fails closed, unlike canReadDraft) and
+  // gates spend (assertWithinBudget). Without this, any signed-in user
+  // could omit agentFolder to skip authorization entirely, or address
+  // another user's folder to run up someone else's cost budget.
   if (method === 'POST' && url.pathname === '/api/direct-chat') {
     const body = await readJsonBody(req, { maxBytes: 1_000_000 });
-    const agentFolder =
+    const folder =
       typeof (body as { agentFolder?: unknown }).agentFolder === 'string'
         ? (body as { agentFolder: string }).agentFolder
         : '';
-    if (agentFolder && !canReadDraft(agentFolder, session.userId)) {
-      return send(res, 403, { error: 'Forbidden' });
-    }
+    if (!folder) return send(res, 400, { error: 'agentFolder required' });
+    const denied = requireGroupAccess(folder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
+
+    const group = getAgentGroupByFolder(folder)!; // requireGroupAccess proved it exists
+    const budget = assertWithinBudget(folder, group.id);
+    if (!budget.ok) return send(res, 429, { error: budget.reason });
+
     const r = await handleDirectChat(body);
     return send(res, r.status, r.body);
   }
