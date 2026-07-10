@@ -26,7 +26,9 @@ DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT to
 
 **Active arc: department-agent-server transformation** (spec: `docs/superpowers/specs/2026-07-09-department-agent-server-design.md`; plan: `docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md`). Progress:
 - **Plan 1 (freeze & clean base) complete** (`e537607f`..`73761b78`): classroom frozen — branch `classroom-freeze` + tag `classroom-2026-07` pushed to origin at `e537607f`, runtime snapshot verified restorable at `~/archives/classroom-2026-07.tar.gz`. Classroom scenario profile + `/add-classroom*` skills + enrollment/passcode surface + roster-admin/shared-class-base surface deleted from `main` (`7d99b2cc`, `6a887da2`, `09066814`); classroom runtime data purged from disk; fresh `data/v2.db` boots clean (24 migrations); seats trimmed to `owner_01` + `user_01` (`73761b78`); end-to-end owner chat turn live-verified on the fresh base.
-- **Tracked: revert dev auth posture before any non-owner user touches the box** — `PLAYGROUND_AUTH_BYPASS` off + non-empty seat password — owned by Plan 3 (invite & identity).
+- **Plan 1.5 (isolation hardening) complete** (`5f848ee4`..`7a3c682c`; plan: `docs/superpowers/plans/2026-07-09-dept-server-plan-1_5-isolation-hardening.md`, driven by the review at `docs/superpowers/reviews/2026-07-09-full-code-review.md`). Cross-tenant isolation is now **enforced**, not assumed: 26 folder-addressed mutation routes gated by `requireGroupAccess` (17 were live-vulnerable, incl. `PUT …/persona`, `POST …/messages`, `simple-restart`/`simple-reset`); the credential proxy (`:3001`) and GWS relay (`:3007`) derive the caller's agent group from an unforgeable per-container token (`src/container-identity.ts`) and 401 unauthenticated non-loopback callers; `ncl` reads scoped to the caller's group (closing the group-id enumeration primitive, and an open `class-tokens list-for` bearer-token leak); `direct-chat` now requires authorization, a model allowlist, and an actually-enforced budget (OpenAI spend previously recorded as $0, so no cap could ever trip). Live-verified: a real container turn still reaches the proxy and replies.
+- **Tracked: retire `PLAYGROUND_AUTH_BYPASS` — owned by Plan 3, and it CANNOT land before Plan 3's login flow exists.** Turning it off was attempted 2026-07-10 and rolled back: with bypass off the seat picker is disabled (`server.ts:397-411`) and the only auth path is a magic link requiring a `classroom_roster` email (0 rows) — i.e. the operator is locked out. Mitigated meanwhile: the seat password now comes from `PLAYGROUND_SEAT_PASSWORD` in `.env` (mode 0600, never in git) and is compared timing-safely (`7a3c682c`), so the seat picker is password-gated rather than open.
+- **Tracked: operator action — enable the host firewall.** `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on` (needs an interactive password). Defense in depth only: the proxy and relay already fail closed for unauthenticated non-loopback callers. Re-check one chat turn afterward — the firewall must not block the container bridge.
 - **Done 2026-07-09: GitHub repo renamed** (spec §1.7) to `chiptoe-svg/dept-agents`; local `origin` updated. GitHub redirects the old `nanoclaw_gccourse` URL, so stale references in classroom-era docs (`docs/shared-classroom.md`, `docs/critique-agent/`, `plans/`, `README.md` links) still resolve — they get cleaned up with the docs pass in Plan 5.
 
 **Next: Plan 2 — ports from personal repo** (pi-harness reconciliation, `hermes-selflearning` + `self-customize`, `agents-compose` size guard, `fetch_url_to_workspace`, Apple Container orphan-cleanup fix), then **Plan 3 — invite & identity**, **Plan 4 — provider auth & backstop**, **Plan 5 — homepage & channels**. Full roadmap (each plan written after the prior lands) at the bottom of the Plan 1 doc. Known deferred gaps: `config/playground-seats.json` provisioning is still hand-edited (a DB-backed bootstrap lands in Plan 3); several classroom-named-but-actually-generic files (login tokens/PINs, Telegram pairing, provider resolver, `class-controls`) are intentionally untouched until Plans 3–5 rename/rewire them (see the Plan 1 doc's "NOT touched in this plan" list); the live playground URL is `http://gcworkflow.clemson.edu:8088` (server IP `130.127.162.67`).
@@ -109,6 +111,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+**2026-07-10 — Identity is derived server-side, never asserted by the caller (Plan 1.5).** A full code review found one defect repeated in three subsystems: the web API took its target agent group from the URL, and the credential proxy and GWS relay took theirs from an `x-nanoclaw-agent-group` header the container itself set. All three now derive identity from something the caller cannot forge — the session for routes, a per-container token minted at spawn for the two host services — and `ncl` reads are scoped to the host-stamped caller group. *Why:* the department server gives ~15 colleagues their own agents; "one user's secrets, conversations, and results stay separate unless they share them" was the product's core promise and was not actually enforced. Corollary rules for future work: **never authorize from a value the caller supplied**, and `checkDraftMutation` is a class-lockdown hook that default-allows — it is not authorization. **Retiring `PLAYGROUND_AUTH_BYPASS` is blocked on Plan 3**, because the seat picker only exists in bypass mode and the magic-link path needs a roster the dept server doesn't have yet.
+
 - **2026-07-09** — **Department agent server: repo transforms in place; classroom frozen, revives in August.** Spec `docs/superpowers/specs/2026-07-09-department-agent-server-design.md` (approved) redirects this install from the group-agent-platform/scenario framing to a single-purpose department server for ~15 Clemson faculty/staff: one agent group per person, web homepage + optional Telegram, per-user ChatGPT (Codex OAuth) for user-initiated turns backstopped by a department OpenAI API key for system functions and outages, admin-provisioned email invites (Clemson email = identity, no self-registration), provider-neutral via the pi harness. Chosen over forking or re-basing: everything hard is already live-verified in this repo (pi runner across anthropic + openai-codex, playground web UI, magic-link + PIN auth, per-user provider OAuth registry, class-pool fallback, Resend email) — stripping classroom-only code is cheaper than porting those pieces elsewhere. Classroom is preserved, not deleted: `classroom-freeze` branch + `classroom-2026-07` tag (pushed to origin at `e537607f`) plus a verified runtime snapshot `~/archives/classroom-2026-07.tar.gz` (`data/`, `groups/`, `.env`); it revives on a different box in August via `/install-handoff`. Plan 1 (freeze & clean base) executed and live-verified — see Current arc. Plans 2–5 (ports from the personal repo, invite & identity, provider auth & backstop, homepage & channels) are roadmapped in the Plan 1 doc, one written after the prior lands.
 - **2026-06-12** — **Simple tab trace roll-up: panel rolls up to reveal the live trace.** The My Agent tab's side panel now rolls up (chevron in the panel header, `aria-expanded`; or clicking the new `🔍 trace — underneath` peek strip) via a `.trace-open` class on the wrapper, collapsing the panel body + strip (max-height 0.3s + reduced-motion guard) to reveal the Chat tab's trace panel on the same plane as the chat — the **live `.trace-panel` that `mountChat` already builds is re-parented** into a new `.simple-trace-host` (`adoptTracePanel`, simple.js) instead of duplicating trace logic; the old `.simple-mode .trace-panel{display:none}` hide rule is gone. Enabler: chat.js trace-log lookups changed to **capture-once at wiring time** (wireChatForm/wireTraceClear aligned with wireSse) so a moved node keeps working — zero Chat-tab behavior change. Works in both agent ON/OFF modes (comparing bare-model vs agent traces is the pedagogical point); default rolled-down every load, no persistence, no drag-resize. Right column became `.simple-side-stack` (owns column sizing; panel lost `flex:1`/`min-width`/`align-self`). Live-verified 9-point matrix incl. same-plane geometry (host bottom == layout bottom), live agent + direct traces, Clear regression, internal trace-log scroll. Spec: docs/superpowers/specs/2026-06-12-simple-tab-trace-rollup-design.md.
 - **2026-06-12** — **Simple tab layering: agent above the model.** The My Agent tab now renders agent mode as an elevated green card (slim `🤖 <name>` header) with a model strip peeking beneath (`⚡ <model> — underneath`), panel fused at the same elevation; toggling the agent off animates the layer away (`.agent-off` class on the wrapper, pure CSS, ~300ms + reduced-motion guard) onto a flat gray dashed model card with a sunken panel. `setLayerLabels` rides the existing `applySelection`/`saveName`/toggle paths. Verification also fixed the simple tab's height chain (`#tab-simple:not([hidden])` flex guard, mirroring `#tab-chat`) so `#chat-log` scrolls inside the card instead of growing the page. No chat.js changes. Spec: docs/superpowers/specs/2026-06-11-simple-tab-layering-design.md.
@@ -163,21 +167,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (29 commits ahead)
+- **Last tag:** `classroom-2026-07` (30 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 16]
-A  src/channels/playground/seat-password.test.ts
-A  src/channels/playground/seats-config.test.ts
-M  src/channels/playground/seats-config.ts
-M  src/channels/playground/server.ts
+## main...origin/main [ahead 17]
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+7a3c682c fix(playground): source seat password from env, use timing-safe compare
 89d2b171 docs(plans): amend Plan 1.5 Task 9 — seat password must not live in a tracked file
 13c51951 fix(direct-chat): resolve OpenAI cost attribution and restore Models tab probe
 fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budget (H1, H2)
@@ -192,9 +194,8 @@ a845c827 feat(identity): mint per-container token at spawn, stamp on proxy + rel
 315ef256 feat(identity): per-container token registry
 4e0dc03e fix(authz): gate simple-restart/reset, benchmark create/run, library mutations
 bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
-73882d15 test(playground): regression-test requireGroupAccess bypass immunity
 ```
 
 ### Last refresh
 
-2026-07-10T06:02:56Z
+2026-07-10T06:21:46Z
