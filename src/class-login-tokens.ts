@@ -29,6 +29,7 @@ import {
   mintSessionForUser,
   registerClassTokenRedeemer,
   registerLostLinkRecoverer,
+  revokeSessionsForUser,
   setPinRequiredForClassToken,
   type PlaygroundSession,
 } from './channels/playground/auth-store.js';
@@ -65,12 +66,22 @@ export function issueClassLoginToken(userId: string): string {
  * Mark every currently-active token for `userId` as revoked. Returns
  * the number of rows updated. Idempotent: a no-op when the user has
  * no active tokens.
+ *
+ * Also kills the user's live playground sessions. A token URL is a
+ * bearer credential whose only mitigation is revocability — but a
+ * session minted from a since-revoked token would otherwise stay
+ * valid indefinitely (activity bumps beat the idle sweep), so DB-row
+ * revocation without session revocation leaves an attacker who
+ * already redeemed the stolen URL logged in. Runs unconditionally
+ * (not gated on `changes > 0`) so a second revoke still clears any
+ * session that slipped in between.
  */
 export function revokeAllForUser(userId: string): number {
   const revokedAt = new Date().toISOString();
   const info = getDb()
     .prepare('UPDATE class_login_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL')
     .run(revokedAt, userId);
+  revokeSessionsForUser(userId);
   return info.changes;
 }
 

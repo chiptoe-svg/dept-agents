@@ -11,6 +11,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 const { mockEnv } = vi.hoisted(() => ({ mockEnv: {} as Record<string, string> }));
 
 const minted: string[] = [];
+const { revokeSessionsForUserMock } = vi.hoisted(() => ({
+  revokeSessionsForUserMock: vi.fn(() => 0),
+}));
 vi.mock('./channels/playground/auth-store.js', () => ({
   // Capture what mintSessionForUser was called with so we can verify
   // the redeemer hooks into it correctly.
@@ -20,6 +23,8 @@ vi.mock('./channels/playground/auth-store.js', () => ({
   }),
   registerClassTokenRedeemer: vi.fn(),
   registerLostLinkRecoverer: vi.fn(),
+  // Token revocation must cascade into live playground sessions.
+  revokeSessionsForUser: revokeSessionsForUserMock,
   // /add-classroom-pin wiring — registered at module load.
   setPinRequiredForClassToken: vi.fn(),
 }));
@@ -64,6 +69,7 @@ beforeEach(() => {
   moduleClassLoginTokens.up(testDb);
   migration016.up(testDb);
   minted.length = 0;
+  revokeSessionsForUserMock.mockClear();
   for (const k of Object.keys(mockEnv)) delete mockEnv[k];
 });
 
@@ -114,6 +120,18 @@ describe('revokeAllForUser', () => {
 
   it('returns 0 when no active tokens exist', () => {
     expect(revokeAllForUser('user_ghost')).toBe(0);
+  });
+
+  it('cascades into live playground sessions for the user', () => {
+    issueClassLoginToken('user_alice');
+    revokeAllForUser('user_alice');
+    expect(revokeSessionsForUserMock).toHaveBeenCalledWith('user_alice');
+  });
+
+  it('kills sessions on rotate too (rotate revokes before re-issuing)', () => {
+    issueClassLoginToken('user_alice');
+    rotateClassLoginToken('user_alice');
+    expect(revokeSessionsForUserMock).toHaveBeenCalledWith('user_alice');
   });
 });
 

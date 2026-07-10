@@ -177,19 +177,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (70 commits ahead)
+- **Last tag:** `classroom-2026-07` (71 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  src/cli/resources/class-tokens.test.ts
-M  src/cli/resources/class-tokens.ts
+## main...origin/main [ahead 1]
+A  src/class-login-tokens.sessions.test.ts
+M  src/class-login-tokens.test.ts
+M  src/class-login-tokens.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+554bf42d fix(class-tokens): resolve issue/rotate/revoke via --user-id or metadata email
 a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login live; pilot unblocked
 76e7875b docs(auth): bypass retired — operator+canary login and anonymous-refused verified live
 42c952a6 fix(classroom-pin): default PIN-required to false, gate via env flag
@@ -204,9 +206,8 @@ b8f28b3f docs(security): dependency audit findings for host and container trees
 ce50da4c fix(container-runner): key the per-group sites mount by unique folder, not display name
 62a7abcf fix(container-runner): scope the web-hosting mount to each group's own subtree
 02eead0e fix(playground): budget-gate the knowledge/RAG spend routes
-d55dbd39 fix(knowledge): resolve corpus/benchmark storage under GROUPS_DIR
 ```
 
 ### Last refresh
 
-2026-07-10T20:19:25Z
+2026-07-10T20:21:23Z
