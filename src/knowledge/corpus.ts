@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
+import { GROUPS_DIR } from '../config.js';
 import type { CorpusMeta, CorpusStatus, SourceType, StoreStrategy } from './types.js';
 
 export function corporaDir(folder: string): string {
-  return path.join(folder, 'knowledge', 'corpora');
+  return path.join(GROUPS_DIR, folder, 'knowledge', 'corpora');
 }
 
 export function corpusDir(folder: string, id: string): string {
