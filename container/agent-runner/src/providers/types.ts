@@ -99,10 +99,21 @@ export interface QueryInput {
   };
 }
 
+/**
+ * MCP server transport config, as read from container.json. Superset of the
+ * host's `src/container-config.ts` McpServerConfig (minus `instructions`,
+ * which is host-only — consumed by claude-md-compose, never written into
+ * container.json for the runner). Keep the transport fields (command/args/
+ * env/url/headers) in sync with the host type.
+ */
 export interface McpServerConfig {
-  command: string;
-  args: string[];
-  env: Record<string, string>;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  /** HTTP MCP server endpoint. Mutually exclusive with `command`. */
+  url?: string;
+  /** HTTP headers sent on connect; values may reference `${VAR}` — see resolveHeaders. */
+  headers?: Record<string, string>;
 }
 
 export interface AgentQuery {

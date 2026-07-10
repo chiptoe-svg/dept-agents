@@ -7,6 +7,11 @@ registerResource({
   description:
     'User — a messaging-platform identity. Each row is one sender on one channel. A single human may have multiple user rows across channels (no cross-channel linking yet).',
   idColumn: 'id',
+  // No agent-group column on this table — a user identity can span multiple
+  // groups. An agent caller has no legitimate cross-tenant read of every
+  // user's handle/phone/email, so this resource is fully blocked for agent
+  // callers rather than partially scoped.
+  scopeColumn: null,
   columns: [
     {
       name: 'id',

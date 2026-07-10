@@ -51,7 +51,9 @@ import { request as httpRequest, RequestOptions } from 'http';
 import { readEnvFile } from './env.js';
 import { getGoogleAccessTokenForAgentGroup } from './gws-token.js';
 import { log } from './log.js';
+import { assertGroupWithinBudget } from './modules/budgets/enforce.js';
 import { openStore, type PayloadStore } from './proxy-payload-log/store.js';
+import { resolveContainerToken, type ContainerIdentity } from './container-identity.js';
 
 /**
  * Per-request credential resolution outcome returned by the
@@ -167,11 +169,26 @@ export function serializeResolvedCredsError(
   };
 }
 
-/** Header containers send to identify which agent group is calling. */
+/** Header containers send to identify which agent group is calling. Advisory
+ *  only — never trusted for credential selection, see resolveProxyIdentity. */
 const AGENT_GROUP_HEADER = 'x-nanoclaw-agent-group';
 
 /** Header containers send to identify the current session (Task 3/4). */
 const SESSION_ID_HEADER = 'x-nanoclaw-session-id';
+
+/** Header containers send with their per-container capability token (Task 4). */
+const AGENT_TOKEN_HEADER = 'x-nanoclaw-agent-token';
+
+/** True for host-internal callers (e.g. direct-chat dispatching to 127.0.0.1). */
+export function isLoopbackSource(remoteAddress: string | undefined): boolean {
+  return remoteAddress === '127.0.0.1' || remoteAddress === '::1' || remoteAddress === '::ffff:127.0.0.1';
+}
+
+/** The calling container's identity, from its token only. Never from the group header. */
+export function resolveProxyIdentity(headers: Record<string, string | string[] | undefined>): ContainerIdentity | null {
+  const raw = headers[AGENT_TOKEN_HEADER];
+  return resolveContainerToken(typeof raw === 'string' ? raw : null);
+}
 
 interface PayloadLogCtx {
   baseDir: string;
@@ -532,13 +549,28 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         const isGoogle = route === 'googleapis';
         const isAnthropic = route === 'anthropic';
 
-        // Per-call attribution: which agent group is calling? Used by the
-        // per-student GWS resolver below; per-student Anthropic / OpenAI
-        // resolvers (Phase 4) will consult the same primitive. Missing
-        // header is fine — every resolver gracefully falls back to the
-        // class-default credential.
-        const rawAgentGroup = req.headers[AGENT_GROUP_HEADER];
-        const agentGroupId = typeof rawAgentGroup === 'string' && rawAgentGroup.length > 0 ? rawAgentGroup : null;
+        // Per-call attribution. The agent group is derived from the
+        // per-container token, never from a caller-supplied group header:
+        // any container can set a header, so trusting it let one user's
+        // agent spend another user's credentials.
+        //
+        // Loopback callers are host-internal (e.g. direct-chat) and get the
+        // department .env credential, as before. Everything else — every
+        // container, and anything on the LAN — must present a valid token.
+        const identity = resolveProxyIdentity(req.headers);
+        const loopback = isLoopbackSource(req.socket.remoteAddress);
+
+        if (!identity && !loopback) {
+          log.warn('credential-proxy: rejected unauthenticated non-loopback request', {
+            src: req.socket.remoteAddress,
+            hasToken: !!req.headers[AGENT_TOKEN_HEADER],
+          });
+          res.writeHead(401, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'container token required' }));
+          return;
+        }
+
+        const agentGroupId = identity?.agentGroupId ?? null;
 
         const upstreamUrl = isGoogle
           ? googleUpstream
@@ -567,8 +599,7 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         }
 
         // ── payload-log: capture request body ────────────────────────────────
-        const rawSessionId = req.headers[SESSION_ID_HEADER];
-        const sessionId = typeof rawSessionId === 'string' && rawSessionId.length > 0 ? rawSessionId : 'unattributed';
+        const sessionId = identity?.sessionId ?? 'unattributed';
 
         let payloadSeq: number | null = null;
         if (payloadLogCtx && agentGroupId) {
@@ -602,6 +633,43 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         delete headers[AGENT_GROUP_HEADER];
         // Don't leak the session-id header upstream — it's a NanoClaw-internal hint.
         delete headers[SESSION_ID_HEADER];
+        // Don't leak the capability token upstream — it's a live credential.
+        delete headers[AGENT_TOKEN_HEADER];
+
+        // Enforce the spend cap at the one chokepoint every LLM call crosses.
+        // Loopback callers (agentGroupId === null) are NOT checked here —
+        // direct-chat already runs its own budget check before dispatching
+        // (Plan 1.5 Task 8); double-blocking them would break the playground's
+        // model chat. Runs before any credential is resolved/attached, so an
+        // over-budget group never even gets a credential.
+        //
+        // `omlx` is EXEMPT: it's a local model server, so blocking it protects
+        // zero dollars while removing the user's fallback exactly when a paid
+        // provider is blocked — that would turn a money cap into a total
+        // kill-switch. `anthropic` / `openai` / `clemson` stay gated —
+        // `clemson` is a campus-hosted endpoint whose billing terms are
+        // unknown to us, so it fails closed like any paid route.
+        if (agentGroupId && !isOmlx) {
+          let budget: ReturnType<typeof assertGroupWithinBudget>;
+          try {
+            budget = assertGroupWithinBudget(agentGroupId);
+          } catch (err) {
+            // A throw here (e.g. from getAgentGroup or the usage scan) must
+            // not leave the request hanging — end it and fail closed.
+            log.error('credential-proxy: budget check threw — failing closed', { agentGroupId, err });
+            res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
+            res.end(JSON.stringify({ error: 'Budget check failed; refusing upstream call.' }));
+            return;
+          }
+          if (!budget.ok) {
+            log.warn('credential-proxy: budget exceeded, refusing upstream call', { agentGroupId });
+            // Retry-After: the cap resets monthly, so tell SDK backoff not to
+            // retry within this turn — a blown budget will not clear itself.
+            res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
+            res.end(JSON.stringify({ error: budget.reason }));
+            return;
+          }
+        }
 
         // ── per-user-provider-auth:proxy-invocation START ──────────────────────
         let studentCredsApplied = false;

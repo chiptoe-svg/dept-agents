@@ -72,3 +72,4 @@ config/class-controls.json
 
 # Ephemeral scheduler lock — runtime state, not source
 .claude/scheduled_tasks.lock
+.codegraph/

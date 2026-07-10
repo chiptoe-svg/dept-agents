@@ -494,6 +494,8 @@ function clearHideList(specId) {
  * The direct-chat handler normalizes catalog modelProvider names
  * (openai-codex → codex, anthropic → claude, etc.) so we can pass the
  * raw modelProvider straight through. Returns {ok, error?}.
+ * agentFolder is required by the handler (it authorizes the caller and
+ * resolves the allowlist/cost-catalog lookup) — see direct-chat.ts.
  */
 async function probeModel(modelProvider, modelId) {
   try {
@@ -505,6 +507,7 @@ async function probeModel(modelProvider, modelId) {
         provider: modelProvider,
         model: modelId,
         messages: [{ role: 'user', content: 'hi' }],
+        agentFolder: window.__pg.agent.folder,
       }),
     });
     if (!r.ok) {

@@ -29,13 +29,16 @@ ncl help
 ### When to use
 
 - **Looking up your own config** — `ncl groups get <your-group-id>` to see your agent group settings.
-- **Finding who you're wired to** — `ncl wirings list` to see which messaging groups route to which agent groups.
-- **Checking user roles** — `ncl roles list` to see who is an owner/admin.
-- **Answering questions about the system** — when the user asks about groups, channels, users, or configuration, query `ncl` rather than guessing.
+- **Finding who you're wired to** — `ncl wirings list` to see which messaging groups route to your agent group.
+- **Answering questions about the system** — when the user asks about your own group's config, wirings, members, destinations, or sessions, query `ncl` rather than guessing. For anything about other users, other groups, or who has admin/owner roles, you don't have visibility — say so rather than guessing.
 
 ### Access rules
 
-Read commands (list, get) are open. Write commands (create, update, delete, grant, revoke, add, remove) require admin approval — the request is held until an admin approves it.
+Read commands (list, get) are scoped to your own agent group — you cannot see other agents' groups, wirings, members, destinations, or sessions, and `list` never returns more than your own rows.
+
+Some resources are not readable by agents at all, regardless of scoping: `users`, `messaging-groups`, `user-dms`, `dropped-messages`, `roles`, `approvals`, and `class-tokens`. These always return an empty list (or "not found" for `get`) when you query them — that's expected, not a bug. There is no `ncl` command that tells you who the owners/admins are; if you need that, ask the user or a human directly.
+
+Write commands (create, update, delete, grant, revoke, add, remove) require admin approval — the request is held until an admin approves it.
 
 ### Approval flow
 
@@ -53,11 +56,11 @@ You don't need to poll or retry — the result arrives automatically.
 ### Examples
 
 ```bash
-# Read commands (no approval needed)
+# Read commands (no approval needed) — return only your own group's rows
 ncl groups list
 ncl groups get abc123
 ncl wirings list --messaging-group-id mg_xyz
-ncl roles list
+ncl sessions list
 ncl wirings help
 
 # Write commands (approval required)

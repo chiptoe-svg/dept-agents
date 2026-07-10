@@ -23,7 +23,10 @@ export const migration016: Migration = {
         email          TEXT PRIMARY KEY,
         user_id        TEXT NOT NULL,
         agent_group_id TEXT,
-        added_at       INTEGER NOT NULL
+        added_at       INTEGER NOT NULL,
+        -- Used by src/db/classroom-roster.ts; removed together with it in a later plan.
+        enrolled_at            TEXT,
+        enrollment_session_id  TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_classroom_roster_user_id

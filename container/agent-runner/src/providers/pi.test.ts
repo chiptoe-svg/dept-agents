@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 
-import { composePiSystemPrompt, formatContextUsageMessage, getPiReplyErrorMessage, withDeadline } from './pi.js';
+import {
+  buildMcpBridgeOptions,
+  composePiSystemPrompt,
+  formatContextUsageMessage,
+  getPiReplyErrorMessage,
+  withDeadline,
+} from './pi.js';
+import type { ProviderOptions } from './types.js';
 
 describe('getPiReplyErrorMessage', () => {
   it('returns the terminal error message for Pi replies that ended in error', () => {
@@ -55,6 +62,34 @@ describe('getPiReplyErrorMessage', () => {
     expect(prompt).toContain('<available_skills>');
     expect(prompt).toContain('<name>my-custom-skill</name>');
     expect(prompt).not.toContain('CUSTOM SKILL BODY');
+  });
+});
+
+describe('buildMcpBridgeOptions', () => {
+  it('forwards the container env so ${VAR} refs in MCP server headers can be expanded', () => {
+    // This is the wiring the pi provider relies on: query() passes
+    // this.options.env through to createPiMcpBridge → resolveHeaders. If the
+    // env field is dropped, resolveHeaders sees {} and every ${VAR} in a
+    // header (e.g. an MCP server's bearer token) is left unexpanded, and
+    // the server 401s with no signal anywhere in CI.
+    const options: ProviderOptions = {
+      mcpServers: {
+        wiki: {
+          url: 'https://example.com/mcp',
+          headers: { Authorization: 'Bearer ${WIKI_MCP_TOKEN}' },
+        },
+      },
+      hostMcpUrl: 'http://host.docker.internal:3000/mcp',
+      nanoclawSessionId: 'session-123',
+      env: { WIKI_MCP_TOKEN: 'test-token-123' },
+    };
+
+    const bridgeOptions = buildMcpBridgeOptions(options);
+
+    expect(bridgeOptions.env).toEqual({ WIKI_MCP_TOKEN: 'test-token-123' });
+    expect(bridgeOptions.hostMcpUrl).toBe('http://host.docker.internal:3000/mcp');
+    expect(bridgeOptions.sessionId).toBe('session-123');
+    expect(bridgeOptions.mcpServers).toBe(options.mcpServers);
   });
 });
 

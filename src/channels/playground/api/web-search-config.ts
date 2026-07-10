@@ -17,7 +17,7 @@ import { getAllAgentGroups } from '../../../db/agent-groups.js';
 import { restartAgentGroupContainers } from '../../../container-restart.js';
 import { TEMPLATE_FOLDER } from '../../../default-participant.js';
 import type { PlaygroundSession } from '../auth-store.js';
-import type { ApiResult } from './enrollment.js';
+import type { ApiResult } from './me.js';
 
 interface BackendStatus {
   id: string;

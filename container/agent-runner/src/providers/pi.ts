@@ -53,7 +53,7 @@ import { createCodingTools } from '@earendil-works/pi-coding-agent';
 import { registerProvider } from './provider-registry.js';
 import type { AgentProvider, AgentQuery, ProviderEvent, ProviderOptions, QueryInput, TurnUsage } from './types.js';
 import { getPiAuthApiKey } from './pi-auth.js';
-import { createPiMcpBridge } from './pi-mcp-bridge.js';
+import { createPiMcpBridge, type PiMcpBridgeOptions } from './pi-mcp-bridge.js';
 import { resolvePiModel, resolvePiThinkingLevel } from './pi-model.js';
 import { createFetchTool } from '../tools/fetch.js';
 import { createWebSearchTool } from './pi-tools/web-search.js';
@@ -232,6 +232,23 @@ export function composePiSystemPrompt(promptAddendum: string | undefined, skills
   return pieces.length > 0 ? pieces.join('\n\n---\n\n') : undefined;
 }
 
+/**
+ * Assembles the options passed to `createPiMcpBridge`. Extracted as a pure
+ * function (rather than left inline in `query()`) so the env-forwarding
+ * contract is unit-testable: without `env: options.env`, `resolveHeaders`
+ * receives `{}` and every `${VAR}` in an MCP server's headers fails to
+ * expand, silently 401ing every credentialed HTTP MCP server. See
+ * pi-mcp-bridge.ts / resolve-headers.ts for the consuming side.
+ */
+export function buildMcpBridgeOptions(options: ProviderOptions): PiMcpBridgeOptions {
+  return {
+    mcpServers: options.mcpServers,
+    hostMcpUrl: options.hostMcpUrl,
+    sessionId: options.nanoclawSessionId,
+    env: options.env,
+  };
+}
+
 export class PiProvider implements AgentProvider {
   readonly supportsNativeSlashCommands = false;
   private activeHarness: AgentHarness | null = null;
@@ -363,11 +380,13 @@ export class PiProvider implements AgentProvider {
         if (modelProvider === 'anthropic' && process.env.ANTHROPIC_BASE_URL) {
           (model as { baseUrl?: string }).baseUrl = process.env.ANTHROPIC_BASE_URL;
         }
-        bridge = (await createPiMcpBridge({
-          mcpServers: options.mcpServers,
-          hostMcpUrl: options.hostMcpUrl,
-          sessionId: options.nanoclawSessionId,
-        })) as { tools: unknown[]; close: () => Promise<void> };
+        // Container env, so HTTP MCP server headers referencing ${VAR}
+        // (e.g. ${WIKI_MCP_TOKEN}) can be expanded at connect time. See
+        // resolveHeaders / mcp-header-env.ts for the forwarding contract.
+        bridge = (await createPiMcpBridge(buildMcpBridgeOptions(options))) as {
+          tools: unknown[];
+          close: () => Promise<void>;
+        };
 
         const harness = new AgentHarness({
           env,

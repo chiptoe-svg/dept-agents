@@ -100,9 +100,17 @@ export function aggregateAgentUsage(agentGroupId: string): { thisMonth: UsageBuc
       }[];
       // Translate legacy provider names stored in historical messages_out rows
       // to the new catalog names used by catalogByKey ('anthropic', 'openai-codex').
+      // 'openai' rows predate the task-1p5-8 fix to direct-chat.ts's cost
+      // attribution (it used to persist the unresolved frontend provider-group
+      // id 'openai' instead of the resolved catalog modelProvider). Remapped to
+      // 'openai-codex' rather than 'openai-platform' — both members of the
+      // 'openai' group share the same OPENAI_CATALOG entries (identical ids and
+      // prices, see openai-platform-spec.ts/codex-spec.ts), so either target
+      // prices these historical rows identically; harmless either way.
       const LEGACY_PROVIDER_REMAP: Record<string, string> = {
         claude: 'anthropic',
         codex: 'openai-codex',
+        openai: 'openai-codex',
       };
 
       for (const row of rows) {

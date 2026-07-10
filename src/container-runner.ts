@@ -19,6 +19,8 @@ import {
 } from './config.js';
 import { collectContainerEnv } from './container-env-registry.js';
 import { materializeContainerJson, containerConfigPath } from './container-config.js';
+import { collectMcpHeaderEnvRefs } from './mcp-header-env.js';
+import { readEnvFile } from './env.js';
 import {
   CONTAINER_HOST_GATEWAY,
   CONTAINER_RUNTIME_BIN,
@@ -27,6 +29,7 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { composeGroupClaudeMd } from './claude-md-compose.js';
+import { mintContainerToken, revokeContainerToken } from './container-identity.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { getContainerConfig, updateContainerConfigScalars } from './db/container-configs.js';
 import { getDb, hasTable } from './db/connection.js';
@@ -146,7 +149,7 @@ async function spawnContainer(session: Session): Promise<void> {
   // OneCLI agent identifier is always the agent group id — stable across
   // sessions and reversible via getAgentGroup() for approval routing.
   const agentIdentifier = agentGroup.id;
-  const args = await buildContainerArgs(
+  const { args, containerToken } = await buildContainerArgs(
     mounts,
     containerName,
     agentGroup,
@@ -159,13 +162,48 @@ async function spawnContainer(session: Session): Promise<void> {
 
   log.info('Spawning container', { sessionId: session.id, agentGroup: agentGroup.name, containerName });
 
-  // Clear any orphan heartbeat from a previous container instance — the
-  // sweep's ceiling check treats a missing file as "fresh spawn, give grace"
-  // (host-sweep.ts line 87). Without this, the stale mtime can trigger an
-  // immediate kill before the new container touches the file itself.
-  fs.rmSync(heartbeatPath(agentGroup.id, session.id), { force: true });
+  let container: ChildProcess;
+  try {
+    // Clear any orphan heartbeat from a previous container instance — the
+    // sweep's ceiling check treats a missing file as "fresh spawn, give grace"
+    // (host-sweep.ts line 87). Without this, the stale mtime can trigger an
+    // immediate kill before the new container touches the file itself.
+    fs.rmSync(heartbeatPath(agentGroup.id, session.id), { force: true });
 
-  const container = spawn(CONTAINER_RUNTIME_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    container = spawn(CONTAINER_RUNTIME_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    // Spawn failed before we could attach exit handlers — the token
+    // would otherwise leak until process restart. Revoke here since
+    // the close/error handlers below never get a chance to fire.
+    revokeContainerToken(containerToken);
+    throw err;
+  }
+
+  // Attach close/error handlers immediately — before any bookkeeping that
+  // could throw (markContainerRunning is a central-DB write) or that just
+  // takes time (stdout/stderr wiring). If bookkeeping below throws,
+  // spawnContainer rejects while the container keeps running; without the
+  // handlers already attached, no close/error listener would ever fire and
+  // revokeContainerToken would never run, leaving the per-container token
+  // (a live credential) standing until host restart. Handler bodies below
+  // reference `activeContainers` before the `.set()` call runs — that's
+  // fine, `Map.delete` on a missing key is a no-op, and `revokeContainerToken`
+  // (`Map.delete`) is idempotent, so a double-fire (error then close) is safe.
+  container.on('close', (code) => {
+    activeContainers.delete(session.id);
+    markContainerStopped(session.id);
+    stopTypingRefresh(session.id);
+    revokeContainerToken(containerToken);
+    log.info('Container exited', { sessionId: session.id, code, containerName });
+  });
+
+  container.on('error', (err) => {
+    activeContainers.delete(session.id);
+    markContainerStopped(session.id);
+    stopTypingRefresh(session.id);
+    revokeContainerToken(containerToken);
+    log.error('Container spawn error', { sessionId: session.id, err });
+  });
 
   activeContainers.set(session.id, { process: container, containerName });
   markContainerRunning(session.id);
@@ -184,20 +222,6 @@ async function spawnContainer(session: Session): Promise<void> {
   // sweep reading heartbeat mtime + processing_ack claim age + container_state
   // (see src/host-sweep.ts). This avoids killing long-running legitimate work
   // on a wall-clock timer.
-
-  container.on('close', (code) => {
-    activeContainers.delete(session.id);
-    markContainerStopped(session.id);
-    stopTypingRefresh(session.id);
-    log.info('Container exited', { sessionId: session.id, code, containerName });
-  });
-
-  container.on('error', (err) => {
-    activeContainers.delete(session.id);
-    markContainerStopped(session.id);
-    stopTypingRefresh(session.id);
-    log.error('Container spawn error', { sessionId: session.id, err });
-  });
 }
 
 /**
@@ -517,7 +541,7 @@ function ensureRuntimeFields(
   }
 }
 
-async function buildContainerArgs(
+export async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   agentGroup: AgentGroup,
@@ -525,8 +549,14 @@ async function buildContainerArgs(
   provider: string,
   providerContribution: ProviderContainerContribution,
   agentIdentifier?: string,
+  // Required (not optional) because it's threaded straight into
+  // mintContainerToken below — the only caller (spawnContainer) always
+  // has a session id available.
   sessionId?: string,
-): Promise<string[]> {
+): Promise<{ args: string[]; containerToken: string }> {
+  if (!sessionId) {
+    throw new Error('buildContainerArgs: sessionId is required to mint a container token');
+  }
   const args: string[] = ['run', '--rm', '--name', containerName, '--label', CONTAINER_INSTALL_LABEL];
 
   // Environment — only vars read by code we don't own.
@@ -540,17 +570,26 @@ async function buildContainerArgs(
   //               proxy injects real OAuth token on that exchange request.
   // Native credential proxy: route container API calls to host:3001 with
   // placeholder credentials. Proxy substitutes real keys/OAuth tokens.
-  args.push('-e', `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}/anthropic`);
+  const hostGateway = CONTAINER_HOST_GATEWAY();
+  args.push('-e', `ANTHROPIC_BASE_URL=http://${hostGateway}:${CREDENTIAL_PROXY_PORT}/anthropic`);
   // OpenAI traffic routes through one of two proxy prefixes per the group's
   // active provider: `codex` (cloud OpenAI) → /openai/v1, `local`
   // (mlx-omni-server) → /omlx/v1. The proxy strips the prefix and substitutes
   // the appropriate API key per upstream.
   const openaiPrefix = provider === 'local' ? '/omlx/v1' : '/openai/v1';
-  args.push('-e', `OPENAI_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}${openaiPrefix}`);
+  args.push('-e', `OPENAI_BASE_URL=http://${hostGateway}:${CREDENTIAL_PROXY_PORT}${openaiPrefix}`);
 
   // Google Workspace MCP relay — host-side gateway that the container's
   // gws.ts shims forward to. Per-call attribution header set by gws.ts.
-  args.push('-e', `GWS_MCP_RELAY_URL=http://${CONTAINER_HOST_GATEWAY}:${GWS_MCP_RELAY_PORT}`);
+  args.push('-e', `GWS_MCP_RELAY_URL=http://${hostGateway}:${GWS_MCP_RELAY_PORT}`);
+
+  // Per-container capability token — the caller's real identity as far
+  // as the credential proxy and GWS relay are concerned. Minted here at
+  // spawn time and revoked by the container-exit handlers in
+  // spawnContainer (close/error/spawn-failure). Not yet required by
+  // either service (Tasks 5/6); adding it now is backward-compatible.
+  const containerToken = mintContainerToken(agentGroup.id, sessionId);
+  args.push('-e', `X_NANOCLAW_AGENT_TOKEN=${containerToken}`);
 
   // Per-call attribution for the credential proxy. The container's
   // proxy-fetch wrapper injects this as `X-NanoClaw-Agent-Group` on
@@ -558,7 +597,8 @@ async function buildContainerArgs(
   // per-student credential resolvers (per-student GWS today; per-
   // student Anthropic / OpenAI auth in Phase 4). Missing-header
   // requests gracefully fall back to instructor / class-default
-  // credentials at the proxy.
+  // credentials at the proxy. Advisory only as of Task 5/6 — the token
+  // above is the actual capability.
   args.push('-e', `X_NANOCLAW_AGENT_GROUP=${agentGroup.id}`);
 
   // Per-call session attribution for the credential proxy's payload log.
@@ -628,6 +668,48 @@ async function buildContainerArgs(
     args.push('-e', `${key}=${value}`);
   }
 
+  // Forward only the env vars referenced as ${VAR} in an MCP server's HTTP
+  // headers — never the whole .env. See src/mcp-header-env.ts for the
+  // security tradeoff this implies: unlike LLM API keys (which never enter
+  // a container; the credential proxy substitutes them on the wire), these
+  // tokens DO enter the container env so the in-container pi bridge's
+  // resolveHeaders can expand them at connect time. That means any agent
+  // wired to a credentialed MCP server can read that token out of its own
+  // environment and use it directly, bypassing the MCP server. Scoping the
+  // forward to exactly the referenced names (instead of the whole .env)
+  // limits — but does not eliminate — that exposure.
+  const headerEnvRefs = collectMcpHeaderEnvRefs(containerConfig.mcpServers);
+  if (headerEnvRefs.length > 0) {
+    const headerEnvValues = readEnvFile(headerEnvRefs);
+    for (const key of headerEnvRefs) {
+      if (headerEnvValues[key]) {
+        args.push('-e', `${key}=${headerEnvValues[key]}`);
+        continue;
+      }
+      // Never log the value — only the var name and which server(s)
+      // reference it. A silently-unexpanded ${VAR} becomes a literal
+      // bearer string and the server 401s with no clue why, so this has
+      // to be loud.
+      const referencingServers = Object.entries(containerConfig.mcpServers)
+        .filter(([, cfg]) => cfg.headers && Object.values(cfg.headers).some((v) => v.includes(`\${${key}}`)))
+        .map(([name]) => name);
+      log.warn(`MCP header env var missing from .env — referencing server(s) will 401`, {
+        envVar: key,
+        servers: referencingServers,
+      });
+    }
+  }
+
+  // Apple Container VMs cannot resolve host.docker.internal (Docker-specific).
+  // Replace it with the bridge gateway IP in any injected -e value, so a
+  // Docker-era literal (e.g. copy-pasted into a per-group container.json env
+  // override) resolves correctly inside the VM instead of failing DNS.
+  for (let i = 0; i < args.length - 1; i++) {
+    if (args[i] === '-e' && args[i + 1].includes('host.docker.internal')) {
+      args[i + 1] = args[i + 1].replaceAll('host.docker.internal', hostGateway);
+    }
+  }
+
   // Host gateway
   args.push(...hostGatewayArgs());
 
@@ -657,7 +739,7 @@ async function buildContainerArgs(
 
   args.push('-c', 'exec bun run /app/src/index.ts');
 
-  return args;
+  return { args, containerToken };
 }
 
 /** Build a per-agent-group Docker image with custom packages. */

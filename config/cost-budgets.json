@@ -1,0 +1,5 @@
+{
+  "defaultMonthlyUsd": 25,
+  "warnFraction": 0.8,
+  "perAgent": {}
+}

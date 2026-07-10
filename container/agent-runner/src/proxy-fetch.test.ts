@@ -123,6 +123,64 @@ describe('installProxyFetch', () => {
   });
 });
 
+describe('proxy origin boundary (Fix 2 — prefix collision)', () => {
+  let originalAgentGroup: string | undefined;
+  let originalAnthropic: string | undefined;
+  let restoreFetch: (() => void) | null = null;
+
+  beforeEach(() => {
+    originalAgentGroup = process.env.X_NANOCLAW_AGENT_GROUP;
+    originalAnthropic = process.env.ANTHROPIC_BASE_URL;
+    process.env.X_NANOCLAW_AGENT_GROUP = 'ag_test_42';
+    process.env.ANTHROPIC_BASE_URL = PROXY_ORIGIN;
+  });
+
+  afterEach(() => {
+    if (restoreFetch) restoreFetch();
+    restoreFetch = null;
+    if (originalAgentGroup === undefined) delete process.env.X_NANOCLAW_AGENT_GROUP;
+    else process.env.X_NANOCLAW_AGENT_GROUP = originalAgentGroup;
+    if (originalAnthropic === undefined) delete process.env.ANTHROPIC_BASE_URL;
+    else process.env.ANTHROPIC_BASE_URL = originalAnthropic;
+  });
+
+  test('matches the bare origin with no path', async () => {
+    const cap = captureHeaders();
+    restoreFetch = cap.reset;
+
+    installProxyFetch();
+    await fetch(PROXY_ORIGIN);
+
+    expect(cap.calls[0]!.headers.get(HEADER_NAME)).toBe('ag_test_42');
+  });
+
+  test('matches a path under the origin', async () => {
+    const cap = captureHeaders();
+    restoreFetch = cap.reset;
+
+    installProxyFetch();
+    await fetch(`${PROXY_ORIGIN}/v1/x`);
+
+    expect(cap.calls[0]!.headers.get(HEADER_NAME)).toBe('ag_test_42');
+  });
+
+  test('does NOT match a prefix-colliding port on the same host (token would otherwise leak)', async () => {
+    const cap = captureHeaders();
+    restoreFetch = cap.reset;
+
+    installProxyFetch();
+
+    // PROXY_ORIGIN is http://host.docker.internal:3001 — this URL's port
+    // (30012) starts with "3001", so a bare `url.startsWith(proxyOrigin)`
+    // check would wrongly treat it as a proxy request and attach the
+    // container's credential header to a request bound for a different,
+    // potentially hostile, service on the bridge gateway.
+    await fetch('http://host.docker.internal:30012/evil');
+
+    expect(cap.calls[0]!.headers.get(HEADER_NAME)).toBeNull();
+  });
+});
+
 describe('proxy-fetch session-id header', () => {
   let originalAgentGroup: string | undefined;
   let originalSessionId: string | undefined;

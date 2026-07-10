@@ -8,6 +8,15 @@ registerResource({
   description:
     'User role — privilege grant. "owner" is always global and has full control. "admin" can be global (agent_group_id null) or scoped to a specific agent group. Admin at a group implies membership. Approval routing prefers admins/owners reachable on the same messaging platform as the request origin (e.g. a Telegram request routes the approval card to an admin on Telegram when possible).',
   idColumn: 'user_id',
+  // JUDGMENT CALL: rows do carry an `agent_group_id` column (null for global
+  // owner/admin, set for group-scoped admin), so column-scoping to the
+  // caller's own group is technically possible. Blocking fully instead:
+  // a role row's payload is a real human's user_id (phone number/handle) —
+  // that's a privileged-identity disclosure, not routine group metadata, and
+  // the task brief explicitly calls out roles as having no legitimate
+  // cross-tenant read for an agent. Full block avoids letting a compromised
+  // agent learn even its own group's admin's contact handle.
+  scopeColumn: null,
   columns: [
     { name: 'user_id', type: 'string', description: 'User receiving the role. Must exist in users table.' },
     {

@@ -43,6 +43,7 @@ registerResource({
   description:
     'Agent group — a logical agent identity. Each group has its own workspace folder (CLAUDE.md, skills, container config), conversation history, and container image. Multiple messaging groups can be wired to one agent group.',
   idColumn: 'id',
+  scopeColumn: 'id',
   columns: [
     { name: 'id', type: 'string', description: 'UUID.', generated: true },
     {
@@ -206,9 +207,15 @@ registerResource({
     'config-get': {
       access: 'open',
       description: 'Show the container config for a group. Use --id <group-id>.',
-      handler: async (args) => {
+      handler: async (args, ctx) => {
         const id = args.id as string;
         if (!id) throw new Error('--id is required');
+        // Not a genericGet call (custom operation, own DB query), so it needs
+        // its own scoping — same not-found-either-way shape as genericGet so
+        // an agent can't distinguish "not yours" from "doesn't exist".
+        if (ctx.caller === 'agent' && ctx.cliScope !== 'all' && id !== ctx.agentGroupId) {
+          throw new Error(`No container config for group: ${id}`);
+        }
         const row = getContainerConfig(id);
         if (!row) throw new Error(`No container config for group: ${id}`);
         return presentConfig(row);
@@ -247,8 +254,13 @@ registerResource({
           updates.max_messages_per_prompt = Number(args.max_messages_per_prompt);
         if (args['cli-scope'] !== undefined || args.cli_scope !== undefined) {
           const scope = (args['cli-scope'] ?? args.cli_scope) as string;
-          if (!['disabled', 'group', 'global'].includes(scope)) {
-            throw new Error('--cli-scope must be one of: disabled, group, global');
+          // 'all' is the value dispatch.ts checks for to bypass read scoping
+          // (see scopeRowsToCaller in crud.ts) — a trusted admin agent.
+          // 'disabled' and 'global' predate that wiring and are accepted but
+          // currently unused/inert; kept for backwards compatibility with any
+          // config already set to them rather than rejecting on read.
+          if (!['disabled', 'group', 'global', 'all'].includes(scope)) {
+            throw new Error('--cli-scope must be one of: disabled, group, global, all');
           }
           updates.cli_scope = scope;
         }

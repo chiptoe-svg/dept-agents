@@ -7,6 +7,7 @@
  * that differs by caller. Host callers and `open` commands run inline.
  */
 import { getAgentGroup } from '../db/agent-groups.js';
+import { getContainerConfig } from '../db/container-configs.js';
 import { getSession } from '../db/sessions.js';
 import { registerApprovalHandler, requestApproval } from '../modules/approvals/index.js';
 import type { CallerContext, ErrorCode, RequestFrame, ResponseFrame } from './frame.js';
@@ -42,6 +43,19 @@ export async function dispatch(req: RequestFrame, ctx: CallerContext): Promise<R
     return err(req.id, 'approval-pending', 'Approval request sent to admin. You will be notified of the result.');
   }
 
+  // Resolve read scope for agent callers from container_configs.cli_scope —
+  // stored and settable since migration 018, but never read until now.
+  // 'group' (default) restricts list/get reads to the caller's own agent
+  // group (see scopeRowsToCaller in crud.ts); 'all' is unrestricted, for a
+  // future trusted admin agent. The group id driving this lookup is
+  // ctx.agentGroupId, which is host-stamped from the session the request
+  // arrived on (delivery-action.ts) — a container cannot forge it. Host
+  // callers are always unrestricted and never consult this.
+  const scopedCtx: CallerContext =
+    ctx.caller === 'agent'
+      ? { ...ctx, cliScope: getContainerConfig(ctx.agentGroupId)?.cli_scope === 'all' ? 'all' : 'group' }
+      : ctx;
+
   let parsed: unknown;
   try {
     parsed = cmd.parseArgs(req.args);
@@ -50,7 +64,7 @@ export async function dispatch(req: RequestFrame, ctx: CallerContext): Promise<R
   }
 
   try {
-    const data = await cmd.handler(parsed, ctx);
+    const data = await cmd.handler(parsed, scopedCtx);
     return { id: req.id, ok: true, data };
   } catch (e) {
     return err(req.id, 'handler-error', errMsg(e));
