@@ -35,7 +35,10 @@ DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT to
 - **Tracked (Plan 2 whole-branch review) — three short items gate the pilot, none require re-touching Plan 2 code:** (1) retire `PLAYGROUND_AUTH_BYPASS` — Plan 3 (below); (2) enable the host firewall (interactive sudo); (3) **verify/close the cross-install `:10255` exposure** — the personal install's OneCLI credential-injection gateway listens on the shared bridge gateway (`192.168.65.1:10255`, reachable from dept containers) and personal never got Plan 1.5's token hardening. OneCLI scopes credentials by agent-group-id, so it is not a trivial curl→keys leak, but the cross-install reachability should not exist; fix is network segmentation between the two installs' bridges (owner decision).
 - **Tracked: external fixes from the Container upgrade fallout** — CUassistant `scripts/mcp-public-bridge.mjs` (gitignored, disk-only — commit/vendor it or a reboot silently kills 3 of 4 curated servers AND personal's credential path); `gc_alumni` allow-list fix committed-not-pushed (`8bb89ae`); personal-install gateway patch on branch `fix/pi-continuation-rotation` @ `3527b78f` (unpushed, service not restarted — push + restart at a quiet window before the next reboot). See memory `reference-container-1.1.0-gateway`.
 
-**Next: Plan 4 — provider auth & backstop** (per-user ChatGPT paste-back OAuth; the dept OpenAI key as a visible-warning backstop; delete `classroom_roster` + `class-controls`; rewire `user-provider-resolver`), then **Plan 5 — homepage & channels** (playground §5 reorg, admin roster, Telegram self-serve, and the deferred `class-*` renames + docs cleanup). **The pilot is now unblocked: bypass is retired, per-user login + isolation are live-verified. Provision colleagues with `ncl users provision --display-name "<name>" --email <email>` and hand each the printed URL.** Two operator actions remain (both tracked above, neither blocking a small trusted pilot): enable the host firewall; verify/segment the cross-install `:10255` exposure. Live playground URL: `http://gcworkflow.clemson.edu:8088` (server IP `130.127.162.67`, bridge gateway `192.168.65.1`).
+- **Plan 4 (provider auth & backstop) complete** (`4a1115c5`..HEAD; plan: `docs/superpowers/plans/2026-07-10-dept-server-plan-4-provider-auth-and-backstop.md`; evidence: `docs/superpowers/reviews/2026-07-10-provider-auth-verification.md`; live-verified). Each agent turn now resolves credentials by the **entity model** (`agent_group_members` → user via `userIdForAgentGroup`), not the empty `classroom_roster`: the user's own creds (Codex OAuth / API key) when connected, else the department `.env` key as an automatic backstop. Connect is **optional** — the `class-controls` `forbidden`/`connect_required` hard-block is gone (`class-controls` module + config + routes deleted; `pi.ts`/`owner-creds-ready`/models-tab rewired to a constant `DEPT_POLICY`). Backstop fallbacks are recorded in a new `backstop_usage` table (migration 024/v25, debounced per-group to ≤1 write/60s) so the operator can see who's on the department account. The session-gated `GET /api/provider-auth/:provider/status` connect endpoint is mounted (401 unauth). Live: owner turn ran on the backstop and recorded a row; a connected user's real `codex` credential loads under the key the proxy passes (`credential-proxy.ts:682` → `'codex'`); connect endpoints 401 unauthenticated. The OAuth flow piggybacks OpenAI's Codex CLI client — **no external OAuth-app registration**.
+- **Tracked (Plan 4 → Plan 5 follow-ups):** the homepage "connect your ChatGPT / running on the department account" banner (Plan 4 emits the event; Plan 5 renders it); the **`classroom_roster` table drop + `class-*` renames** (deferred from Plan 4 — woven through the stabilized login/PIN/Telegram paths); a stale-`auth.json` cleanup path in `pi.ts` (narrow, mostly pre-existing); the models-tab availability keying off owner creds rather than the `.env` backstop (functional — a backstop-working provider is absent from the Chat dropdown until the owner connects); dead `pushToAll` export; stale `ta`/"ask instructor" vocabulary. **Operator: confirm members were not previously granted more than the `simple` tab** (old live `class-controls.json` was untracked, deleted, unrecoverable).
+
+**Next: Plan 5 — homepage & channels** (playground §5 reorg: the connect-ChatGPT + backstop-status banner and usage card, admin roster view, Telegram self-serve linking; the deferred `class-*`→dept renames + `classroom_roster` drop; docs cleanup). **The pilot is unblocked and now self-funding-capable: bypass retired, per-user login + isolation live-verified, and colleagues can connect their own ChatGPT so usage bills to them (else the recorded department backstop).** Provision with `ncl users provision --display-name "<name>" --email <email>`; a colleague connects their account from the (Plan-5) homepage or the `/provider-auth/codex/start` flow. Two operator actions remain (neither blocks a small trusted pilot): enable the host firewall; verify/segment the cross-install `:10255` exposure. Live playground URL: `http://gcworkflow.clemson.edu:8088` (server IP `130.127.162.67`, bridge gateway `192.168.65.1`).
 
 (Superseded arc: the **group-agent-platform restructure** — one codebase, in-tree scenario profiles under `src/scenarios/<name>/` selected by `ACTIVE_SCENARIO` — is retired for this install per the 2026-07-09 decision below; its history (Phase 1 `dce8da2`, canonical-role contract `3dcd662`, `industryai_seminar` scenario `52dc82a`, contract wiring `7606cf0`..`8e894cd`) stays in the decision log below for reference. Prior completed arc: **Phase D**, tag `phase-d-complete-2026-05-26` — pi is the sole agent harness; claude.ts/codex.ts deleted host+container; `container_configs.model_provider` drives upstream API selection.)
 
@@ -115,6 +118,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+**2026-07-10 — Credentials resolve by the entity model; the department key is an optional, recorded backstop (Plan 4).** `resolveUserCreds` keyed off the empty `classroom_roster` (so everyone silently ran on the `.env` key) and enforced a `class-controls` per-class policy. It now resolves the user from `agent_group_members` (`userIdForAgentGroup`) and returns the user's own creds when connected, else `null` → the department `.env` backstop, recorded in `backstop_usage`. **Connect is optional** — there is no `forbidden`/`connect_required` hard block on a flat department server, so `class-controls` was deleted. *Corollaries:* the auth provider id the proxy passes is `codex` (not the catalog name `openai-codex`) — creds must be stored under that key; the backstop recorder runs on the per-request hot path, so it is debounced **per group** (not per group+provider — a group's traffic mixes provider routes); Codex OAuth uses OpenAI's own CLI client, so there is no OAuth-app to register.
+
 **2026-07-10 — The bookmarkable login-token URL is the department's auth credential; bypass retired (Plan 3).** The durable per-user token (`class_login_tokens`, `GET /?token=` → session) already existed and is generic — Plan 3 provisions users into it (`ncl users provision`) rather than building new auth. Invite links are distributed **manually** (no email transport on this box; automated email is a later add-on). *Why:* retiring `PLAYGROUND_AUTH_BYPASS` was the one thing blocking a pilot — with bypass on, every web session is the owner. **Corollaries:** without email there is no PIN, so a login URL is a bearer credential (fine for a 2–3 person trusted pilot, revocable via `ncl class-tokens rotate`); PIN-2FA, automated email, email self-recovery, and the `class-*`→dept renames are deferred. The lockout that failed the first attempt is structural: bootstrap the operator's token and verify login *before* flipping bypass off.
 
 **2026-07-10 — Never hardcode the container bridge gateway (Plan 2, Apple Container 1.1.0).** The 1.1.0 upgrade moved the bridge subnet `192.168.64.0/24` → `192.168.65.0/24` (undocumented), and `bridge100` exists only while a container runs. The hardcoded `192.168.64.1` fallback would have handed every container a dead proxy URL — a silent, total outage. The gateway is now resolved at runtime (`container network inspect default` → interface scan → **throw**, never a constant) in four places on this box: both nanoclaw installs, the CUassistant TCP bridge, and gc_alumni's FastMCP allow-list. *Why it recurs:* a wrong-but-plausible constant turns a documented network change into an invisible failure. Also learned: `container ls --format json` `status` became `{state}` (was a bare string) — anything matching `status === 'running'` silently matches nothing. See memory `reference-container-1.1.0-gateway`.
@@ -177,33 +182,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (81 commits ahead)
+- **Last tag:** `classroom-2026-07` (83 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 5]
-M  .gitignore
-M  src/channels/playground/api-routes.ts
-D  src/channels/playground/api/class-controls.test.ts
-D  src/channels/playground/api/class-controls.ts
-M  src/channels/playground/api/models-tab-state.test.ts
-M  src/channels/playground/api/models-tab-state.ts
-M  src/channels/playground/api/models.ts
-M  src/channels/playground/public/app.js
-M  src/channels/playground/public/provider-groups.js
-M  src/channels/playground/public/style.css
-M  src/channels/playground/public/tabs/chat.js
-M  src/channels/playground/public/tabs/home.js
-M  src/owner-creds-ready.ts
-M  src/providers/pi.ts
-M  src/user-provider-resolver.test.ts
-M  src/user-provider-resolver.ts
+## main...origin/main [ahead 7]
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+1105f8fa docs(provider-auth): live verification — backstop recorded, own-creds key matches, endpoints gated
+9e6b161c refactor: remove class-controls policy — dept server has no per-class provider gating
 7b6f8e1f fix(playground): drop dead provider-auth start/exchange mounts, fix vacuous status test
 55b0e7a5 feat(provider-auth): mount session-gated status route, close /provider-auth path
 9db53335 fix(backstop-usage): debounce per group, not per (group, provider)
@@ -217,10 +209,8 @@ beac5bb2 docs(env): document playground auth flags — PUBLIC_PLAYGROUND_URL, by
 554bf42d fix(class-tokens): resolve issue/rotate/revoke via --user-id or metadata email
 a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login live; pilot unblocked
 76e7875b docs(auth): bypass retired — operator+canary login and anonymous-refused verified live
-42c952a6 fix(classroom-pin): default PIN-required to false, gate via env flag
-2f290492 feat(cli): ncl users provision — one-command invite that prints the login URL
 ```
 
 ### Last refresh
 
-2026-07-10T23:29:22Z
+2026-07-10T23:43:51Z
