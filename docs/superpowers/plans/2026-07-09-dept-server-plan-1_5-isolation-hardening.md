@@ -1124,16 +1124,19 @@ stat -f '%A %N' .env
 ```
 Expected: `600 .env`.
 
-- [ ] **Step 2: Turn off the bypass and set a real seat password**
+- [ ] **Step 2: Move the seat password out of version control, then set one**
 
-In `.env`, set `PLAYGROUND_AUTH_BYPASS=0`.
+**Plan amendment (2026-07-10).** The original step said to write the password into `config/playground-seats.json`. That file is **tracked by git** — doing so would commit a live credential into repo history, permanently. `src/channels/playground/seats-config.ts:11-21` reads `password` from that JSON, and `src/channels/playground/server.ts:404` compares it with `!==` (not timing-safe). Both are wrong.
 
-In `config/playground-seats.json`, replace `"password": ""` with a strong random value:
+Fix the mechanism first (Task 9a below), *then* set the password in `.env`, which is gitignored and now mode 0600.
 
-```bash
-openssl rand -base64 24
-```
-Paste the output as the `password` value. **Do not** paste it into any commit message, log, or chat.
+**Task 9a — read the seat password from the environment, compare it safely.**
+- `src/channels/playground/seats-config.ts`: source the password from `PLAYGROUND_SEAT_PASSWORD` (env / `readEnvFile`), falling back to the JSON's `password` field only when the env var is unset (backward compatibility for existing installs). Never write it back to the JSON.
+- `src/channels/playground/server.ts:404`: replace `body.password !== sc.password` with a length-safe `crypto.timingSafeEqual` comparison (equal-length buffers required — compare SHA-256 digests of both strings to sidestep the length check, and to avoid leaking the password's length).
+- Leave `config/playground-seats.json`'s `password` as `""` and keep it committed that way.
+- Tests: correct password accepts; wrong password rejects; wrong-length password rejects (no throw); env var takes precedence over the JSON value; empty env + empty JSON preserves today's "no password required" behavior (`passwordRequired: !!sc.password` at `server.ts:395` must stay accurate).
+
+Then set `PLAYGROUND_AUTH_BYPASS=0` and `PLAYGROUND_SEAT_PASSWORD=<value>` in `.env`, where the value comes from `openssl rand -base64 24`. **The password must never enter a commit, a log, a report, or chat.**
 
 - [ ] **Step 3: Rebuild, restart, verify the gates hold live**
 
@@ -1168,9 +1171,11 @@ Re-run the Step 3 chat check afterward — the firewall must not block the bridg
 
 In the Plan 1 roadmap, strike the "revert dev auth posture" clause from the Plan 3 line and note it landed in Plan 1.5. In `state.md`, replace the tracked auth-posture item under **Current arc** with a completion note, and append one **Decision log** entry dated 2026-07-09: identity is now server-derived (per-container token) at the proxy, the relay, and `ncl`; every folder-addressed mutation route is gated by `requireGroupAccess`; auth bypass retired.
 
+Commit only non-secret files. `.env` is gitignored and must stay that way; `config/playground-seats.json` keeps `"password": ""`.
+
 ```bash
-git add config/playground-seats.json state.md docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md
-git commit -m "chore(security): retire auth bypass, seat password, .env 0600, firewall on"
+git add state.md docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md
+git commit -m "chore(security): retire auth bypass, .env 0600, firewall on"
 git push origin main
 ```
 
