@@ -8,30 +8,35 @@ import { assertDirectoryMounts, resolveProviderName } from './container-runner.j
 
 describe('resolveProviderName', () => {
   it('prefers session over group and container.json', () => {
-    expect(resolveProviderName('codex', 'opencode', 'claude')).toBe('codex');
+    expect(resolveProviderName('codex', 'opencode', 'claude', 'grp1')).toBe('codex');
   });
 
   it('falls back to group when session is null', () => {
-    expect(resolveProviderName(null, 'codex', 'claude')).toBe('codex');
+    expect(resolveProviderName(null, 'codex', 'claude', 'grp1')).toBe('codex');
   });
 
   it('falls back to container.json when session and group are null', () => {
-    expect(resolveProviderName(null, null, 'opencode')).toBe('opencode');
+    expect(resolveProviderName(null, null, 'opencode', 'grp1')).toBe('opencode');
   });
 
-  it('defaults to claude when nothing is set', () => {
-    expect(resolveProviderName(null, null, undefined)).toBe('claude');
+  it('throws, naming the group id, when nothing is set (no dead "claude" default)', () => {
+    expect(() => resolveProviderName(null, null, undefined, 'grp-no-provider')).toThrow(/grp-no-provider/);
+    expect(() => resolveProviderName(null, null, undefined, 'grp-no-provider')).toThrow(/No agent_provider/);
   });
 
   it('lowercases the resolved name', () => {
-    expect(resolveProviderName('CODEX', null, null)).toBe('codex');
-    expect(resolveProviderName(null, 'OpenCode', null)).toBe('opencode');
-    expect(resolveProviderName(null, null, 'Claude')).toBe('claude');
+    expect(resolveProviderName('CODEX', null, null, 'grp1')).toBe('codex');
+    expect(resolveProviderName(null, 'OpenCode', null, 'grp1')).toBe('opencode');
+    expect(resolveProviderName(null, null, 'Claude', 'grp1')).toBe('claude');
   });
 
   it('treats empty string as unset (falls through)', () => {
-    expect(resolveProviderName('', 'codex', null)).toBe('codex');
-    expect(resolveProviderName(null, '', 'opencode')).toBe('opencode');
+    expect(resolveProviderName('', 'codex', null, 'grp1')).toBe('codex');
+    expect(resolveProviderName(null, '', 'opencode', 'grp1')).toBe('opencode');
+  });
+
+  it('treats empty string at every level as unset (falls through to throw)', () => {
+    expect(() => resolveProviderName('', '', '', 'grp-empty')).toThrow(/grp-empty/);
   });
 });
 

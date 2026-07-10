@@ -277,7 +277,13 @@ export function killContainer(sessionId: string, reason: string, onExit?: () => 
  *   sessions.agent_provider
  *     → agent_groups.agent_provider
  *     → container.json `provider`
- *     → 'claude'
+ *
+ * There is no implicit default: `'claude'` is no longer a registered
+ * container-side provider (pi is the sole harness — see Phase D), so
+ * silently falling back to it produced `{}` for a group with every level
+ * unset, which the container then failed to launch against with an opaque
+ * error. Throws instead, naming the group so the failure is diagnosable at
+ * spawn time rather than inside a `--rm` container whose logs are gone.
  *
  * Pure so the precedence can be unit-tested without a DB or filesystem.
  */
@@ -285,8 +291,16 @@ export function resolveProviderName(
   sessionProvider: string | null | undefined,
   agentGroupProvider: string | null | undefined,
   containerConfigProvider: string | null | undefined,
+  agentGroupId: string,
 ): string {
-  return (sessionProvider || agentGroupProvider || containerConfigProvider || 'claude').toLowerCase();
+  const resolved = sessionProvider || agentGroupProvider || containerConfigProvider;
+  if (!resolved) {
+    throw new Error(
+      `No agent_provider configured for agent group "${agentGroupId}" — session, group, and container.json are ` +
+        `all unset. Set one via \`ncl groups update ${agentGroupId} --agent-provider <name>\` or a provider-install skill.`,
+    );
+  }
+  return resolved.toLowerCase();
 }
 
 function resolveProviderContribution(
@@ -294,7 +308,12 @@ function resolveProviderContribution(
   agentGroup: AgentGroup,
   containerConfig: import('./container-config.js').ContainerConfig,
 ): { provider: string; contribution: ProviderContainerContribution } {
-  const provider = resolveProviderName(session.agent_provider, agentGroup.agent_provider, containerConfig.provider);
+  const provider = resolveProviderName(
+    session.agent_provider,
+    agentGroup.agent_provider,
+    containerConfig.provider,
+    agentGroup.id,
+  );
   const fn = getProviderContainerConfig(provider);
   const contribution = fn
     ? fn({

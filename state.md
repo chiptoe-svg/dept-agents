@@ -167,19 +167,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (52 commits ahead)
+- **Last tag:** `classroom-2026-07` (53 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  src/container-runner-provider-persistence.test.ts
+## main...origin/main [ahead 1]
+M  src/container-runner.test.ts
 M  src/container-runner.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+ccdde699 fix(container-runner): run ensureRuntimeFields after buildMounts
 605b5aab refactor(pi): reconcile harness with personal repo — best of both
 1f8a9425 fix(agent): pin vetted IP into fetch to close DNS-rebinding SSRF
 8cf94015 feat(agent): SSRF-safe fetch_url_to_workspace + fail-loud persona size guard
@@ -194,9 +195,8 @@ c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, 
 488da89f fix(container-runtime): resolve host gateway via runtime query, not a hardcoded constant
 213d59de fix(container-runtime): warn on unrecognized status shape for orphan-reaping visibility
 88c3c4d9 fix(container-runtime): read object-shaped status (Apple Container 1.x)
-b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google token
 ```
 
 ### Last refresh
 
-2026-07-10T16:31:31Z
+2026-07-10T16:33:13Z
