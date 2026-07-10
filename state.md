@@ -177,19 +177,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (78 commits ahead)
+- **Last tag:** `classroom-2026-07` (79 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  src/backstop-usage.test.ts
-M  src/backstop-usage.ts
+## main...origin/main [ahead 3]
+M  src/channels/playground/api-routes.authz.test.ts
+M  src/channels/playground/api-routes.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+9db53335 fix(backstop-usage): debounce per group, not per (group, provider)
 cfb10f5b feat(backstop): record when a group's turn runs on the department key (debounced)
 244b790a feat(provider-auth): resolve creds by the entity model, connect-optional backstop
 4a1115c5 docs(plans): Plan 4 — per-user Codex OAuth + recorded dept-key backstop; remove class-controls
@@ -204,9 +205,8 @@ a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login li
 2f290492 feat(cli): ncl users provision — one-command invite that prints the login URL
 641b04ce fix(provisioning): playground messaging group must use unknown_sender_policy 'public'
 fa5a9640 feat(provisioning): provisionUser — full per-user stack + durable login URL
-89445a50 test(db): pin no-leak invariant for getPlaygroundAgentForUser under bypass=true
 ```
 
 ### Last refresh
 
-2026-07-10T22:59:14Z
+2026-07-10T23:05:01Z

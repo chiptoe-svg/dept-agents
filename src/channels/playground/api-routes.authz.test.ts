@@ -200,6 +200,32 @@ describe('own-group mutation still works', () => {
   });
 });
 
+function noSession(): PlaygroundSession {
+  return { cookieValue: 'c', userId: null, createdAt: Date.now(), lastActivityAt: Date.now() };
+}
+
+describe('provider-auth status route requires an authenticated session', () => {
+  // Task 3 / Plan 4: the OAuth connect endpoints (start/exchange/status) are
+  // session-gated so a colleague can only ever start/inspect a flow bound to
+  // their own cookie-validated session — never someone else's, and never an
+  // unauthenticated caller. `status` is asserted here because it's a GET with
+  // no side effects; start/exchange share the identical `if (!session.userId)`
+  // guard in api-routes.ts.
+  it('GET /provider-auth/openai-codex/status with no session.userId → 401', async () => {
+    const { req, res, getStatus } = fakeReqRes('GET', undefined);
+    const url = new URL('/provider-auth/openai-codex/status', 'http://localhost');
+    await route(req, res, url, 'GET', noSession());
+    expect(getStatus()).toBe(401);
+  });
+
+  it('GET /provider-auth/openai-codex/status with a real session → reaches the handler (not 401)', async () => {
+    const { req, res, getStatus } = fakeReqRes('GET', undefined);
+    const url = new URL('/provider-auth/openai-codex/status', 'http://localhost');
+    await route(req, res, url, 'GET', aliceSession());
+    expect(getStatus()).toBe(404); // handleGetProviderStatus: 'openai-codex' isn't a registered provider id
+  });
+});
+
 describe('requireGroupAccess is the operative gate on benchmarks/:id', () => {
   // The benchmarks/:id row in MUTATION_ROUTES 403s via canReadDraft (checked
   // first in that route's shared prelude), which would pass even if

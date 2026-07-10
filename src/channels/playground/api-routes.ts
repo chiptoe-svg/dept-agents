@@ -152,6 +152,7 @@ import {
   handleSimpleRestart,
   handleSimpleReset,
 } from './api/simple-config.js';
+import { handleProviderAuthStart, handleProviderAuthExchange, handleGetProviderStatus } from './api/provider-auth.js';
 import { pushToAll, registerSseClient } from './sse.js';
 
 export async function route(
@@ -464,6 +465,49 @@ export async function route(
   if (method === 'POST' && url.pathname === '/api/me/telegram/pair-code') {
     const { handleIssuePairCode } = await import('./api/telegram-pair.js');
     const r = handleIssuePairCode(session);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /provider-auth/:provider/start — begin the OAuth PKCE flow for a
+  // colleague connecting their own provider account (e.g. ChatGPT/Codex).
+  // Session-gated: no cookie/session.userId → 401 before the OAuth flow
+  // ever starts. userId comes ONLY from session.userId — never the path or
+  // body — so a caller can only ever start a flow bound to their own
+  // session; handleProviderAuthStart binds the resulting state to it.
+  // NOTE: for the `start`/`exchange` paths, playground/server.ts also
+  // intercepts and answers these same session-gated routes ahead of this
+  // dispatcher (pre-existing X.7 classroom-provider-auth wiring), so in
+  // production those two never actually reach here. Mounting them here too
+  // keeps this router self-sufficient and directly testable; `status` below
+  // is the one genuinely new production path.
+  const providerAuthStartMatch = url.pathname.match(/^\/provider-auth\/([^/]+)\/start$/);
+  if (method === 'GET' && providerAuthStartMatch) {
+    if (!session.userId) return send(res, 401, { error: 'auth required' });
+    const r = handleProviderAuthStart(providerAuthStartMatch[1]!, { userId: session.userId });
+    return send(res, r.status, r.body);
+  }
+
+  // POST /provider-auth/:provider/exchange — redeem the OAuth code for
+  // tokens. Same session gate; handleProviderAuthExchange additionally
+  // 403s if the state was minted for a different session.
+  const providerAuthExchangeMatch = url.pathname.match(/^\/provider-auth\/([^/]+)\/exchange$/);
+  if (method === 'POST' && providerAuthExchangeMatch) {
+    if (!session.userId) return send(res, 401, { error: 'auth required' });
+    const body = await readJsonBody(req);
+    const r = await handleProviderAuthExchange(
+      providerAuthExchangeMatch[1]!,
+      body as { code?: string; state?: string },
+      { userId: session.userId },
+    );
+    return send(res, r.status, r.body);
+  }
+
+  // GET /provider-auth/:provider/status — connection status for the
+  // calling user's own account only (userId from session, never the path).
+  const providerAuthStatusMatch = url.pathname.match(/^\/provider-auth\/([^/]+)\/status$/);
+  if (method === 'GET' && providerAuthStatusMatch) {
+    if (!session.userId) return send(res, 401, { error: 'auth required' });
+    const r = handleGetProviderStatus(providerAuthStatusMatch[1]!, { userId: session.userId });
     return send(res, r.status, r.body);
   }
 
