@@ -41,4 +41,14 @@ export type CallerContext =
       sessionId: string;
       agentGroupId: string;
       messagingGroupId: string;
+      /**
+       * Resolved by dispatch.ts from container_configs.cli_scope just before
+       * the handler runs. 'group' (default, also the fallback when unset —
+       * e.g. transports that haven't been updated to attach it) restricts
+       * list/get reads to this caller's own agent group. 'all' is
+       * unrestricted, reserved for a future trusted admin agent. Never set
+       * by transports directly — only dispatch() computes it, from the
+       * host-stamped agentGroupId, so a container cannot forge it.
+       */
+      cliScope?: 'group' | 'all';
     };

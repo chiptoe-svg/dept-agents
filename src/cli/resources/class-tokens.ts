@@ -31,6 +31,11 @@ registerResource({
   description:
     'Class login token — durable per-roster URL token a student bookmarks to log into the playground without Google OAuth. One row per token; multiple non-revoked rows per user are allowed (any active one redeems). Instructor mints + distributes the URLs via their normal channel (Drive doc, class portal, email blast).',
   idColumn: 'token',
+  // Not enumerated in the task brief (a classroom-only resource), but it
+  // needs a verdict too: no agent-group column, and rows are bearer login
+  // tokens for the playground — an even more severe leak than an id if
+  // exposed cross-tenant. Fully blocked for agent callers.
+  scopeColumn: null,
   columns: [
     { name: 'token', type: 'string', description: 'The opaque token string embedded in the student URL.' },
     { name: 'user_id', type: 'string', description: 'The roster user this token authenticates as.' },
@@ -85,7 +90,13 @@ registerResource({
     'list-for': {
       access: 'open',
       description: 'Show every token (active and revoked) for one roster user. Use --email <student-email>.',
-      handler: async (args) => {
+      handler: async (args, ctx) => {
+        // Custom operation, not routed through genericList — needs its own
+        // guard. Bearer login tokens, so no agent caller gets any, same as
+        // the resource's `list` (scopeColumn: null above).
+        if (ctx.caller === 'agent' && ctx.cliScope !== 'all') {
+          throw new Error('list-for is not available to agent callers');
+        }
         const email = args.email as string;
         if (!email) throw new Error('--email is required');
         const userId = resolveUserIdByEmail(email);

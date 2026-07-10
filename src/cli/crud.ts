@@ -53,6 +53,14 @@ export interface ResourceDef {
   /** Primary key column name. */
   idColumn: string;
   columns: ColumnDef[];
+  /**
+   * The property on each row naming its owning agent group, used to scope
+   * `list`/`get` reads to an agent caller's own group (see
+   * scopeRowsToCaller). `null` when the resource has no agent-group column
+   * at all — an agent caller then gets no rows, never a cross-tenant read.
+   * Every resource must set this explicitly; there is no default.
+   */
+  scopeColumn: string | null;
   /** Which standard CRUD operations are enabled. */
   operations: {
     list?: Access;
@@ -91,6 +99,49 @@ export function getResource(plural: string): ResourceDef | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Caller scoping
+// ---------------------------------------------------------------------------
+
+/**
+ * Restrict CRUD read results to what the caller may see.
+ *
+ * `ncl` runs at host authority. An agent caller reaches it from inside a
+ * container, so an unscoped `list` handed every tenant's group ids, user
+ * handles, and sessions to any agent — including the group ids needed to
+ * target other users elsewhere. The host stamps the true caller group
+ * (delivery-action.ts), so scoping here is sound.
+ *
+ * `scopeColumn` is the property on each row that names its agent group.
+ * `null` means the resource has no such column — an agent caller gets
+ * nothing rather than a guessed/wrong filter.
+ *
+ * `ctx.cliScope === 'all'` bypasses scoping entirely for an agent caller
+ * (container_configs.cli_scope, resolved by dispatch.ts). Omitted/undefined
+ * behaves as 'group' (scoped) — the safe default.
+ */
+export function scopeRowsToCaller<T extends Record<string, unknown>>(
+  rows: T[],
+  ctx: { caller: 'host' | 'agent'; agentGroupId: string | null; cliScope?: 'group' | 'all' },
+  scopeColumn: string | null,
+): T[] {
+  if (ctx.caller === 'host') return rows;
+  if (ctx.cliScope === 'all') return rows;
+  if (scopeColumn === null) return [];
+  if (!ctx.agentGroupId) return [];
+  return rows.filter((r) => r[scopeColumn] === ctx.agentGroupId);
+}
+
+/** Narrows the transport CallerContext down to what scopeRowsToCaller needs. */
+function toScopeCtx(ctx: CallerContext): {
+  caller: 'host' | 'agent';
+  agentGroupId: string | null;
+  cliScope?: 'group' | 'all';
+} {
+  if (ctx.caller === 'host') return { caller: 'host', agentGroupId: null };
+  return { caller: 'agent', agentGroupId: ctx.agentGroupId, cliScope: ctx.cliScope };
+}
+
+// ---------------------------------------------------------------------------
 // Generic SQL handlers
 // ---------------------------------------------------------------------------
 
@@ -101,7 +152,7 @@ function visibleColumns(def: ResourceDef): string[] {
 function genericList(def: ResourceDef) {
   const cols = visibleColumns(def).join(', ');
   const filterableNames = new Set(def.columns.filter((c) => !c.generated).map((c) => c.name));
-  return async (args: Record<string, unknown>) => {
+  return async (args: Record<string, unknown>, ctx: CallerContext) => {
     const limit = args.limit !== undefined ? Math.max(1, Number(args.limit)) : 200;
     const filters: string[] = [];
     const params: unknown[] = [];
@@ -114,20 +165,25 @@ function genericList(def: ResourceDef) {
     }
     const where = filters.length > 0 ? ` WHERE ${filters.join(' AND ')}` : '';
     params.push(limit);
-    return getDb()
+    const rows = getDb()
       .prepare(`SELECT ${cols} FROM ${def.table}${where} LIMIT ?`)
-      .all(...params);
+      .all(...params) as Record<string, unknown>[];
+    return scopeRowsToCaller(rows, toScopeCtx(ctx), def.scopeColumn);
   };
 }
 
 function genericGet(def: ResourceDef) {
   const cols = visibleColumns(def).join(', ');
-  return async (args: Record<string, unknown>) => {
+  return async (args: Record<string, unknown>, ctx: CallerContext) => {
     const id = args.id as string;
     if (!id) throw new Error(`${def.name} id is required`);
-    const row = getDb().prepare(`SELECT ${cols} FROM ${def.table} WHERE ${def.idColumn} = ?`).get(id);
+    const row = getDb().prepare(`SELECT ${cols} FROM ${def.table} WHERE ${def.idColumn} = ?`).get(id) as
+      | Record<string, unknown>
+      | undefined;
     if (!row) throw new Error(`${def.name} not found: ${id}`);
-    return row;
+    const scoped = scopeRowsToCaller([row], toScopeCtx(ctx), def.scopeColumn);
+    if (scoped.length === 0) throw new Error(`${def.name} not found: ${id}`);
+    return scoped[0];
   };
 }
 

@@ -7,6 +7,15 @@ registerResource({
   description:
     "Dropped message log — tracks messages that were dropped by the router or access gate. Aggregates by (channel_type, platform_id) with a running count. Reasons include: no_agent_wired (no wiring exists), no_agent_engaged (wiring exists but engage rules didn't fire), unknown_sender_strict (sender not recognized, strict policy), unknown_sender_request_approval (sender not recognized, approval requested).",
   idColumn: 'channel_type',
+  // JUDGMENT CALL: rows do carry an `agent_group_id` column (see below), but
+  // it's null whenever the router couldn't resolve a target (no_agent_wired,
+  // unknown_sender_* reasons) — the common case for this log. Column-scoping
+  // would silently hide most of an agent's own rows while still surfacing
+  // sender_name/platform_id for other tenants' resolved-but-dropped rows if
+  // agent_group_id were ever wrong/stale. Full block is the conservative
+  // choice for a diagnostic log of unregistered senders; low cost since it's
+  // an admin troubleshooting tool, not something agents depend on.
+  scopeColumn: null,
   columns: [
     { name: 'channel_type', type: 'string', description: 'Channel adapter type of the dropped message.' },
     { name: 'platform_id', type: 'string', description: 'Platform chat ID where the message was dropped.' },
