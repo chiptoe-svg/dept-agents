@@ -167,23 +167,27 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (36 commits ahead)
+- **Last tag:** `classroom-2026-07` (37 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  src/channels/playground/api/cost-budgets.test.ts
-M  src/channels/playground/api/cost-budgets.ts
-M  src/credential-proxy.test.ts
-M  src/credential-proxy.ts
-M  src/modules/budgets/enforce.test.ts
-M  src/modules/budgets/enforce.ts
+## main...origin/main [ahead 3]
+M  container/agent-runner/src/mcp-tools/gws.ts
+M  container/skills/google-workspace/SKILL.md
+M  src/gws-mcp-relay.ts
+M  src/gws-mcp-server.test.ts
+M  src/gws-mcp-server.ts
+M  src/gws-mcp-tools.test.ts
+M  src/gws-mcp-tools.ts
+M  src/gws-token.test.ts
+M  src/gws-token.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+301df953 fix(budgets): harden the credential-proxy budget gate (6 review fixes)
 8c8d60ea fix(test): stop seats-config test reading operator's real .env
 f685543a fix(budgets): enforce spend cap on the main agent-turn path at the proxy
 ae6cd07f docs(plans): Plan 2 — HTTP MCP transport, curated server set, and the skills that drive them
@@ -198,9 +202,8 @@ fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budg
 8e7be465 fix(cli): scope ncl reads to the caller agent group (C6)
 9f6ff357 test(gws-mcp-relay): fix authz test gaps in spoof and array-header cases
 8a621c47 fix(gws-relay): derive agent group from container token (C7)
-b48b90c1 test(credential-proxy): pin token-derived agentGroupId, 401 gate, and token strip
 ```
 
 ### Last refresh
 
-2026-07-10T07:48:45Z
+2026-07-10T08:01:52Z

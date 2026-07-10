@@ -30,11 +30,12 @@
  * The container-side stub reaches us via `host.docker.internal:GWS_MCP_RELAY_PORT`
  * (same gateway pattern as the credential proxy).
  *
- * Per-student GWS isolation comes for free: `dispatchTool` calls into
- * `gws-mcp-tools.ts`, which resolves its OAuth token via
- * `getGoogleAccessTokenForAgentGroup(agentGroupId)`. Per-student
- * credentials are picked up automatically when present; instructor's
- * token used as fallback.
+ * Per-group GWS isolation is a hard requirement, not best-effort:
+ * `dispatchTool` calls into `gws-mcp-tools.ts`, which resolves its OAuth
+ * token via `getGoogleAccessTokenForAgentGroup(agentGroupId)` — the
+ * calling group's OWN token, or `null`. There is no owner/instructor
+ * fallback; a group with no personal Google credentials gets a clear
+ * "connect your Google account" error, never another group's data.
  */
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
 

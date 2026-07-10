@@ -1,12 +1,15 @@
 /**
- * Tests for getGoogleAccessTokenForAgentGroup (and the requirePersonal gate).
+ * Tests for getGoogleAccessTokenForAgentGroup.
  *
  * Strategy: mock fs.existsSync + fs.readFileSync so readGwsCredentialsFromPath
  * returns controlled objects with a fresh access_token (so no HTTPS refresh is
  * needed), mock getAgentGroupMetadata + studentGwsCredentialsPath so we control
- * whether a per-student credentials file "exists".  This exercises the real
- * production logic — including the instructor-fallback chain — without hitting
- * the network or the real filesystem.
+ * whether a per-group credentials file "exists". This exercises the real
+ * production logic without hitting the network or the real filesystem.
+ *
+ * The instructor/owner credentials path is seeded in these fixtures too, but
+ * only to prove it is NEVER read on behalf of another group — there is no
+ * fallback to it. See the "security-critical" test below.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -106,41 +109,18 @@ describe('getGoogleAccessTokenForAgentGroup', () => {
     _resetTokenCacheForTest();
   });
 
-  // ── Row 1: agentGroupId=null, requirePersonal=false (default) ──────────────
-
-  it('returns instructor token when agentGroupId is null and requirePersonal is false (default)', async () => {
+  it('returns null when agentGroupId is null', async () => {
     mockExistsSync.mockImplementation((p) => String(p) === INSTRUCTOR_GWS_CREDENTIALS_PATH);
     mockReadFileSync.mockReturnValue(makeFreshCreds(INSTRUCTOR_TOKEN));
-
-    const result = await getGoogleAccessTokenForAgentGroup(null);
-
-    expect(result).toEqual({ token: INSTRUCTOR_TOKEN, principal: 'instructor-fallback' });
-  });
-
-  it('returns null when agentGroupId is null and instructor token is also unavailable', async () => {
-    mockExistsSync.mockReturnValue(false);
 
     const result = await getGoogleAccessTokenForAgentGroup(null);
 
     expect(result).toBeNull();
-  });
-
-  // ── Row 2: agentGroupId=null, requirePersonal=true ─────────────────────────
-
-  it('returns null when agentGroupId is null and requirePersonal is true (instructor not consulted)', async () => {
-    mockExistsSync.mockImplementation((p) => String(p) === INSTRUCTOR_GWS_CREDENTIALS_PATH);
-    mockReadFileSync.mockReturnValue(makeFreshCreds(INSTRUCTOR_TOKEN));
-
-    const result = await getGoogleAccessTokenForAgentGroup(null, { requirePersonal: true });
-
-    // Short-circuit fires before the instructor path is read.
+    // Instructor credentials must never be consulted — there is no fallback.
     expect(mockReadFileSync).not.toHaveBeenCalled();
-    expect(result).toBeNull();
   });
 
-  // ── Row 3: agentGroupId set, per-student found ─────────────────────────────
-
-  it('returns student token when per-student lookup succeeds (requirePersonal false)', async () => {
+  it('resolves to its own token when a group has personal credentials', async () => {
     withStudentToken();
 
     const result = await getGoogleAccessTokenForAgentGroup('group-1');
@@ -148,33 +128,19 @@ describe('getGoogleAccessTokenForAgentGroup', () => {
     expect(result).toEqual({ token: STUDENT_TOKEN, principal: 'self' });
   });
 
-  it('returns student token when per-student lookup succeeds (requirePersonal true)', async () => {
-    withStudentToken();
+  // Security-critical: a group with no personal Google credentials of its
+  // own must resolve to null — never the owner/instructor's token. This is
+  // the mutation-tested assertion (see task report for the RED proof with
+  // the fallback branch restored).
 
-    const result = await getGoogleAccessTokenForAgentGroup('group-1', { requirePersonal: true });
-
-    expect(result).toEqual({ token: STUDENT_TOKEN, principal: 'self' });
-  });
-
-  // ── Row 4: agentGroupId set, per-student NOT found, requirePersonal=false ──
-
-  it('falls back to instructor token when per-student lookup fails and requirePersonal is false', async () => {
+  it('resolves to null — NOT the owner/instructor token — when a group has no personal credentials', async () => {
     withoutStudentToken();
 
     const result = await getGoogleAccessTokenForAgentGroup('group-1');
 
-    expect(result).toEqual({ token: INSTRUCTOR_TOKEN, principal: 'instructor-fallback' });
-  });
-
-  // ── Row 5: agentGroupId set, per-student NOT found, requirePersonal=true ───
-
-  it('returns null when per-student lookup fails and requirePersonal is true (no instructor fallback)', async () => {
-    withoutStudentToken();
-
-    const result = await getGoogleAccessTokenForAgentGroup('group-1', { requirePersonal: true });
-
     expect(result).toBeNull();
-    // Instructor credentials must not have been read at all.
+    // Instructor credentials must never be read on behalf of a group that
+    // isn't the owner's — the fallback path must not exist at all.
     expect(mockReadFileSync).not.toHaveBeenCalledWith(INSTRUCTOR_GWS_CREDENTIALS_PATH, 'utf-8');
   });
 });
