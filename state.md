@@ -167,26 +167,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (37 commits ahead)
+- **Last tag:** `classroom-2026-07` (38 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-M  container/agent-runner/src/mcp-tools/gws.ts
-M  container/skills/google-workspace/SKILL.md
-M  src/gws-mcp-relay.ts
-M  src/gws-mcp-server.test.ts
-M  src/gws-mcp-server.ts
-M  src/gws-mcp-tools.test.ts
-M  src/gws-mcp-tools.ts
-M  src/gws-token.test.ts
-M  src/gws-token.ts
+## main...origin/main [ahead 4]
+M  src/container-runtime.test.ts
+M  src/container-runtime.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google token
 301df953 fix(budgets): harden the credential-proxy budget gate (6 review fixes)
 8c8d60ea fix(test): stop seats-config test reading operator's real .env
 f685543a fix(budgets): enforce spend cap on the main agent-turn path at the proxy
@@ -201,9 +195,8 @@ fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budg
 87f12327 fix(cli): add genericGet mutation-test coverage, push scope predicate into LIMIT query, fix agent instructions
 8e7be465 fix(cli): scope ncl reads to the caller agent group (C6)
 9f6ff357 test(gws-mcp-relay): fix authz test gaps in spoof and array-header cases
-8a621c47 fix(gws-relay): derive agent group from container token (C7)
 ```
 
 ### Last refresh
 
-2026-07-10T08:01:52Z
+2026-07-10T08:07:47Z

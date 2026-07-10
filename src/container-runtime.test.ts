@@ -24,6 +24,7 @@ import {
   stopContainer,
   ensureContainerRuntimeRunning,
   cleanupOrphans,
+  containerState,
 } from './container-runtime.js';
 import { INSTALL_SLUG } from './config.js';
 import { log } from './log.js';
@@ -111,6 +112,34 @@ describe('ensureContainerRuntimeRunning', () => {
   });
 });
 
+// --- containerState ---
+
+describe('containerState', () => {
+  it('passes through a bare string (container 0.12.x)', () => {
+    expect(containerState('running')).toBe('running');
+  });
+
+  it('reads .state from an object (container 1.x)', () => {
+    expect(containerState({ state: 'running' })).toBe('running');
+  });
+
+  it('does not throw on undefined and fails closed (not "running")', () => {
+    expect(containerState(undefined)).not.toBe('running');
+  });
+
+  it('does not throw on null and fails closed (not "running")', () => {
+    expect(containerState(null)).not.toBe('running');
+  });
+
+  it('does not throw on a non-string state and fails closed (not "running")', () => {
+    expect(containerState({ state: 123 })).not.toBe('running');
+  });
+
+  it('does not throw on an object with no state key and fails closed (not "running")', () => {
+    expect(containerState({})).not.toBe('running');
+  });
+});
+
 // --- cleanupOrphans ---
 
 describe('cleanupOrphans', () => {
@@ -153,6 +182,32 @@ describe('cleanupOrphans', () => {
     expect(log.info).toHaveBeenCalledWith('Stopped orphaned containers', {
       count: 2,
       names: ['nanoclaw-group1-111', 'nanoclaw-group2-222'],
+    });
+  });
+
+  it('handles container 1.x object-shaped status ({ state })', () => {
+    // container 1.0.0+ (ManagedResource) emits status as { state: 'running' }
+    // instead of the bare 'running' string. Orphan cleanup must still match
+    // the running one and skip the stopped one.
+    mockExecSync.mockReturnValueOnce(
+      JSON.stringify([
+        {
+          status: { state: 'running' },
+          configuration: { id: 'nanoclaw-v1-1', labels: { 'nanoclaw-install': INSTALL_SLUG } },
+        },
+        {
+          status: { state: 'stopped' },
+          configuration: { id: 'nanoclaw-v1-2', labels: { 'nanoclaw-install': INSTALL_SLUG } },
+        },
+      ]),
+    );
+    mockExecSync.mockReturnValue('');
+
+    cleanupOrphans();
+
+    expect(log.info).toHaveBeenCalledWith('Stopped orphaned containers', {
+      count: 1,
+      names: ['nanoclaw-v1-1'],
     });
   });
 

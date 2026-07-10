@@ -144,6 +144,27 @@ function ensureDockerRunning(): void {
 }
 
 /**
+ * Normalizes `container ls --format json`'s `status` field, which changed
+ * shape between runtime versions: a bare string ("running") through
+ * container 0.12.x, an object ({ state: "running" }) from 1.0.0 onward
+ * (PR #1656 — containers conform to ManagedResource).
+ *
+ * Never throws. Any shape it cannot interpret (undefined, null, an object
+ * with a missing/non-string `state`) returns '' rather than 'running' —
+ * fail closed for the orphan-reaping caller, which only acts on a confirmed
+ * 'running' match. Returning '' means an unrecognized shape is never mistaken
+ * for a live container and never gets stopped.
+ */
+export function containerState(status: unknown): string {
+  if (typeof status === 'string') return status;
+  if (status && typeof status === 'object' && 'state' in status) {
+    const s = (status as { state: unknown }).state;
+    if (typeof s === 'string') return s;
+  }
+  return '';
+}
+
+/**
  * Kill orphaned NanoClaw containers from THIS install's previous runs.
  *
  * Scoped by label `nanoclaw-install=<slug>` so a crash-looping peer install
@@ -157,7 +178,7 @@ export function cleanupOrphans(): void {
       encoding: 'utf-8',
     });
     type ContainerListEntry = {
-      status: string;
+      status: unknown;
       configuration: {
         id: string;
         labels?: Record<string, string>;
@@ -165,7 +186,9 @@ export function cleanupOrphans(): void {
     };
     const containers: ContainerListEntry[] = JSON.parse(output || '[]');
     const orphans = containers
-      .filter((c) => c.status === 'running' && c.configuration.labels?.['nanoclaw-install'] === INSTALL_SLUG)
+      .filter(
+        (c) => containerState(c.status) === 'running' && c.configuration.labels?.['nanoclaw-install'] === INSTALL_SLUG,
+      )
       .map((c) => c.configuration.id);
     for (const name of orphans) {
       try {
