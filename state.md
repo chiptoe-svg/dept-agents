@@ -163,19 +163,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (16 commits ahead)
+- **Last tag:** `classroom-2026-07` (17 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-M  src/channels/playground/api-routes.authz.test.ts
-M  src/channels/playground/api-routes.ts
+## main...origin/main [ahead 4]
+A  src/container-identity.test.ts
+A  src/container-identity.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+4e0dc03e fix(authz): gate simple-restart/reset, benchmark create/run, library mutations
 bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
 73882d15 test(playground): regression-test requireGroupAccess bypass immunity
 6094be37 feat(authz): requireGroupAccess — fail-closed folder authorization helper
@@ -190,9 +191,8 @@ dcb60c1d Merge remote-tracking branch 'origin/main'
 09066814 refactor: delete classroom roster-admin and shared-class-base surface
 6a887da2 refactor: delete classroom enrollment-passcode surface
 7d99b2cc refactor: delete classroom scenario profile (frozen on classroom-freeze)
-e537607f chore: commit pending seminar-install state before classroom freeze
 ```
 
 ### Last refresh
 
-2026-07-10T03:59:21Z
+2026-07-10T04:03:18Z
