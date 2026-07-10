@@ -166,22 +166,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `fix/ssrf-dns-rebinding-pin`
-- **Last tag:** `classroom-2026-07` (50 commits ahead)
+- **Current:** `main`
+- **Last tag:** `classroom-2026-07` (51 commits ahead)
 
 ### Working tree
 
 ```
-## fix/ssrf-dns-rebinding-pin
-M  container/agent-runner/src/mcp-tools/files.test.ts
-M  container/agent-runner/src/mcp-tools/files.ts
-M  container/agent-runner/src/tools/fetch.test.ts
-M  container/agent-runner/src/tools/fetch.ts
+## main...origin/main
+M  container/agent-runner/src/providers/pi.test.ts
+M  container/agent-runner/src/providers/pi.ts
+M  container/agent-runner/src/providers/types.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+1f8a9425 fix(agent): pin vetted IP into fetch to close DNS-rebinding SSRF
 8cf94015 feat(agent): SSRF-safe fetch_url_to_workspace + fail-loud persona size guard
 332572a7 fix(skills): remove personal name from skill frontmatter
 ac246117 feat(skills): port the five skills that drive the curated MCP servers
@@ -196,9 +196,8 @@ c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, 
 88c3c4d9 fix(container-runtime): read object-shaped status (Apple Container 1.x)
 b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google token
 301df953 fix(budgets): harden the credential-proxy budget gate (6 review fixes)
-8c8d60ea fix(test): stop seats-config test reading operator's real .env
 ```
 
 ### Last refresh
 
-2026-07-10T16:06:31Z
+2026-07-10T16:21:29Z
