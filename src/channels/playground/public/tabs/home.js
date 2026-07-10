@@ -89,20 +89,6 @@ export function mountHome(el) {
         </div>
       </section>
 
-      <!-- class-enrollment-passcode:home-card START -->
-      ${
-        isOwner
-          ? `
-      <section class="home-card" id="enrollment-passcode-card">
-        <h2>Today's enrollment passcode</h2>
-        <div id="enrollment-passcode-body">
-          <p class="muted">Loading…</p>
-        </div>
-      </section>`
-          : ''
-      }
-      <!-- class-enrollment-passcode:home-card END -->
-
       <section class="home-card" id="google-card">
         <h2>Google</h2>
         ${googleConnected ? `<p class="muted" id="google-connected-banner">Google account connected.</p>` : ''}
@@ -166,9 +152,6 @@ export function mountHome(el) {
     renderClassControlsCard(el.querySelector('#class-controls-body'));
     renderDefaultParticipantCard(el.querySelector('#default-participant-body'));
     renderWebSearchCard(el.querySelector('#web-search-body'));
-    // class-enrollment-passcode:home-card START
-    renderEnrollmentPasscodeCard(el.querySelector('#enrollment-passcode-body'));
-    // class-enrollment-passcode:home-card END
   }
 }
 
@@ -667,58 +650,6 @@ async function issueAndShowCode(body, botUsername) {
     target.innerHTML = `<p class="muted">Couldn't mint a code: ${escapeHtml(String(err))}</p>`;
   }
 }
-
-// class-enrollment-passcode:home-card-impl START
-
-async function renderEnrollmentPasscodeCard(body) {
-  if (!body) return;
-  try {
-    const res = await fetch('/api/admin/class-passcode', { credentials: 'same-origin' });
-    if (!res.ok) {
-      body.innerHTML = `<p class="muted">Couldn't load passcode (${res.status}).</p>`;
-      return;
-    }
-    const data = await res.json();
-    showPasscode(body, data.passcode);
-  } catch (err) {
-    body.innerHTML = `<p class="muted">Couldn't reach passcode endpoint: ${escapeHtml(String(err))}</p>`;
-  }
-
-  function showPasscode(container, passcode) {
-    const display = passcode
-      ? `<span style="font-size: 2rem; font-weight: bold; letter-spacing: 0.2em;">${escapeHtml(passcode)}</span>`
-      : `<span class="muted">— (not set; click Rotate to generate one)</span>`;
-    container.innerHTML = `
-      <p>Show this code to students during enrollment:</p>
-      <div style="margin: 0.5rem 0;">${display}</div>
-      <div class="home-actions">
-        <button id="rotate-passcode-btn" class="btn">Rotate</button>
-        <span class="muted" id="rotate-passcode-status"></span>
-      </div>
-    `;
-    container.querySelector('#rotate-passcode-btn').addEventListener('click', async () => {
-      const status = container.querySelector('#rotate-passcode-status');
-      status.textContent = 'Rotating…';
-      try {
-        const r = await fetch('/api/admin/class-passcode/rotate', {
-          method: 'POST',
-          credentials: 'same-origin',
-        });
-        if (!r.ok) {
-          status.textContent = `Failed (${r.status}).`;
-          return;
-        }
-        const d = await r.json();
-        status.textContent = '';
-        showPasscode(container, d.passcode);
-      } catch (err) {
-        status.textContent = `Error: ${escapeHtml(String(err))}`;
-      }
-    });
-  }
-}
-
-// class-enrollment-passcode:home-card-impl END
 
 async function renderGoogleCard(body) {
   if (!body) return;

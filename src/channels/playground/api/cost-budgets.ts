@@ -7,7 +7,7 @@ import { getContainerConfig } from '../../../db/container-configs.js';
 import { roleForFolder, roleProfile, memberName } from '../../../scenarios/registry.js';
 import { aggregateAgentUsage } from './usage.js';
 import type { PlaygroundSession } from '../auth-store.js';
-import type { ApiResult } from './enrollment.js';
+import type { ApiResult } from './me.js';
 
 export interface CostBudgets {
   defaultMonthlyUsd: number | null;

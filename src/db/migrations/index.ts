@@ -25,7 +25,6 @@ import { moduleApprovalsTitleOptions } from './module-approvals-title-options.js
 import { moduleClassLoginTokens } from './module-class-login-tokens.js';
 import { moduleClassLoginPins } from './module-class-login-pins.js';
 import { moduleClassTelegramPair } from './module-class-telegram-pair.js';
-import { moduleClassEnrollmentPasscode } from './module-class-enrollment-passcode.js';
 
 export interface Migration {
   version: number;
@@ -58,7 +57,6 @@ const migrations: Migration[] = [
   moduleClassLoginTokens,
   moduleClassLoginPins,
   moduleClassTelegramPair,
-  moduleClassEnrollmentPasscode,
 ];
 
 export function runMigrations(db: Database.Database): void {

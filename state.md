@@ -164,36 +164,33 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (0 commits ahead)
+- **Last tag:** `classroom-2026-07` (1 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3, behind 2]
-D  .claude/skills/add-classroom-auth/REMOVE.md
-D  .claude/skills/add-classroom-auth/SKILL.md
-D  .claude/skills/add-classroom-auth/VERIFY.md
-D  .claude/skills/add-classroom-gws/REMOVE.md
-D  .claude/skills/add-classroom-gws/SKILL.md
-D  .claude/skills/add-classroom-gws/VERIFY.md
-D  .claude/skills/add-classroom-pin/REMOVE.md
-D  .claude/skills/add-classroom-pin/SKILL.md
-D  .claude/skills/add-classroom-pin/add/src/channels/playground/api/login-pin.test.ts
-D  .claude/skills/add-classroom-pin/add/src/channels/playground/api/login-pin.ts
-D  .claude/skills/add-classroom-pin/add/src/channels/playground/public/login-pin.html
-D  .claude/skills/add-classroom-pin/add/src/class-login-pins.test.ts
-D  .claude/skills/add-classroom-pin/add/src/class-login-pins.ts
-D  .claude/skills/add-classroom-pin/add/src/db/migrations/module-class-login-pins.ts
-D  .claude/skills/add-classroom/REMOVE.md
-D  .claude/skills/add-classroom/SKILL.md
-D  .claude/skills/add-classroom/VERIFY.md
-M  scripts/class-skeleton.ts
-M  src/class-student-provision.ts
+## main...origin/main [ahead 4, behind 2]
+M  src/channels/playground/api/cost-budgets.ts
+M  src/channels/playground/api/default-participant.ts
+D  src/channels/playground/api/enrollment.test.ts
+D  src/channels/playground/api/enrollment.ts
+M  src/channels/playground/api/status.ts
+M  src/channels/playground/api/web-search-config.ts
+M  src/channels/playground/public/login.html
+M  src/channels/playground/public/login.js
+M  src/channels/playground/public/tabs/home.js
+M  src/channels/playground/server.ts
+D  src/class-enrollment-passcode.test.ts
+D  src/class-enrollment-passcode.ts
+M  src/db/migrations/016-classroom-roster.ts
+M  src/db/migrations/index.ts
+D  src/db/migrations/module-class-enrollment-passcode.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+7d99b2cc refactor: delete classroom scenario profile (frozen on classroom-freeze)
 e537607f chore: commit pending seminar-install state before classroom freeze
 cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
 e5493c03 docs(specs): department agent server design — fork strategy, invite flow, isolation, credentials
@@ -208,9 +205,8 @@ eea9795e feat(skills): image-vision + image-metadata container skills
 81b4af81 fix(agent-runner): strip stray message tags from folded trailing text
 6b79f3e4 fix(agent-runner): deliver trailing text models leave outside <message>
 91a2b79b fix(agent-runner): retry transient readonly-DB writes instead of crashing
-3ab35671 feat(simple): "Built in" tools row; web tools always-on; relabel agent-browser
 ```
 
 ### Last refresh
 
-2026-07-10T00:53:07Z
+2026-07-10T01:04:00Z

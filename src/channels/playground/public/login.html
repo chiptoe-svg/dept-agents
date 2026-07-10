@@ -112,14 +112,6 @@
       outline: 2px solid var(--brand-blue-hover);
       outline-offset: 2px;
     }
-    #enroll-error {
-      color: var(--danger);
-      background: var(--danger-soft);
-      padding: 8px 10px;
-      border-radius: 6px;
-      margin-top: 12px;
-      font-size: 13px;
-    }
     .footer-help {
       margin-top: 22px;
       padding-top: 16px;
@@ -167,15 +159,7 @@
   <main class="login-card">
     <div class="login-brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom"></div>
     <h1>Sign in</h1>
-    <p class="subtitle">Use your school email and today's class passcode.</p>
-    <form id="enroll-form" autocomplete="off">
-      <label for="enroll-email">Email</label>
-      <input id="enroll-email" name="email" type="email" required autocomplete="email" placeholder="you@clemson.edu">
-      <label for="enroll-passcode">Class passcode</label>
-      <input id="enroll-passcode" name="passcode" type="text" required inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="4-digit code" autocomplete="off">
-      <p id="enroll-error" role="alert" aria-live="assertive" style="display: none;"></p>
-      <button type="submit" class="primary-btn">Sign in</button>
-    </form>
+    <p class="subtitle">Use your bookmarked link, or recover it below.</p>
     <div class="footer-help">
       <details>
         <summary>Lost your bookmark URL?</summary>
