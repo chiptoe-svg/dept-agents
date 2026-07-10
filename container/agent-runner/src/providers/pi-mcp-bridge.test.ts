@@ -306,4 +306,112 @@ describe('createPiMcpBridge', () => {
       await bridge.close();
     }
   });
+
+  it('isolates a failing third-party server and keeps the healthy one alive', async () => {
+    let nth = 0;
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (msg: unknown) => {
+      errors.push(String(msg));
+    };
+
+    try {
+      const bridge = await createPiMcpBridge({
+        env: {},
+        httpBridgeDeps: {
+          createTransport() {
+            return { close: async () => {} } as never;
+          },
+          createClient() {
+            nth += 1;
+            if (nth === 1) {
+              // first server fails to connect (e.g. 401 / unreachable)
+              return {
+                async connect() {
+                  throw new Error('boom 401 unauthorized');
+                },
+                async listTools() {
+                  return { tools: [] };
+                },
+                async callTool() {
+                  return { content: [] };
+                },
+                async close() {},
+              };
+            }
+            return {
+              async connect() {},
+              async listTools() {
+                return {
+                  tools: [
+                    { name: 'ok_tool', description: 'works', inputSchema: { type: 'object', properties: {} } },
+                  ],
+                };
+              },
+              async callTool() {
+                return { content: [{ type: 'text', text: 'ok' }] };
+              },
+              async close() {},
+            };
+          },
+        },
+        mcpServers: {
+          bad: { url: 'http://bad/' },
+          good: { url: 'http://good/' },
+        },
+      });
+
+      try {
+        // The bridge did NOT throw; the good server's tool is present, the bad one is skipped.
+        expect(bridge.tools.some((t) => t.name === 'good__ok_tool')).toBe(true);
+        expect(bridge.tools.some((t) => t.name.startsWith('bad__'))).toBe(false);
+        // The failure is logged with the server name (and nothing that looks like a secret).
+        expect(errors.some((e) => e.includes('"bad"') && e.includes('boom 401 unauthorized'))).toBe(true);
+      } finally {
+        await bridge.close();
+      }
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it('returns successfully with no tools when every server fails to connect', async () => {
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      const bridge = await createPiMcpBridge({
+        env: {},
+        httpBridgeDeps: {
+          createTransport() {
+            return { close: async () => {} } as never;
+          },
+          createClient() {
+            return {
+              async connect() {
+                throw new Error('ECONNREFUSED');
+              },
+              async listTools() {
+                return { tools: [] };
+              },
+              async callTool() {
+                return { content: [] };
+              },
+              async close() {},
+            };
+          },
+        },
+        mcpServers: {
+          one: { url: 'http://one/' },
+          two: { url: 'http://two/' },
+        },
+      });
+
+      // The turn proceeds with zero tools instead of throwing.
+      expect(bridge.tools).toEqual([]);
+      await bridge.close();
+    } finally {
+      console.error = originalError;
+    }
+  });
 });

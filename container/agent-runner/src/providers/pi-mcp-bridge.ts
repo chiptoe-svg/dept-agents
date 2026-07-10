@@ -147,34 +147,52 @@ export async function createPiMcpBridge(options: PiMcpBridgeOptions): Promise<Pi
   const httpDeps = options.httpBridgeDeps ?? defaultHttpBridgeDeps;
   for (const [serverName, config] of Object.entries(servers)) {
     if (hasHttpNanoclaw && serverName === 'nanoclaw') continue;
-    // HTTP transport for operator-configured MCP servers (the common case —
-    // see src/container-config.ts on the host for why stdio is now the
-    // exception). Headers are resolved from the container env at connect
-    // time so persisted config never holds a literal secret.
-    let transport: StdioClientTransport | StreamableHTTPClientTransport;
-    let client: ClientLike;
-    if (config.url) {
-      transport = httpDeps.createTransport(new URL(config.url), {
-        requestInit: { headers: resolveHeaders(config.headers, options.env ?? {}) },
+
+    // Isolate per-server failures: a down or misconfigured third-party MCP
+    // server (unreachable, 401, bad URL) must not crash the whole agent
+    // turn. Log (server name only — never headers/tokens/URLs that may
+    // embed credentials) and skip it; the agent keeps the tools from the
+    // servers that did connect.
+    try {
+      // HTTP transport for operator-configured MCP servers (the common case —
+      // see src/container-config.ts on the host for why stdio is now the
+      // exception). Headers are resolved from the container env at connect
+      // time so persisted config never holds a literal secret.
+      let transport: StdioClientTransport | StreamableHTTPClientTransport;
+      let client: ClientLike;
+      if (config.url) {
+        transport = httpDeps.createTransport(new URL(config.url), {
+          requestInit: { headers: resolveHeaders(config.headers, options.env ?? {}) },
+        });
+        client = httpDeps.createClient();
+      } else {
+        transport = new StdioClientTransport({
+          command: config.command!,
+          args: config.args,
+          env: config.env,
+        });
+        client = new Client({ name: 'nanoclaw-pi-bridge', version: '1.0.0' });
+      }
+
+      // client.connect() already enforces the MCP SDK's default 60s request
+      // timeout on the initialize handshake (DEFAULT_REQUEST_TIMEOUT_MSEC in
+      // @modelcontextprotocol/sdk/shared/protocol.js) — a hung/unreachable
+      // server rejects rather than blocking the turn forever, so no
+      // additional timeout wrapping is added here.
+      await client.connect(transport);
+      tools.push(...(await loadToolsFromClient(serverName, client)));
+      runtimes.push({
+        tools: [],
+        async close() {
+          await client.close();
+          await transport.close();
+        },
       });
-      client = httpDeps.createClient();
-    } else {
-      transport = new StdioClientTransport({
-        command: config.command!,
-        args: config.args,
-        env: config.env,
-      });
-      client = new Client({ name: 'nanoclaw-pi-bridge', version: '1.0.0' });
+    } catch (err) {
+      console.error(
+        `[pi-mcp-bridge] skipping MCP server "${serverName}": ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
-    await client.connect(transport);
-    tools.push(...(await loadToolsFromClient(serverName, client)));
-    runtimes.push({
-      tools: [],
-      async close() {
-        await client.close();
-        await transport.close();
-      },
-    });
   }
 
   return {
