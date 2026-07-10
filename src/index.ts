@@ -19,10 +19,11 @@ import { recoverStaleOutboundJournals } from './session-manager.js';
 import { ensureContainerRuntimeRunning, cleanupOrphans, PROXY_BIND_HOST } from './container-runtime.js';
 import { startCredentialProxy, setUserCredsHook } from './credential-proxy.js';
 // ── classroom-provider-auth:hook-registration START ───────────────────────
-import { resolveUserCreds } from './user-provider-resolver.js';
+import { resolveUserCreds, setBackstopRecorder } from './user-provider-resolver.js';
 import './providers/claude-spec.js'; // registers claude
 import './providers/codex-spec.js'; // registers codex
 // ── classroom-provider-auth:hook-registration END ─────────────────────────
+import { recordBackstopUse } from './backstop-usage.js';
 import { startGwsMcpRelay, stopGwsMcpRelay } from './gws-mcp-relay.js';
 import { startActiveDeliveryPoll, startSweepDeliveryPoll, setDeliveryAdapter, stopDeliveryPolls } from './delivery.js';
 import { startHostSweep, stopHostSweep } from './host-sweep.js';
@@ -167,6 +168,7 @@ async function main(): Promise<void> {
     path.join(DATA_DIR, 'proxy-payloads'),
   );
   setUserCredsHook(resolveUserCreds);
+  setBackstopRecorder(recordBackstopUse);
 
   // 2c. GWS MCP relay — host-side Google Workspace tools. Containers reach
   // it via the same host-gateway pattern as the credential proxy; per-call

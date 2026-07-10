@@ -177,22 +177,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (76 commits ahead)
+- **Last tag:** `classroom-2026-07` (77 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-M  src/integration/x7-end-to-end.test.ts
-A  src/provisioning/agent-group-user.test.ts
-A  src/provisioning/agent-group-user.ts
-M  src/user-provider-resolver.test.ts
-M  src/user-provider-resolver.ts
+## main...origin/main [ahead 1]
+A  src/backstop-usage.test.ts
+A  src/backstop-usage.ts
+A  src/db/migrations/024-backstop-usage.ts
+M  src/db/migrations/index.ts
+M  src/index.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+244b790a feat(provider-auth): resolve creds by the entity model, connect-optional backstop
 4a1115c5 docs(plans): Plan 4 — per-user Codex OAuth + recorded dept-key backstop; remove class-controls
 beac5bb2 docs(env): document playground auth flags — PUBLIC_PLAYGROUND_URL, bypass, PIN
 04a910f0 fix(playground): refuse bypass modes when the box is publicly proxied
@@ -207,9 +208,8 @@ a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login li
 fa5a9640 feat(provisioning): provisionUser — full per-user stack + durable login URL
 89445a50 test(db): pin no-leak invariant for getPlaygroundAgentForUser under bypass=true
 3de9d335 fix(auth): getPlaygroundAgentForUser returns own-group-or-null, no first-group leak
-a73db877 docs(plans): Plan 3 — invite & identity, retire auth bypass via per-user login tokens
 ```
 
 ### Last refresh
 
-2026-07-10T22:43:19Z
+2026-07-10T22:53:21Z
