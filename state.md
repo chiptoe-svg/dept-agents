@@ -167,19 +167,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (46 commits ahead)
+- **Last tag:** `classroom-2026-07` (47 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-M  src/container-runner.ts
-A  src/skills-confinement.test.ts
+## main...origin/main [ahead 1]
+A  container/skills/clemson-curriculum/SKILL.md
+A  container/skills/clemson-procurement/SKILL.md
+A  container/skills/clemson-scheduling/SKILL.md
+A  container/skills/gc-advisor/SKILL.md
+A  container/skills/gc-alumni/SKILL.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+31e5e94e test(skills): pin per-group confinement of self-authored skills
 95589948 fix(pi-mcp-bridge): isolate per-server MCP connect failures
 91ae4b49 feat(mcp): curated default server set (cuassistant public+catalog, gc-alumni, gc-wiki)
 2b89b43b fix(pi): test env wiring through to the MCP bridge; dedupe comment
@@ -194,9 +198,8 @@ b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google to
 f685543a fix(budgets): enforce spend cap on the main agent-turn path at the proxy
 ae6cd07f docs(plans): Plan 2 — HTTP MCP transport, curated server set, and the skills that drive them
 af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, container 1.1.0, curated MCP, ports
-16e3cbe5 docs(review): isolation verification evidence — web, proxy, and ncl gates confirmed live
 ```
 
 ### Last refresh
 
-2026-07-10T15:13:43Z
+2026-07-10T15:24:38Z
