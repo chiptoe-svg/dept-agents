@@ -28,7 +28,17 @@ vi.mock('./log.js', () => ({
 // 'ag_broke' (used by the dedicated budget-enforcement tests below) has a
 // configured budget it exceeds.
 vi.mock('./db/agent-groups.js', () => ({
-  getAgentGroup: (id: string) => ({ id, folder: id }),
+  getAgentGroup: (id: string) => {
+    // Fix p2-1 #4: a throw here (or from the usage scan) must not hang the
+    // request — see the 'a throw inside the budget check ...' test below.
+    if (id === 'ag_throws') throw new Error('boom: getAgentGroup exploded');
+    return { id, folder: id };
+  },
+  // Fix p2-1 #5: gws-token.js imports getAgentGroupMetadata from this same
+  // module. Nothing in this file's tests calls the Google path today, but a
+  // mock that omits it is a latent trap for the first future test that
+  // does — see the 'gws-token.js Google path' test below.
+  getAgentGroupMetadata: () => ({}),
 }));
 vi.mock('./channels/playground/api/cost-budgets.js', () => ({
   readCostBudgets: () => ({ defaultMonthlyUsd: null, perAgent: { ag_broke: 1 }, warnFraction: 0.8 }),
@@ -57,6 +67,7 @@ import {
   resolveProxyIdentity,
 } from './credential-proxy.js';
 import { mintContainerToken, _resetForTest } from './container-identity.js';
+import { _resetBudgetVerdictCacheForTest } from './modules/budgets/enforce.js';
 
 function makeRequest(
   port: number,
@@ -513,7 +524,10 @@ describe('credential-proxy', () => {
   // added at the one chokepoint every LLM call crosses (see mutation proof
   // in the task report: deleting the 429 block makes the first test fail).
   describe('budget enforcement', () => {
-    beforeEach(() => _resetForTest());
+    beforeEach(() => {
+      _resetForTest();
+      _resetBudgetVerdictCacheForTest();
+    });
 
     it('over-budget group gets 429 before any credential is attached', async () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
@@ -536,6 +550,92 @@ describe('credential-proxy', () => {
       expect(hook).not.toHaveBeenCalled();
 
       setUserCredsHook(async () => null);
+    });
+
+    // Fix p2-1 #6: Retry-After tells SDK backoff not to retry a condition
+    // that will not clear within the turn — the cap resets monthly. Uses
+    // makeRequest (real loopback socket) instead of invokeRequestHandler
+    // purely because it's the helper that surfaces response headers; the
+    // token still drives agentGroupId regardless of loopback status (see
+    // the 401 gate above — loopback only exempts the *identity* check).
+    it('429 response carries a Retry-After header (Fix 6)', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+      const token = mintContainerToken('ag_broke', 'sess_broke_retry_after');
+
+      const res = await makeRequest(
+        proxyPort,
+        {
+          method: 'POST',
+          path: '/anthropic/v1/messages',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': 'placeholder',
+            'x-nanoclaw-agent-token': token,
+          },
+        },
+        '{}',
+      );
+
+      expect(res.statusCode).toBe(429);
+      expect(res.headers['retry-after']).toBe('3600');
+    });
+
+    // Fix p2-1 #3: omlx is a local model server — blocking it protects zero
+    // dollars while removing the user's fallback exactly when a paid
+    // provider is blocked. anthropic/openai/clemson stay gated.
+    it('exempts the omlx route from the budget gate (local model, zero dollars)', async () => {
+      proxyPort = await startProxy({
+        ANTHROPIC_API_KEY: 'sk-ant-real-key',
+        OMLX_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
+      });
+      const token = mintContainerToken('ag_broke', 'sess_broke_omlx');
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        url: '/omlx/v1/chat/completions',
+        headers: {
+          'content-type': 'application/json',
+          'x-nanoclaw-agent-token': token,
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('does NOT exempt openai — an over-budget group still gets 429 on a paid route', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+      const token = mintContainerToken('ag_broke', 'sess_broke_openai');
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        url: '/openai/v1/chat/completions',
+        headers: {
+          'content-type': 'application/json',
+          'x-nanoclaw-agent-token': token,
+        },
+      });
+
+      expect(res.statusCode).toBe(429);
+    });
+
+    // Fix p2-1 #4: a throw from getAgentGroup (or the usage scan) inside the
+    // no-try/catch req.on('end', async () => ...) handler used to become an
+    // unhandled rejection with res.end() never called — the request would
+    // hang until client timeout. This must resolve promptly with 429.
+    it('a throw inside the budget check fails closed with 429, not a hang', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+      const token = mintContainerToken('ag_throws', 'sess_throws');
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'placeholder',
+          'x-nanoclaw-agent-token': token,
+        },
+      });
+
+      expect(res.statusCode).toBe(429);
     });
 
     it('under-budget group is not blocked', async () => {
@@ -592,6 +692,20 @@ describe('resolveProxyIdentity', () => {
 
   it('returns null for an unknown token', () => {
     expect(resolveProxyIdentity({ 'x-nanoclaw-agent-token': 'deadbeef' })).toBeNull();
+  });
+});
+
+// Fix p2-1 #5: the './db/agent-groups.js' mock at the top of this file
+// previously exported only getAgentGroup — but src/gws-token.ts imports
+// getAgentGroupMetadata from the same module. Nothing called it, so the
+// suite passed silently; this test is the "first future test [that] touches
+// the Google path" the task description warned about. Without the mock's
+// getAgentGroupMetadata export, this throws
+// "getAgentGroupMetadata is not a function" instead of resolving.
+describe('gws-token.js Google path (Fix 5 — module mock completeness)', () => {
+  it('getStudentGoogleAccessTokenForAgentGroup does not crash on the agent-groups mock', async () => {
+    const { getStudentGoogleAccessTokenForAgentGroup } = await import('./gws-token.js');
+    await expect(getStudentGoogleAccessTokenForAgentGroup('ag_google_test')).resolves.toBeNull();
   });
 });
 

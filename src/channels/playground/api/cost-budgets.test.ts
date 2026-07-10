@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
+import path from 'path';
 import { evaluateBudget, budgetForAgent } from './cost-budgets.js';
 
 vi.mock('../../../config.js', async () => {
@@ -10,6 +11,10 @@ vi.mock('../../../config.js', async () => {
     DATA_DIR: '/tmp/nanoclaw-test-cost-budgets/data',
   };
 });
+
+vi.mock('../../../log.js', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 
 // Mock usage — no real session DBs in tests
 vi.mock('./usage.js', () => ({
@@ -57,6 +62,7 @@ function nonOwnerSession() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   fs.rmSync(TMP, { recursive: true, force: true });
   fs.mkdirSync(TMP, { recursive: true });
   initTestDb();
@@ -166,5 +172,69 @@ describe('handlePostBudgets', () => {
     const cfg = readCostBudgets();
     expect(cfg.defaultMonthlyUsd).toBe(25);
     expect(cfg.perAgent.user_91).toBe(50);
+  });
+});
+
+// Fix p2-1 #1: readCostBudgets must distinguish "file absent" (legitimate —
+// no budget configured) from "file present but corrupted" (a broken
+// control — enforcement must fail closed, not silently disable every cap).
+describe('readCostBudgets — absent vs corrupt', () => {
+  const CONFIG_PATH = path.join(TMP, 'config', 'cost-budgets.json');
+
+  it('absent file: returns the null-budget default and logs a warning naming the path', async () => {
+    const { readCostBudgets } = await import('./cost-budgets.js');
+    const { log } = await import('../../../log.js');
+    expect(fs.existsSync(CONFIG_PATH)).toBe(false);
+
+    const cfg = readCostBudgets();
+
+    expect(cfg).toEqual({ defaultMonthlyUsd: null, warnFraction: 0.8, perAgent: {} });
+    expect(cfg.corrupted).toBeUndefined();
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('not found'),
+      expect.objectContaining({
+        path: CONFIG_PATH,
+      }),
+    );
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it('corrupted file: fails closed (corrupted: true) and logs an error naming the path', async () => {
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, '{ this is not valid json');
+    const { readCostBudgets } = await import('./cost-budgets.js');
+    const { log } = await import('../../../log.js');
+
+    const cfg = readCostBudgets();
+
+    expect(cfg.corrupted).toBe(true);
+    expect(cfg.defaultMonthlyUsd).toBeNull(); // same null-budget shape, but marked corrupted
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining('unreadable/unparseable'),
+      expect.objectContaining({ path: CONFIG_PATH }),
+    );
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('the operator can still repair a corrupted file via handleGetBudgets / handlePostBudgets (no proxy involved)', async () => {
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, 'not json at all {{{');
+    const { handleGetBudgets, handlePostBudgets, readCostBudgets } = await import('./cost-budgets.js');
+
+    // GET still works — the operator can see the Budgets tab even with a
+    // broken file underneath (shows the null-budget default, not an error).
+    const getResult = handleGetBudgets(ownerSession());
+    expect(getResult.status).toBe(200);
+
+    // POST repairs it.
+    const postResult = handlePostBudgets(ownerSession(), { defaultMonthlyUsd: 25, warnFraction: 0.8 });
+    expect(postResult.status).toBe(200);
+
+    // The file on disk is now valid JSON with no stray `corrupted` marker,
+    // and reading it back no longer reports corrupted.
+    const onDisk = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    expect(onDisk.corrupted).toBeUndefined();
+    expect(onDisk.defaultMonthlyUsd).toBe(25);
+    expect(readCostBudgets().corrupted).toBeUndefined();
   });
 });

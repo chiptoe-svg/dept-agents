@@ -642,11 +642,30 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         // (Plan 1.5 Task 8); double-blocking them would break the playground's
         // model chat. Runs before any credential is resolved/attached, so an
         // over-budget group never even gets a credential.
-        if (agentGroupId) {
-          const budget = assertGroupWithinBudget(agentGroupId);
+        //
+        // `omlx` is EXEMPT: it's a local model server, so blocking it protects
+        // zero dollars while removing the user's fallback exactly when a paid
+        // provider is blocked — that would turn a money cap into a total
+        // kill-switch. `anthropic` / `openai` / `clemson` stay gated —
+        // `clemson` is a campus-hosted endpoint whose billing terms are
+        // unknown to us, so it fails closed like any paid route.
+        if (agentGroupId && !isOmlx) {
+          let budget: ReturnType<typeof assertGroupWithinBudget>;
+          try {
+            budget = assertGroupWithinBudget(agentGroupId);
+          } catch (err) {
+            // A throw here (e.g. from getAgentGroup or the usage scan) must
+            // not leave the request hanging — end it and fail closed.
+            log.error('credential-proxy: budget check threw — failing closed', { agentGroupId, err });
+            res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
+            res.end(JSON.stringify({ error: 'Budget check failed; refusing upstream call.' }));
+            return;
+          }
           if (!budget.ok) {
             log.warn('credential-proxy: budget exceeded, refusing upstream call', { agentGroupId });
-            res.writeHead(429, { 'content-type': 'application/json' });
+            // Retry-After: the cap resets monthly, so tell SDK backoff not to
+            // retry within this turn — a blown budget will not clear itself.
+            res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
             res.end(JSON.stringify({ error: budget.reason }));
             return;
           }
