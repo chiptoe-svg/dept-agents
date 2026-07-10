@@ -177,19 +177,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (72 commits ahead)
+- **Last tag:** `classroom-2026-07` (73 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-A  src/cli/dispatch.redact.test.ts
-M  src/cli/dispatch.ts
+## main...origin/main [ahead 3]
+A  src/channels/playground/bypass-guard.test.ts
+A  src/channels/playground/bypass-guard.ts
+M  src/channels/playground/server.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+495b64a0 fix(cli): redact bearer login URLs from agent-facing approval relay
 5cf8ca94 fix(class-tokens): kill live playground sessions when tokens are revoked
 554bf42d fix(class-tokens): resolve issue/rotate/revoke via --user-id or metadata email
 a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login live; pilot unblocked
@@ -204,9 +206,8 @@ a73db877 docs(plans): Plan 3 — invite & identity, retire auth bypass via per-u
 6c598a5a docs(state): Plan 2 complete — tools, runtime, ports; pilot-gating items tracked
 b8f28b3f docs(security): dependency audit findings for host and container trees
 ce50da4c fix(container-runner): key the per-group sites mount by unique folder, not display name
-62a7abcf fix(container-runner): scope the web-hosting mount to each group's own subtree
 ```
 
 ### Last refresh
 
-2026-07-10T20:22:46Z
+2026-07-10T20:24:57Z
