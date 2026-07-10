@@ -19,6 +19,8 @@ import {
 } from './config.js';
 import { collectContainerEnv } from './container-env-registry.js';
 import { materializeContainerJson, containerConfigPath } from './container-config.js';
+import { collectMcpHeaderEnvRefs } from './mcp-header-env.js';
+import { readEnvFile } from './env.js';
 import {
   CONTAINER_HOST_GATEWAY,
   CONTAINER_RUNTIME_BIN,
@@ -539,7 +541,7 @@ function ensureRuntimeFields(
   }
 }
 
-async function buildContainerArgs(
+export async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   agentGroup: AgentGroup,
@@ -664,6 +666,52 @@ async function buildContainerArgs(
   // registered (default install).
   for (const [key, value] of collectContainerEnv({ agentGroup })) {
     args.push('-e', `${key}=${value}`);
+  }
+
+  // Forward only the env vars referenced as ${VAR} in an MCP server's HTTP
+  // headers — never the whole .env. See src/mcp-header-env.ts for the
+  // security tradeoff this implies: unlike LLM API keys (which never enter
+  // a container; the credential proxy substitutes them on the wire), these
+  // tokens DO enter the container env so the in-container pi bridge's
+  // resolveHeaders can expand them at connect time. That means any agent
+  // wired to a credentialed MCP server can read that token out of its own
+  // environment and use it directly, bypassing the MCP server. Scoping the
+  // forward to exactly the referenced names (instead of the whole .env)
+  // limits — but does not eliminate — that exposure.
+  const headerEnvRefs = collectMcpHeaderEnvRefs(containerConfig.mcpServers);
+  if (headerEnvRefs.length > 0) {
+    const headerEnvValues = readEnvFile(headerEnvRefs);
+    for (const key of headerEnvRefs) {
+      if (headerEnvValues[key]) {
+        args.push('-e', `${key}=${headerEnvValues[key]}`);
+        continue;
+      }
+      // Never log the value — only the var name and which server(s)
+      // reference it. A silently-unexpanded ${VAR} becomes a literal
+      // bearer string and the server 401s with no clue why, so this has
+      // to be loud.
+      const referencingServers = Object.entries(containerConfig.mcpServers)
+        .filter(([, cfg]) => cfg.headers && Object.values(cfg.headers).some((v) => v.includes(`\${${key}}`)))
+        .map(([name]) => name);
+      log.warn(`MCP header env var missing from .env — referencing server(s) will 401`, {
+        envVar: key,
+        servers: referencingServers,
+      });
+    }
+  }
+
+  // Apple Container VMs cannot resolve host.docker.internal (Docker-specific).
+  // Replace it with the bridge gateway IP in any injected -e value, so a
+  // Docker-era literal (e.g. copy-pasted into a per-group container.json env
+  // override) resolves correctly inside the VM instead of failing DNS.
+  // Apple Container VMs cannot resolve host.docker.internal (Docker-specific).
+  // Replace it with the bridge gateway IP in any injected -e value, so a
+  // Docker-era literal (e.g. copy-pasted into a per-group container.json env
+  // override) resolves correctly inside the VM instead of failing DNS.
+  for (let i = 0; i < args.length - 1; i++) {
+    if (args[i] === '-e' && args[i + 1].includes('host.docker.internal')) {
+      args[i + 1] = args[i + 1].replaceAll('host.docker.internal', hostGateway);
+    }
   }
 
   // Host gateway

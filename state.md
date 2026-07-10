@@ -167,21 +167,33 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (40 commits ahead)
+- **Last tag:** `classroom-2026-07` (42 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 6]
+## main...origin/main
+M  container/agent-runner/src/config.ts
+M  container/agent-runner/src/index.ts
+M  container/agent-runner/src/providers/pi-mcp-bridge.test.ts
+M  container/agent-runner/src/providers/pi-mcp-bridge.ts
+M  container/agent-runner/src/providers/pi.ts
+A  container/agent-runner/src/providers/resolve-headers.test.ts
+A  container/agent-runner/src/providers/resolve-headers.ts
+M  container/agent-runner/src/providers/types.ts
+A  src/container-config.test.ts
+M  src/container-config.ts
+A  src/container-runner-mcp.test.ts
 M  src/container-runner.ts
-M  src/container-runtime.test.ts
-M  src/container-runtime.ts
-M  src/container-token-lifecycle.test.ts
+A  src/mcp-header-env.test.ts
+A  src/mcp-header-env.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, gateway fix
+488da89f fix(container-runtime): resolve host gateway via runtime query, not a hardcoded constant
 213d59de fix(container-runtime): warn on unrecognized status shape for orphan-reaping visibility
 88c3c4d9 fix(container-runtime): read object-shaped status (Apple Container 1.x)
 b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google token
@@ -195,10 +207,8 @@ af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, contain
 7a3c682c fix(playground): source seat password from env, use timing-safe compare
 89d2b171 docs(plans): amend Plan 1.5 Task 9 — seat password must not live in a tracked file
 13c51951 fix(direct-chat): resolve OpenAI cost attribution and restore Models tab probe
-fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budget (H1, H2)
-87f12327 fix(cli): add genericGet mutation-test coverage, push scope predicate into LIMIT query, fix agent instructions
 ```
 
 ### Last refresh
 
-2026-07-10T12:42:41Z
+2026-07-10T13:13:26Z

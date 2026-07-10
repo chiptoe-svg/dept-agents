@@ -204,6 +204,55 @@ describe('createPiMcpBridge', () => {
     }
   });
 
+  it('connects to a third-party HTTP MCP server by url and resolves headers', async () => {
+    const seen = { url: '', headers: {} as Record<string, string>, closed: false };
+    const bridge = await createPiMcpBridge({
+      env: { CU_TOKEN: 'sek' },
+      httpBridgeDeps: {
+        createTransport(url, init) {
+          seen.url = String(url);
+          seen.headers = (init?.requestInit?.headers ?? {}) as Record<string, string>;
+          return { close: async () => { seen.closed = true; } } as never;
+        },
+        createClient() {
+          return {
+            async connect() {},
+            async listTools() {
+              return {
+                tools: [
+                  {
+                    name: 'list_mail',
+                    description: 'List mail',
+                    inputSchema: { type: 'object', properties: {} },
+                  },
+                ],
+              };
+            },
+            async callTool() {
+              return { content: [{ type: 'text', text: 'ok' }] };
+            },
+            async close() {},
+          };
+        },
+      },
+      mcpServers: {
+        'third-party': {
+          url: 'http://127.0.0.1:8765/mcp',
+          headers: { Authorization: 'Bearer ${CU_TOKEN}' },
+        },
+      },
+    });
+
+    try {
+      expect(bridge.tools.some((t) => t.name === 'third-party__list_mail')).toBe(true);
+      expect(seen.url).toBe('http://127.0.0.1:8765/mcp');
+      expect(seen.headers['Authorization']).toBe('Bearer sek');
+    } finally {
+      await bridge.close();
+      expect(seen.closed).toBe(true);
+    }
+  });
+
   it('merges host HTTP nanoclaw tools with stdio MCP servers', async () => {
     const bridge = await createPiMcpBridge({
       hostMcpUrl: 'http://127.0.0.1:9876/mcp',

@@ -16,12 +16,29 @@ import path from 'path';
 import { GROUPS_DIR } from './config.js';
 import { getContainerConfig } from './db/container-configs.js';
 import { getAgentGroup } from './db/agent-groups.js';
+import { CONTAINER_HOST_GATEWAY } from './container-runtime.js';
 import type { AgentGroup, ContainerConfigRow } from './types.js';
 
+/**
+ * MCP server transport config. Every server the operator actually runs is
+ * HTTP (`url` + `headers`) — stdio (`command`) is the legacy/local-tool
+ * shape. Exactly one of `command` or `url` must be set; `configFromDb`
+ * throws at config-read time (naming the offending server) if neither is
+ * present, rather than silently skipping a broken entry.
+ */
 export interface McpServerConfig {
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** HTTP MCP server endpoint. Mutually exclusive with `command`. */
+  url?: string;
+  /**
+   * HTTP headers sent on connect. Values may reference `${VAR}` — see
+   * `mcp-header-env.ts` for how those refs are collected and forwarded, and
+   * the security tradeoff of doing so (unlike LLM keys, these tokens do
+   * enter the container env).
+   */
+  headers?: Record<string, string>;
   // Optional always-in-context guidance. When set, the host writes the
   // content to `.claude-fragments/mcp-<name>.md` at spawn and imports it
   // into the composed CLAUDE.md.
@@ -92,10 +109,41 @@ export function containerConfigPath(folder: string): string {
   return path.join(GROUPS_DIR, folder, 'container.json');
 }
 
+/**
+ * Validate that every MCP server has a usable transport, and rewrite
+ * `host.docker.internal` in HTTP server URLs to the real bridge gateway.
+ *
+ * `host.docker.internal` is Docker-specific and doesn't resolve inside
+ * Apple Container VMs — operators habitually write it anyway (copy-pasted
+ * from Docker-era configs), so this substitutes the live gateway
+ * (`CONTAINER_HOST_GATEWAY()`) rather than leaving a dead hostname that
+ * fails DNS with no clue why.
+ *
+ * A server with neither `command` nor `url` can never be reached — throw
+ * naming the server rather than silently dropping it, so a bad config
+ * fails loudly at materialize time instead of showing up as a missing
+ * tool the agent can't explain.
+ */
+function rewriteAndValidateMcpServers(servers: Record<string, McpServerConfig>): Record<string, McpServerConfig> {
+  const gateway = CONTAINER_HOST_GATEWAY();
+  const result: Record<string, McpServerConfig> = {};
+  for (const [name, cfg] of Object.entries(servers)) {
+    if (!cfg.command && !cfg.url) {
+      throw new Error(`MCP server "${name}" has neither "command" nor "url" — invalid config, cannot connect.`);
+    }
+    result[name] = {
+      ...cfg,
+      url: cfg.url?.replace('host.docker.internal', gateway),
+    };
+  }
+  return result;
+}
+
 /** Build a `ContainerConfig` from a DB row + agent group identity. */
 export function configFromDb(row: ContainerConfigRow, group: AgentGroup): ContainerConfig {
+  const rawMcpServers = JSON.parse(row.mcp_servers) as Record<string, McpServerConfig>;
   return {
-    mcpServers: JSON.parse(row.mcp_servers) as Record<string, McpServerConfig>,
+    mcpServers: rewriteAndValidateMcpServers(rawMcpServers),
     packages: {
       apt: JSON.parse(row.packages_apt) as string[],
       npm: JSON.parse(row.packages_npm) as string[],

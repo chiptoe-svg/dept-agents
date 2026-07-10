@@ -367,6 +367,10 @@ export class PiProvider implements AgentProvider {
           mcpServers: options.mcpServers,
           hostMcpUrl: options.hostMcpUrl,
           sessionId: options.nanoclawSessionId,
+          // Container env, so HTTP MCP server headers referencing ${VAR}
+          // (e.g. ${WIKI_MCP_TOKEN}) can be expanded at connect time. See
+          // resolveHeaders / mcp-header-env.ts for the forwarding contract.
+          env: options.env,
         })) as { tools: unknown[]; close: () => Promise<void> };
 
         const harness = new AgentHarness({
