@@ -167,18 +167,25 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (31 commits ahead)
+- **Last tag:** `classroom-2026-07` (34 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
-A  docs/superpowers/reviews/2026-07-09-isolation-verification.md
+A  config/cost-budgets.json
+M  src/credential-proxy.test.ts
+M  src/credential-proxy.ts
+M  src/modules/budgets/enforce.test.ts
+M  src/modules/budgets/enforce.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+ae6cd07f docs(plans): Plan 2 — HTTP MCP transport, curated server set, and the skills that drive them
+af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, container 1.1.0, curated MCP, ports
+16e3cbe5 docs(review): isolation verification evidence — web, proxy, and ncl gates confirmed live
 40a86698 docs(state): Plan 1.5 complete — identity derived server-side; bypass retirement blocked on Plan 3
 7a3c682c fix(playground): source seat password from env, use timing-safe compare
 89d2b171 docs(plans): amend Plan 1.5 Task 9 — seat password must not live in a tracked file
@@ -191,11 +198,8 @@ fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budg
 b48b90c1 test(credential-proxy): pin token-derived agentGroupId, 401 gate, and token strip
 e0f88be7 fix(proxy): derive agent group from container token, reject unauthenticated non-loopback (C5)
 3b383eef fix(security): attach container exit handlers before bookkeeping; tighten proxy-origin match
-a845c827 feat(identity): mint per-container token at spawn, stamp on proxy + relay calls
-315ef256 feat(identity): per-container token registry
-4e0dc03e fix(authz): gate simple-restart/reset, benchmark create/run, library mutations
 ```
 
 ### Last refresh
 
-2026-07-10T06:35:50Z
+2026-07-10T07:21:34Z

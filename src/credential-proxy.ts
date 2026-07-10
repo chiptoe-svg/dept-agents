@@ -51,6 +51,7 @@ import { request as httpRequest, RequestOptions } from 'http';
 import { readEnvFile } from './env.js';
 import { getGoogleAccessTokenForAgentGroup } from './gws-token.js';
 import { log } from './log.js';
+import { assertGroupWithinBudget } from './modules/budgets/enforce.js';
 import { openStore, type PayloadStore } from './proxy-payload-log/store.js';
 import { resolveContainerToken, type ContainerIdentity } from './container-identity.js';
 
@@ -634,6 +635,22 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
         delete headers[SESSION_ID_HEADER];
         // Don't leak the capability token upstream — it's a live credential.
         delete headers[AGENT_TOKEN_HEADER];
+
+        // Enforce the spend cap at the one chokepoint every LLM call crosses.
+        // Loopback callers (agentGroupId === null) are NOT checked here —
+        // direct-chat already runs its own budget check before dispatching
+        // (Plan 1.5 Task 8); double-blocking them would break the playground's
+        // model chat. Runs before any credential is resolved/attached, so an
+        // over-budget group never even gets a credential.
+        if (agentGroupId) {
+          const budget = assertGroupWithinBudget(agentGroupId);
+          if (!budget.ok) {
+            log.warn('credential-proxy: budget exceeded, refusing upstream call', { agentGroupId });
+            res.writeHead(429, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: budget.reason }));
+            return;
+          }
+        }
 
         // ── per-user-provider-auth:proxy-invocation START ──────────────────────
         let studentCredsApplied = false;

@@ -20,6 +20,31 @@ vi.mock('./log.js', () => ({
   log: { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() },
 }));
 
+// Budget-enforcement mocks (Task p2-1). getAgentGroup resolves every id used
+// anywhere in this file to a group whose folder equals its id, so every
+// pre-existing test in this file (ag_alice, ag1, ag_carol, ag_bob, ...) gets
+// a folder with no perAgent entry and a null default → assertGroupWithinBudget
+// short-circuits to {ok:true} without even calling aggregateAgentUsage. Only
+// 'ag_broke' (used by the dedicated budget-enforcement tests below) has a
+// configured budget it exceeds.
+vi.mock('./db/agent-groups.js', () => ({
+  getAgentGroup: (id: string) => ({ id, folder: id }),
+}));
+vi.mock('./channels/playground/api/cost-budgets.js', () => ({
+  readCostBudgets: () => ({ defaultMonthlyUsd: null, perAgent: { ag_broke: 1 }, warnFraction: 0.8 }),
+  budgetForAgent: (
+    folder: string,
+    cfg: { perAgent: Record<string, number | null>; defaultMonthlyUsd: number | null },
+  ) => (folder in cfg.perAgent ? cfg.perAgent[folder] : cfg.defaultMonthlyUsd),
+  evaluateBudget: (costUsd: number, budgetUsd: number | null) =>
+    budgetUsd == null
+      ? { status: 'none' as const, costUsd, budgetUsd, fraction: null }
+      : { status: (costUsd >= budgetUsd ? 'over' : 'ok') as 'over' | 'ok', costUsd, budgetUsd, fraction: 0 },
+}));
+vi.mock('./channels/playground/api/usage.js', () => ({
+  aggregateAgentUsage: (id: string) => ({ thisMonth: { costUsd: id === 'ag_broke' ? 99 : 0 }, total: { costUsd: 0 } }),
+}));
+
 import {
   startCredentialProxy,
   setUserCredsHook,
@@ -480,6 +505,53 @@ describe('credential-proxy', () => {
       });
 
       expect(res.statusCode).not.toBe(401);
+    });
+  });
+
+  // Task p2-1: budgets previously enforced only on /api/direct-chat — a
+  // normal agent turn through the proxy had no cap. These pin the 429 gate
+  // added at the one chokepoint every LLM call crosses (see mutation proof
+  // in the task report: deleting the 429 block makes the first test fail).
+  describe('budget enforcement', () => {
+    beforeEach(() => _resetForTest());
+
+    it('over-budget group gets 429 before any credential is attached', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+      const hook = vi.fn(async () => null);
+      setUserCredsHook(hook);
+      const token = mintContainerToken('ag_broke', 'sess_broke');
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'placeholder',
+          'x-nanoclaw-agent-token': token,
+        },
+      });
+
+      expect(res.statusCode).toBe(429);
+      expect(JSON.parse(res.body)).toEqual({ error: expect.stringMatching(/budget/i) });
+      // No credential was even attached — the budget gate ran before userCredsHook.
+      expect(hook).not.toHaveBeenCalled();
+
+      setUserCredsHook(async () => null);
+    });
+
+    it('under-budget group is not blocked', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+      const token = mintContainerToken('ag_solvent', 'sess_solvent');
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'placeholder',
+          'x-nanoclaw-agent-token': token,
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
     });
   });
 });

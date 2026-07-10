@@ -8,6 +8,7 @@
  */
 import { readCostBudgets, budgetForAgent, evaluateBudget } from '../../channels/playground/api/cost-budgets.js';
 import { aggregateAgentUsage } from '../../channels/playground/api/usage.js';
+import { getAgentGroup } from '../../db/agent-groups.js';
 
 export type BudgetVerdict = { ok: true } | { ok: false; reason: string };
 
@@ -22,4 +23,17 @@ export function assertWithinBudget(folder: string, agentGroupId: string): Budget
     return { ok: false, reason: `Monthly budget exceeded ($${spentUsd.toFixed(2)} of $${budgetUsd.toFixed(2)}).` };
   }
   return { ok: true };
+}
+
+/**
+ * Budget check for callers identified only by agent-group id — i.e. the
+ * credential proxy, which is the one chokepoint every LLM call crosses.
+ *
+ * Fails CLOSED on an unknown group: a request we cannot attribute must not
+ * spend the department's key.
+ */
+export function assertGroupWithinBudget(agentGroupId: string): BudgetVerdict {
+  const group = getAgentGroup(agentGroupId);
+  if (!group) return { ok: false, reason: 'Unknown agent group.' };
+  return assertWithinBudget(group.folder, group.id);
 }
