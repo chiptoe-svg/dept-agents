@@ -177,6 +177,32 @@ async function spawnContainer(session: Session): Promise<void> {
     throw err;
   }
 
+  // Attach close/error handlers immediately — before any bookkeeping that
+  // could throw (markContainerRunning is a central-DB write) or that just
+  // takes time (stdout/stderr wiring). If bookkeeping below throws,
+  // spawnContainer rejects while the container keeps running; without the
+  // handlers already attached, no close/error listener would ever fire and
+  // revokeContainerToken would never run, leaving the per-container token
+  // (a live credential) standing until host restart. Handler bodies below
+  // reference `activeContainers` before the `.set()` call runs — that's
+  // fine, `Map.delete` on a missing key is a no-op, and `revokeContainerToken`
+  // (`Map.delete`) is idempotent, so a double-fire (error then close) is safe.
+  container.on('close', (code) => {
+    activeContainers.delete(session.id);
+    markContainerStopped(session.id);
+    stopTypingRefresh(session.id);
+    revokeContainerToken(containerToken);
+    log.info('Container exited', { sessionId: session.id, code, containerName });
+  });
+
+  container.on('error', (err) => {
+    activeContainers.delete(session.id);
+    markContainerStopped(session.id);
+    stopTypingRefresh(session.id);
+    revokeContainerToken(containerToken);
+    log.error('Container spawn error', { sessionId: session.id, err });
+  });
+
   activeContainers.set(session.id, { process: container, containerName });
   markContainerRunning(session.id);
 
@@ -194,22 +220,6 @@ async function spawnContainer(session: Session): Promise<void> {
   // sweep reading heartbeat mtime + processing_ack claim age + container_state
   // (see src/host-sweep.ts). This avoids killing long-running legitimate work
   // on a wall-clock timer.
-
-  container.on('close', (code) => {
-    activeContainers.delete(session.id);
-    markContainerStopped(session.id);
-    stopTypingRefresh(session.id);
-    revokeContainerToken(containerToken);
-    log.info('Container exited', { sessionId: session.id, code, containerName });
-  });
-
-  container.on('error', (err) => {
-    activeContainers.delete(session.id);
-    markContainerStopped(session.id);
-    stopTypingRefresh(session.id);
-    revokeContainerToken(containerToken);
-    log.error('Container spawn error', { sessionId: session.id, err });
-  });
 }
 
 /**

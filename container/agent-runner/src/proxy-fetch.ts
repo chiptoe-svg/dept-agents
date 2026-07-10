@@ -64,7 +64,11 @@ export function installProxyFetch(): void {
   const original = globalThis.fetch;
   const wrapped = ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const url = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
-    if (!url.startsWith(proxyOrigin)) {
+    // Require a real boundary after the origin — a bare `startsWith` would
+    // also match a hostile service on a prefix-colliding port on the same
+    // host (e.g. proxyOrigin `http://host:3001` matching `http://host:30012/...`),
+    // leaking the agent token to that service.
+    if (url !== proxyOrigin && !url.startsWith(proxyOrigin + '/')) {
       return original(input, init);
     }
     // Build a Headers from whatever shape was passed and add ours.
