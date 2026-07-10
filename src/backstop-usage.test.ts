@@ -18,9 +18,21 @@ describe('backstop usage', () => {
   });
 
   it('upserts — the latest use wins', () => {
-    recordBackstopUse('ag_x', 'openai');
-    recordBackstopUse('ag_x', 'anthropic');
-    expect(getBackstopUse('ag_x')?.providerId).toBe('anthropic');
+    // With a per-group (not per-provider) debounce, two immediate calls
+    // would have the second suppressed by the 60s window even though the
+    // provider changed. Advance fake time past the window between the two
+    // writes so this still meaningfully exercises the upsert-overwrite
+    // path rather than accidentally re-testing the debounce.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      recordBackstopUse('ag_x', 'openai');
+      vi.setSystemTime(new Date('2026-01-01T00:01:01.000Z'));
+      recordBackstopUse('ag_x', 'anthropic');
+      expect(getBackstopUse('ag_x')?.providerId).toBe('anthropic');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('returns null for a group that never used the backstop', () => {
@@ -45,6 +57,31 @@ describe('backstop usage', () => {
       const after2 = getBackstopUse('ag_deb');
 
       expect(after2?.at).toBe(after1?.at);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('debounces per-group, not per-provider: alternating providers within the window still produce one write', () => {
+    // Proves the debounce key is the group alone. If the skip condition
+    // were still gated on `existing.providerId === providerId`, a provider
+    // switch would force a write every time — reproducing the hot-path
+    // DB-write storm the debounce exists to prevent.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      recordBackstopUse('ag_alt', 'claude');
+      const after1 = getBackstopUse('ag_alt');
+
+      // Still well inside the 60s window, but a *different* provider.
+      vi.setSystemTime(new Date('2026-01-01T00:00:01.000Z'));
+      recordBackstopUse('ag_alt', 'openai-codex');
+      const after2 = getBackstopUse('ag_alt');
+
+      // Suppressed write: timestamp unchanged AND providerId still the
+      // first call's, since the second call never reached the upsert.
+      expect(after2?.at).toBe(after1?.at);
+      expect(after2?.providerId).toBe('claude');
     } finally {
       vi.useRealTimers();
     }
