@@ -69,13 +69,15 @@ function seed(): void {
   fs.mkdirSync(path.join(GROUPS, 'user_alice'), { recursive: true });
   fs.mkdirSync(path.join(GROUPS, 'user_bob'), { recursive: true });
 
-  // ag_alice's allowlist permits only claude-good. Model-allowlist checks
-  // are keyed by catalog `modelProvider` names (anthropic/openai-codex/...
-  // — see migration 022), and the frontend's `provider` field for the
-  // 'Anthropic' group happens to coincide with that name, so 'anthropic' is
-  // used directly in test request bodies.
+  // ag_alice's allowlist permits only claude-haiku-4-5 (a real catalog
+  // entry — direct-chat.ts now fails closed on unresolvable catalog
+  // entries, so the allowed model must actually exist in the catalog).
+  // Model-allowlist checks are keyed by catalog `modelProvider` names
+  // (anthropic/openai-codex/... — see migration 022), and the frontend's
+  // `provider` field for the 'Anthropic' group happens to coincide with
+  // that name, so 'anthropic' is used directly in test request bodies.
   ensureContainerConfig('ag_alice');
-  updateContainerConfigJson('ag_alice', 'allowed_models', [{ provider: 'anthropic', model: 'claude-good' }]);
+  updateContainerConfigJson('ag_alice', 'allowed_models', [{ provider: 'anthropic', model: 'claude-haiku-4-5' }]);
   ensureContainerConfig('ag_bob');
 }
 
@@ -158,7 +160,7 @@ async function postDirectChat(body: unknown) {
 
 const baseBody = {
   provider: 'anthropic',
-  model: 'claude-good',
+  model: 'claude-haiku-4-5',
   messages: [{ role: 'user', content: 'hi' }],
 };
 

@@ -286,24 +286,36 @@ async function fetchOrThrow(url: string, init: RequestInit): Promise<Response> {
 }
 
 /**
- * Check (rawProvider, model) against the agent group's `allowedModels`
- * allowlist (the same one the Models tab edits — `container-config.ts`'s
- * `configFromDb`, do not re-derive the JSON parsing here).
+ * Resolve the frontend's provider-*group* id (openai / anthropic / local /
+ * clemson — see `provider-groups.ts`) to the set of catalog `modelProvider`
+ * names it can mean. They diverge for OpenAI (group id 'openai' vs. catalog
+ * 'openai-codex' / 'openai-platform'); for every other group the group id
+ * and the sole member's `modelProvider` happen to coincide. Falls back to
+ * treating `rawProvider` itself as the modelProvider when it isn't a known
+ * group id (e.g. a caller that already passes a catalog modelProvider name
+ * directly), so the set is never empty.
  *
- * `rawProvider` is the frontend's provider-*group* id (openai / anthropic /
- * local / clemson — see `provider-groups.ts`), not necessarily the catalog
- * `modelProvider` name: they diverge for OpenAI (group id 'openai' vs.
- * catalog 'openai-codex' / 'openai-platform'). Resolve through
- * `findGroupById` to the member `modelProvider`s before comparing against
- * allowlist entries, which are stored using catalog `modelProvider` names
+ * Computed ONCE per request and shared by the allowlist check and the
+ * cost/catalog lookup below so both resolve from the same mapping — see
+ * task-1p5-8 review: the two used to resolve independently and the cost
+ * side never went through `findGroupById`, so OpenAI spend priced at $0.
+ */
+function candidateModelProviders(rawProvider: string): Set<string> {
+  return new Set(findGroupById(rawProvider)?.members.map((m) => m.modelProvider) ?? [rawProvider]);
+}
+
+/**
+ * Check (candidateProviders, model) against the agent group's
+ * `allowedModels` allowlist (the same one the Models tab edits —
+ * `container-config.ts`'s `configFromDb`, do not re-derive the JSON parsing
+ * here). Allowlist entries are stored using catalog `modelProvider` names
  * (see migration 022). An unconfigured/empty allowlist means unrestricted —
  * same "no restriction" semantics the Models tab already uses.
  */
-function isModelAllowed(agentGroup: AgentGroup, rawProvider: string, model: string): boolean {
+function isModelAllowed(agentGroup: AgentGroup, candidateProviders: Set<string>, model: string): boolean {
   const row = getContainerConfig(agentGroup.id);
   const allowedModels = row ? (configFromDb(row, agentGroup).allowedModels ?? []) : [];
   if (allowedModels.length === 0) return true;
-  const candidateProviders = new Set(findGroupById(rawProvider)?.members.map((m) => m.modelProvider) ?? [rawProvider]);
   return allowedModels.some((e) => candidateProviders.has(e.provider) && e.model === model);
 }
 
@@ -332,8 +344,26 @@ export async function handleDirectChat(body: {
   if (!agentFolder) return { status: 400, body: { error: 'agentFolder required' } };
   const group = getAgentGroupByFolder(agentFolder);
   if (!group) return { status: 404, body: { error: `no agent group for folder ${agentFolder}` } };
-  if (!isModelAllowed(group, rawProvider, model)) {
+
+  // Resolve the provider-group id to catalog modelProvider name(s) ONCE,
+  // shared by the allowlist check and the cost/catalog lookup below (see
+  // candidateModelProviders' doc comment).
+  const candidateProviders = candidateModelProviders(rawProvider);
+  if (!isModelAllowed(group, candidateProviders, model)) {
     return { status: 403, body: { error: `model ${rawProvider}/${model} is not on this group's allowlist` } };
+  }
+
+  // Catalog lookup keys by the resolved catalog modelProvider(s), not the
+  // raw frontend provider-group id — a group can map to multiple
+  // modelProviders (openai → openai-codex + openai-platform), so match on
+  // the model id within the resolved set rather than guessing a single
+  // name. Fail closed if nothing matches: previously an unresolved/unknown
+  // (provider, model) pair silently priced at $0 and the budget check could
+  // never trip (task-1p5-8 review, Fix 1).
+  const catalog = getModelCatalog();
+  const entry = catalog.find((e) => candidateProviders.has(e.modelProvider) && e.id === model);
+  if (!entry) {
+    return { status: 400, body: { error: `no catalog entry for ${rawProvider}/${model} — cannot price this request` } };
   }
 
   // Chat tab sends catalog `modelProvider` names (openai-codex, anthropic,
@@ -372,16 +402,17 @@ export async function handleDirectChat(body: {
   }
   const { text, tokensIn, tokensOut, tokensCached, tokensReasoning } = dispatch;
 
-  // Catalog lookup keys by catalog modelProvider (rawProvider), not the
-  // normalized handler key.
-  const catalog = getModelCatalog();
-  const entry = catalog.find((e) => e.modelProvider === rawProvider && e.id === model);
+  // `entry` was resolved above (before dispatch) — reuse it, don't
+  // re-derive against the wrong (raw) provider name.
   const costUsd = priceFor(entry, tokensIn, tokensOut, tokensCached);
 
   // Best-effort: record into the agent's pseudo session-outbound so usage
   // aggregation picks it up. Failure is non-fatal. `group` was resolved
-  // above (agentFolder is required) — no need to look it up again.
-  recordDirectChatUsage(group.id, rawProvider, model, text, tokensIn, tokensOut);
+  // above (agentFolder is required) — no need to look it up again. Persist
+  // the resolved catalog modelProvider (entry.modelProvider), not the raw
+  // frontend provider-group id, so aggregateAgentUsage's catalog lookup
+  // (keyed by modelProvider) actually finds this row.
+  recordDirectChatUsage(group.id, entry.modelProvider, model, text, tokensIn, tokensOut);
 
   return {
     status: 200,

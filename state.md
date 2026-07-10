@@ -163,22 +163,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (26 commits ahead)
+- **Last tag:** `classroom-2026-07` (27 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 13]
-A  src/channels/playground/api-routes.direct-chat.test.ts
-M  src/channels/playground/api-routes.ts
+## main...origin/main [ahead 14]
+A  src/channels/playground/api-routes.direct-chat-openai.test.ts
+M  src/channels/playground/api-routes.direct-chat.test.ts
 M  src/channels/playground/api/direct-chat.ts
-A  src/modules/budgets/enforce.test.ts
-A  src/modules/budgets/enforce.ts
+M  src/channels/playground/api/usage.ts
+M  src/channels/playground/public/tabs/models.js
 ```
 
 ### Recent commits (last 15)
 
 ```
+fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budget (H1, H2)
 87f12327 fix(cli): add genericGet mutation-test coverage, push scope predicate into LIMIT query, fix agent instructions
 8e7be465 fix(cli): scope ncl reads to the caller agent group (C6)
 9f6ff357 test(gws-mcp-relay): fix authz test gaps in spoof and array-header cases
@@ -193,9 +194,8 @@ bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
 73882d15 test(playground): regression-test requireGroupAccess bypass immunity
 6094be37 feat(authz): requireGroupAccess — fail-closed folder authorization helper
 5f848ee4 docs(plans): Plan 1.5 — isolation hardening before any pilot invite
-8a7d50d1 docs(review): full code review — cross-tenant isolation defects, verified findings
 ```
 
 ### Last refresh
 
-2026-07-10T05:38:45Z
+2026-07-10T05:55:11Z
