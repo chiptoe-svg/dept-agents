@@ -177,20 +177,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (71 commits ahead)
+- **Last tag:** `classroom-2026-07` (72 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-A  src/class-login-tokens.sessions.test.ts
-M  src/class-login-tokens.test.ts
-M  src/class-login-tokens.ts
+## main...origin/main [ahead 2]
+A  src/cli/dispatch.redact.test.ts
+M  src/cli/dispatch.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+5cf8ca94 fix(class-tokens): kill live playground sessions when tokens are revoked
 554bf42d fix(class-tokens): resolve issue/rotate/revoke via --user-id or metadata email
 a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login live; pilot unblocked
 76e7875b docs(auth): bypass retired — operator+canary login and anonymous-refused verified live
@@ -205,9 +205,8 @@ a73db877 docs(plans): Plan 3 — invite & identity, retire auth bypass via per-u
 b8f28b3f docs(security): dependency audit findings for host and container trees
 ce50da4c fix(container-runner): key the per-group sites mount by unique folder, not display name
 62a7abcf fix(container-runner): scope the web-hosting mount to each group's own subtree
-02eead0e fix(playground): budget-gate the knowledge/RAG spend routes
 ```
 
 ### Last refresh
 
-2026-07-10T20:21:23Z
+2026-07-10T20:22:46Z
