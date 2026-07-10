@@ -138,13 +138,18 @@ async function spawnContainer(session: Session): Promise<void> {
   // buildMounts and buildContainerArgs so side effects (mkdir, etc.) fire once.
   const { provider, contribution } = resolveProviderContribution(session, agentGroup, containerConfig);
 
-  // Ensure container.json has the agent group identity fields + the resolved
-  // provider so the in-container runner picks the right runtime. Written at
-  // spawn time so the runner can read them from the RO mount.
-  ensureRuntimeFields(containerConfig, agentGroup, provider);
-
   const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
   assertDirectoryMounts(mounts);
+
+  // Ensure container.json has the agent group identity fields + the resolved
+  // provider so the in-container runner picks the right runtime. Written at
+  // spawn time so the runner can read them from the RO mount. MUST run after
+  // buildMounts(): composeGroupClaudeMd() (called from buildMounts) re-
+  // materializes container.json straight from the DB internally, which would
+  // clobber these runtime-only fields (notably `provider`, when it's resolved
+  // from session/group level and not yet synced into the container_configs
+  // row) if this ran first. Whichever write happens last wins on disk.
+  ensureRuntimeFields(containerConfig, agentGroup, provider);
   const containerName = `nanoclaw-v2-${agentGroup.folder}-${Date.now()}`;
   // OneCLI agent identifier is always the agent group id — stable across
   // sessions and reversible via getAgentGroup() for approval routing.

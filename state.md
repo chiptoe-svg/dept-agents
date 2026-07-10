@@ -167,20 +167,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (51 commits ahead)
+- **Last tag:** `classroom-2026-07` (52 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
-M  container/agent-runner/src/providers/pi.test.ts
-M  container/agent-runner/src/providers/pi.ts
-M  container/agent-runner/src/providers/types.ts
+A  src/container-runner-provider-persistence.test.ts
+M  src/container-runner.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+605b5aab refactor(pi): reconcile harness with personal repo — best of both
 1f8a9425 fix(agent): pin vetted IP into fetch to close DNS-rebinding SSRF
 8cf94015 feat(agent): SSRF-safe fetch_url_to_workspace + fail-loud persona size guard
 332572a7 fix(skills): remove personal name from skill frontmatter
@@ -195,9 +195,8 @@ c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, 
 213d59de fix(container-runtime): warn on unrecognized status shape for orphan-reaping visibility
 88c3c4d9 fix(container-runtime): read object-shaped status (Apple Container 1.x)
 b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google token
-301df953 fix(budgets): harden the credential-proxy budget gate (6 review fixes)
 ```
 
 ### Last refresh
 
-2026-07-10T16:21:29Z
+2026-07-10T16:31:31Z
