@@ -146,7 +146,7 @@ function resolveUserIdByEmail(email: string): string | null {
   return row?.user_id ?? null;
 }
 
-function publicPlaygroundBaseUrl(): string {
+export function publicPlaygroundBaseUrl(): string {
   // Read fresh on every call: process.env first, then .env (the launchd
   // service spawns without inheriting shell .env, so the readEnvFile path
   // is what makes the value available to the running host).
