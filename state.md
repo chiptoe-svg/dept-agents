@@ -163,19 +163,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (10 commits ahead)
+- **Last tag:** `classroom-2026-07` (13 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
-M  .claude/skills/add-admintools/SKILL.md
-M  state.md
+A  src/channels/playground/api-routes.authz.test.ts
+A  src/channels/playground/require-group-access.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+5f848ee4 docs(plans): Plan 1.5 — isolation hardening before any pilot invite
+8a7d50d1 docs(review): full code review — cross-tenant isolation defects, verified findings
+a565f0d2 chore: repo renamed to dept-agents — update origin refs and clear tracked action
 f84f48bf docs(plans): Plan 2 scope — Apple Container 1.1.0 upgrade after dual-shape fix, + T8 follow-ups
 075e1804 docs(state): post-Plan-1 reconciliation — refresh volatile state, URL fix, auth-revert + rename tracking
 dcb60c1d Merge remote-tracking branch 'origin/main'
@@ -188,11 +191,8 @@ e537607f chore: commit pending seminar-install state before classroom freeze
 cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
 e5493c03 docs(specs): department agent server design — fork strategy, invite flow, isolation, credentials
 0800e63c fix(setup): non-interactive sudo for macOS service install + Apple Container path
-01ecb657 fix(setup): Codex skills via on-demand router, not global symlinks
-c7ab8604 fix(setup): default agent provider to OpenAI when CLI is Codex
-14bbd0d5 fix(setup): infer agent provider from existing .env keys on re-run
 ```
 
 ### Last refresh
 
-2026-07-10T02:48:01Z
+2026-07-10T03:32:08Z
