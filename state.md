@@ -164,27 +164,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (2 commits ahead)
+- **Last tag:** `classroom-2026-07` (3 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 5, behind 2]
-D  scripts/class-skeleton.ts
-D  scripts/refresh-student-personas.ts
-M  src/channels/playground/api-routes.ts
-D  src/channels/playground/api/class-base.ts
-D  src/channels/playground/api/students-admin.test.ts
-D  src/channels/playground/api/students-admin.ts
-M  src/channels/playground/public/tabs/persona.js
-M  src/channels/playground/public/tabs/status.js
-D  src/class-student-provision.test.ts
-D  src/class-student-provision.ts
+## main...origin/main [ahead 6, behind 2]
+M  config/playground-seats.json
 ```
 
 ### Recent commits (last 15)
 
 ```
+09066814 refactor: delete classroom roster-admin and shared-class-base surface
 6a887da2 refactor: delete classroom enrollment-passcode surface
 7d99b2cc refactor: delete classroom scenario profile (frozen on classroom-freeze)
 e537607f chore: commit pending seminar-install state before classroom freeze
@@ -199,9 +191,8 @@ eea9795e feat(skills): image-vision + image-metadata container skills
 1c76d15f fix(agent-runner): surface uploaded image paths to the agent
 62d1def2 feat(simple): "Start over" resets agent memory + trace, not just the window
 81b4af81 fix(agent-runner): strip stray message tags from folded trailing text
-6b79f3e4 fix(agent-runner): deliver trailing text models leave outside <message>
 ```
 
 ### Last refresh
 
-2026-07-10T01:12:13Z
+2026-07-10T01:50:27Z
