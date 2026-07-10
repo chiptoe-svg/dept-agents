@@ -163,19 +163,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (17 commits ahead)
+- **Last tag:** `classroom-2026-07` (18 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
-A  src/container-identity.test.ts
-A  src/container-identity.ts
+## main...origin/main [ahead 5]
+M  container/agent-runner/src/mcp-tools/gws.ts
+M  container/agent-runner/src/proxy-fetch.ts
+M  src/container-runner.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+315ef256 feat(identity): per-container token registry
 4e0dc03e fix(authz): gate simple-restart/reset, benchmark create/run, library mutations
 bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
 73882d15 test(playground): regression-test requireGroupAccess bypass immunity
@@ -190,9 +192,8 @@ dcb60c1d Merge remote-tracking branch 'origin/main'
 73761b78 feat: department base — trimmed seats, fresh-DB boot verified
 09066814 refactor: delete classroom roster-admin and shared-class-base surface
 6a887da2 refactor: delete classroom enrollment-passcode surface
-7d99b2cc refactor: delete classroom scenario profile (frozen on classroom-freeze)
 ```
 
 ### Last refresh
 
-2026-07-10T04:03:18Z
+2026-07-10T04:10:11Z

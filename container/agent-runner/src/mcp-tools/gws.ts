@@ -2,10 +2,10 @@
  * Google Workspace MCP tools (Phase 13).
  *
  * Forwards calls to the host-side relay (`src/gws-mcp-relay.ts`,
- * default port 3007) rather than hitting googleapis.com directly. The
- * relay authenticates the caller via the `X-NanoClaw-Agent-Group`
- * header, applies role-based scoping (`canAccessAgentGroup`), and
- * resolves a per-student OAuth bearer via
+ * default port 3007) rather than hitting googleapis.com directly.
+ * The relay resolves the caller's agent group from the per-container token
+ * (X_NANOCLAW_AGENT_TOKEN) and applies canAccessAgentGroup before dispatch,
+ * then resolves a per-student OAuth bearer via
  * `getGoogleAccessTokenForAgentGroup`. Everything Google-specific
  * stays on the host.
  *
@@ -41,6 +41,7 @@ export async function callRelay(
 ): Promise<RelayCallResult | RelayCallError> {
   const relayUrl = process.env.GWS_MCP_RELAY_URL;
   const agentGroupId = process.env.X_NANOCLAW_AGENT_GROUP;
+  const agentToken = process.env.X_NANOCLAW_AGENT_TOKEN;
   if (!relayUrl) {
     return { ok: false, error: 'GWS_MCP_RELAY_URL not set — running outside a NanoClaw container?' };
   }
@@ -54,6 +55,7 @@ export async function callRelay(
       headers: {
         'content-type': 'application/json',
         'x-nanoclaw-agent-group': agentGroupId,
+        'x-nanoclaw-agent-token': agentToken ?? '',
       },
       body: JSON.stringify(args),
     });

@@ -30,6 +30,7 @@
 
 const AGENT_GROUP_HEADER = 'X-NanoClaw-Agent-Group';
 const SESSION_ID_HEADER = 'X-NanoClaw-Session-Id';
+const AGENT_TOKEN_HEADER = 'x-nanoclaw-agent-token';
 
 function deriveProxyOrigin(): string | null {
   const candidate = process.env.ANTHROPIC_BASE_URL || process.env.OPENAI_BASE_URL;
@@ -53,6 +54,7 @@ export function installProxyFetch(): void {
 
   const agentGroupId = process.env.X_NANOCLAW_AGENT_GROUP;
   const sessionId = process.env.X_NANOCLAW_SESSION_ID;
+  const agentToken = process.env.X_NANOCLAW_AGENT_TOKEN;
   const proxyOrigin = deriveProxyOrigin();
   // No agent group set OR no proxy origin to match against → nothing to
   // do. (Session id alone is not enough — without an agent group there's
@@ -69,6 +71,7 @@ export function installProxyFetch(): void {
     const headers = new Headers((init?.headers as HeadersInit | undefined) ?? undefined);
     if (!headers.has(AGENT_GROUP_HEADER)) headers.set(AGENT_GROUP_HEADER, agentGroupId);
     if (sessionId && !headers.has(SESSION_ID_HEADER)) headers.set(SESSION_ID_HEADER, sessionId);
+    if (agentToken && !headers.has(AGENT_TOKEN_HEADER)) headers.set(AGENT_TOKEN_HEADER, agentToken);
     return original(input, { ...init, headers });
   }) as typeof fetch;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

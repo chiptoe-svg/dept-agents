@@ -27,6 +27,7 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { composeGroupClaudeMd } from './claude-md-compose.js';
+import { mintContainerToken, revokeContainerToken } from './container-identity.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { getContainerConfig, updateContainerConfigScalars } from './db/container-configs.js';
 import { getDb, hasTable } from './db/connection.js';
@@ -146,7 +147,7 @@ async function spawnContainer(session: Session): Promise<void> {
   // OneCLI agent identifier is always the agent group id — stable across
   // sessions and reversible via getAgentGroup() for approval routing.
   const agentIdentifier = agentGroup.id;
-  const args = await buildContainerArgs(
+  const { args, containerToken } = await buildContainerArgs(
     mounts,
     containerName,
     agentGroup,
@@ -159,13 +160,22 @@ async function spawnContainer(session: Session): Promise<void> {
 
   log.info('Spawning container', { sessionId: session.id, agentGroup: agentGroup.name, containerName });
 
-  // Clear any orphan heartbeat from a previous container instance — the
-  // sweep's ceiling check treats a missing file as "fresh spawn, give grace"
-  // (host-sweep.ts line 87). Without this, the stale mtime can trigger an
-  // immediate kill before the new container touches the file itself.
-  fs.rmSync(heartbeatPath(agentGroup.id, session.id), { force: true });
+  let container: ChildProcess;
+  try {
+    // Clear any orphan heartbeat from a previous container instance — the
+    // sweep's ceiling check treats a missing file as "fresh spawn, give grace"
+    // (host-sweep.ts line 87). Without this, the stale mtime can trigger an
+    // immediate kill before the new container touches the file itself.
+    fs.rmSync(heartbeatPath(agentGroup.id, session.id), { force: true });
 
-  const container = spawn(CONTAINER_RUNTIME_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    container = spawn(CONTAINER_RUNTIME_BIN, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    // Spawn failed before we could attach exit handlers — the token
+    // would otherwise leak until process restart. Revoke here since
+    // the close/error handlers below never get a chance to fire.
+    revokeContainerToken(containerToken);
+    throw err;
+  }
 
   activeContainers.set(session.id, { process: container, containerName });
   markContainerRunning(session.id);
@@ -189,6 +199,7 @@ async function spawnContainer(session: Session): Promise<void> {
     activeContainers.delete(session.id);
     markContainerStopped(session.id);
     stopTypingRefresh(session.id);
+    revokeContainerToken(containerToken);
     log.info('Container exited', { sessionId: session.id, code, containerName });
   });
 
@@ -196,6 +207,7 @@ async function spawnContainer(session: Session): Promise<void> {
     activeContainers.delete(session.id);
     markContainerStopped(session.id);
     stopTypingRefresh(session.id);
+    revokeContainerToken(containerToken);
     log.error('Container spawn error', { sessionId: session.id, err });
   });
 }
@@ -525,8 +537,14 @@ async function buildContainerArgs(
   provider: string,
   providerContribution: ProviderContainerContribution,
   agentIdentifier?: string,
+  // Required (not optional) because it's threaded straight into
+  // mintContainerToken below — the only caller (spawnContainer) always
+  // has a session id available.
   sessionId?: string,
-): Promise<string[]> {
+): Promise<{ args: string[]; containerToken: string }> {
+  if (!sessionId) {
+    throw new Error('buildContainerArgs: sessionId is required to mint a container token');
+  }
   const args: string[] = ['run', '--rm', '--name', containerName, '--label', CONTAINER_INSTALL_LABEL];
 
   // Environment — only vars read by code we don't own.
@@ -552,13 +570,22 @@ async function buildContainerArgs(
   // gws.ts shims forward to. Per-call attribution header set by gws.ts.
   args.push('-e', `GWS_MCP_RELAY_URL=http://${CONTAINER_HOST_GATEWAY}:${GWS_MCP_RELAY_PORT}`);
 
+  // Per-container capability token — the caller's real identity as far
+  // as the credential proxy and GWS relay are concerned. Minted here at
+  // spawn time and revoked by the container-exit handlers in
+  // spawnContainer (close/error/spawn-failure). Not yet required by
+  // either service (Tasks 5/6); adding it now is backward-compatible.
+  const containerToken = mintContainerToken(agentGroup.id, sessionId);
+  args.push('-e', `X_NANOCLAW_AGENT_TOKEN=${containerToken}`);
+
   // Per-call attribution for the credential proxy. The container's
   // proxy-fetch wrapper injects this as `X-NanoClaw-Agent-Group` on
   // every outbound request to the proxy. Keystone primitive used by
   // per-student credential resolvers (per-student GWS today; per-
   // student Anthropic / OpenAI auth in Phase 4). Missing-header
   // requests gracefully fall back to instructor / class-default
-  // credentials at the proxy.
+  // credentials at the proxy. Advisory only as of Task 5/6 — the token
+  // above is the actual capability.
   args.push('-e', `X_NANOCLAW_AGENT_GROUP=${agentGroup.id}`);
 
   // Per-call session attribution for the credential proxy's payload log.
@@ -657,7 +684,7 @@ async function buildContainerArgs(
 
   args.push('-c', 'exec bun run /app/src/index.ts');
 
-  return args;
+  return { args, containerToken };
 }
 
 /** Build a per-agent-group Docker image with custom packages. */
