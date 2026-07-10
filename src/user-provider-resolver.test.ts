@@ -3,46 +3,66 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
+const NOW = '2026-07-10T00:00:00Z';
+
 let tmpRoot: string;
 let originalCwd: string;
 
-beforeEach(() => {
+beforeEach(async () => {
   originalCwd = process.cwd();
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-test-'));
   process.chdir(tmpRoot);
   fs.mkdirSync(path.join(tmpRoot, 'config'), { recursive: true });
   vi.resetModules();
+  // Seed the central DB with the entity model the resolver reads:
+  // g1 has one member (playground:alice); g_empty has none.
+  const { initTestDb, runMigrations, getDb } = await import('./db/index.js');
+  initTestDb();
+  runMigrations(getDb());
+  const { createUser } = await import('./modules/permissions/db/users.js');
+  const { createAgentGroup } = await import('./db/agent-groups.js');
+  const { addMember } = await import('./modules/permissions/db/agent-group-members.js');
+  createUser({ id: 'playground:alice', kind: 'playground', display_name: 'Alice', created_at: NOW });
+  createAgentGroup({
+    id: 'g1',
+    name: 'Alice',
+    folder: 'user_alice',
+    agent_provider: 'pi',
+    created_at: NOW,
+    metadata: '{}',
+  });
+  addMember({ user_id: 'playground:alice', agent_group_id: 'g1', added_by: null, added_at: NOW });
+  createAgentGroup({
+    id: 'g_empty',
+    name: 'Empty',
+    folder: 'user_empty',
+    agent_provider: 'pi',
+    created_at: NOW,
+    metadata: '{}',
+  });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  const { closeDb } = await import('./db/index.js');
+  closeDb();
   process.chdir(originalCwd);
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   vi.resetModules();
 });
 
-async function setRoster(rows: { agentGroupId: string; userId: string }[]) {
-  const { setRosterLookupForTests } = await import('./user-provider-resolver.js');
-  setRosterLookupForTests((gid: string) => {
-    const row = rows.find((r) => r.agentGroupId === gid);
-    return row ? { userId: row.userId, classId: 'default' } : null;
-  });
-}
-
-describe('user-provider-resolver', () => {
-  it('returns student apiKey when active=apiKey', async () => {
+describe('user-provider-resolver (entity model, connect-optional)', () => {
+  it('returns the member’s apiKey when active=apiKey', async () => {
     const { addApiKey } = await import('./user-provider-auth.js');
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'alice@x.edu' }]);
-    addApiKey('alice@x.edu', 'claude', 'sk-test');
+    addApiKey('playground:alice', 'claude', 'sk-test');
     const r = await resolveUserCreds('g1', 'claude');
     expect(r).toEqual({ kind: 'apiKey', value: 'sk-test' });
   });
 
-  it('returns oauth accessToken when active=oauth and not expired', async () => {
+  it('returns the member’s oauth accessToken when active=oauth and not expired', async () => {
     const { addOAuth } = await import('./user-provider-auth.js');
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'alice@x.edu' }]);
-    addOAuth('alice@x.edu', 'claude', {
+    addOAuth('playground:alice', 'claude', {
       accessToken: 'fresh',
       refreshToken: 'rt',
       expiresAt: Date.now() + 3600000,
@@ -51,11 +71,10 @@ describe('user-provider-resolver', () => {
     expect(r).toEqual({ kind: 'oauth', accessToken: 'fresh' });
   });
 
-  it('refreshes oauth when expiry is within 5min', async () => {
-    const { addOAuth } = await import('./user-provider-auth.js');
+  it('refreshes oauth when expiry is within 5min and persists under the member', async () => {
+    const { addOAuth, loadUserProviderCreds } = await import('./user-provider-auth.js');
     const { resolveUserCreds, setOAuthRefresherForTests } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'alice@x.edu' }]);
-    addOAuth('alice@x.edu', 'claude', {
+    addOAuth('playground:alice', 'claude', {
       accessToken: 'stale',
       refreshToken: 'rt',
       expiresAt: Date.now() + 60000,
@@ -67,101 +86,48 @@ describe('user-provider-resolver', () => {
     }));
     const r = await resolveUserCreds('g1', 'claude');
     expect(r).toEqual({ kind: 'oauth', accessToken: 'refreshed' });
+    expect(loadUserProviderCreds('playground:alice', 'claude')?.oauth?.accessToken).toBe('refreshed');
   });
 
-  it('falls back to host .env when provideDefault=true and no creds', async () => {
-    const { resolveUserCreds, setClassPoolCredsForTests } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'alice@x.edu' }]);
-    fs.writeFileSync(
-      path.join(tmpRoot, 'config', 'class-controls.json'),
-      JSON.stringify({
-        classes: {
-          default: {
-            tabsVisibleToStudents: [],
-            authModesAvailable: [],
-            providers: { claude: { allow: true, provideDefault: true, allowByo: true } },
-          },
-        },
-      }),
-    );
-    setClassPoolCredsForTests((classId, provider) => ({
-      kind: 'apiKey',
-      value: `pool-${classId}-${provider}`,
-    }));
+  it('falls back to null (dept backstop) when oauth refresh fails', async () => {
+    const { addOAuth } = await import('./user-provider-auth.js');
+    const { resolveUserCreds, setOAuthRefresherForTests } = await import('./user-provider-resolver.js');
+    addOAuth('playground:alice', 'claude', {
+      accessToken: 'stale',
+      refreshToken: 'rt',
+      expiresAt: Date.now() + 60000,
+    });
+    setOAuthRefresherForTests(async () => null);
     const r = await resolveUserCreds('g1', 'claude');
-    expect(r).toEqual({ kind: 'apiKey', value: 'pool-default-claude' });
-  });
-
-  it('returns connect_required when no creds and provideDefault=false', async () => {
-    const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'alice@x.edu' }]);
-    fs.writeFileSync(
-      path.join(tmpRoot, 'config', 'class-controls.json'),
-      JSON.stringify({
-        classes: {
-          default: {
-            tabsVisibleToStudents: [],
-            authModesAvailable: [],
-            providers: { claude: { allow: true, provideDefault: false, allowByo: true } },
-          },
-        },
-      }),
-    );
-    const r = await resolveUserCreds('g1', 'claude');
-    expect(r?.kind).toBe('connect_required');
-    expect((r as { provider: string }).provider).toBe('claude');
-  });
-
-  it('returns forbidden when allow=false', async () => {
-    const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'alice@x.edu' }]);
-    fs.writeFileSync(
-      path.join(tmpRoot, 'config', 'class-controls.json'),
-      JSON.stringify({
-        classes: {
-          default: {
-            tabsVisibleToStudents: [],
-            authModesAvailable: [],
-            providers: { claude: { allow: false, provideDefault: false, allowByo: false } },
-          },
-        },
-      }),
-    );
-    const r = await resolveUserCreds('g1', 'claude');
-    expect(r?.kind).toBe('forbidden');
-  });
-
-  it('returns null when agentGroupId is not in roster (solo install path)', async () => {
-    const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([]);
-    const r = await resolveUserCreds('unknown-gid', 'claude');
     expect(r).toBeNull();
   });
 
-  it('returns null when provider has no policy entry (unconfigured = Mode A fallthrough)', async () => {
+  it('returns null (dept backstop) when the member has no creds — not a policy object', async () => {
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'alice@x.edu' }]);
-    // Write a class-controls with empty providers map (fresh class)
-    fs.writeFileSync(
-      path.join(tmpRoot, 'config', 'class-controls.json'),
-      JSON.stringify({
-        classes: {
-          default: {
-            tabsVisibleToStudents: [],
-            authModesAvailable: [],
-            providers: {},
-          },
-        },
-      }),
-    );
     const r = await resolveUserCreds('g1', 'claude');
+    expect(r).toBeNull();
+  });
+
+  it('returns null (dept backstop) for a memberless group', async () => {
+    const { resolveUserCreds } = await import('./user-provider-resolver.js');
+    const r = await resolveUserCreds('g_empty', 'claude');
+    expect(r).toBeNull();
+  });
+
+  it('returns null (dept backstop) for an unknown group', async () => {
+    const { resolveUserCreds } = await import('./user-provider-resolver.js');
+    const r = await resolveUserCreds('g_nope', 'claude');
     expect(r).toBeNull();
   });
 });
 
-// ── C-1: class pool = owner's per-user creds ────────────────────────────
-describe('user-provider-resolver: class pool = owner creds (C-1)', () => {
-  async function writeProvideDefaultPolicy(providerId: string) {
+describe('user-provider-resolver: connect is OPTIONAL — never forbidden / connect_required', () => {
+  // Hostile fixtures: a class-controls policy file AND a classroom_roster
+  // binding, both of which the OLD resolver consulted. The rewritten
+  // resolver must ignore both — no input may produce a policy sentinel.
+  async function seedHostileClassControls(policy: Record<string, unknown>) {
+    const { upsertRosterEntry } = await import('./db/classroom-roster.js');
+    upsertRosterEntry({ email: 'alice@x.edu', user_id: 'playground:alice', agent_group_id: 'g1' });
     fs.writeFileSync(
       path.join(tmpRoot, 'config', 'class-controls.json'),
       JSON.stringify({
@@ -169,107 +135,74 @@ describe('user-provider-resolver: class pool = owner creds (C-1)', () => {
           default: {
             tabsVisibleToStudents: [],
             authModesAvailable: [],
-            providers: { [providerId]: { allow: true, provideDefault: true, allowByo: false } },
+            providers: { claude: policy },
           },
         },
       }),
     );
   }
 
-  async function setOwner(userId: string | null) {
-    const { setOwnerLookupForTests } = await import('./user-provider-resolver.js');
-    setOwnerLookupForTests(() => userId);
-  }
-
-  it('returns owner apiKey when provideDefault and owner has api-key cred', async () => {
-    const { addApiKey } = await import('./user-provider-auth.js');
+  it('never returns forbidden, even with an allow=false class-controls policy present', async () => {
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
-    await setOwner('instructor@x.edu');
-    await writeProvideDefaultPolicy('claude');
-    addApiKey('instructor@x.edu', 'claude', 'sk-instructor');
-    const r = await resolveUserCreds('g1', 'claude');
-    expect(r).toEqual({ kind: 'apiKey', value: 'sk-instructor' });
-  });
-
-  it('returns owner oauth accessToken when provideDefault and owner has oauth', async () => {
-    const { addOAuth } = await import('./user-provider-auth.js');
-    const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
-    await setOwner('instructor@x.edu');
-    await writeProvideDefaultPolicy('codex');
-    addOAuth('instructor@x.edu', 'codex', {
-      accessToken: 'instructor-oauth',
-      refreshToken: 'rt',
-      expiresAt: Date.now() + 3600_000,
-    });
-    const r = await resolveUserCreds('g1', 'codex');
-    expect(r).toEqual({ kind: 'oauth', accessToken: 'instructor-oauth' });
-  });
-
-  it('refreshes owner oauth on near-expiry and persists new token under owner', async () => {
-    const { addOAuth, loadUserProviderCreds } = await import('./user-provider-auth.js');
-    const { resolveUserCreds, setOAuthRefresherForTests } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
-    await setOwner('instructor@x.edu');
-    await writeProvideDefaultPolicy('codex');
-    addOAuth('instructor@x.edu', 'codex', {
-      accessToken: 'stale',
-      refreshToken: 'rt',
-      expiresAt: Date.now() + 60_000,
-      account: 'instructor@x.edu',
-    });
-    setOAuthRefresherForTests(async () => ({
-      accessToken: 'refreshed',
-      refreshToken: 'rt2',
-      expiresAt: Date.now() + 3600_000,
-    }));
-    const r = await resolveUserCreds('g1', 'codex');
-    expect(r).toEqual({ kind: 'oauth', accessToken: 'refreshed' });
-    // New token should be persisted under owner so the next call doesn't refresh.
-    const ownerCreds = loadUserProviderCreds('instructor@x.edu', 'codex');
-    expect(ownerCreds?.oauth?.accessToken).toBe('refreshed');
-  });
-
-  it('returns null when provideDefault but owner has no creds for that provider', async () => {
-    const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
-    await setOwner('instructor@x.edu');
-    await writeProvideDefaultPolicy('claude');
-    // No addApiKey/addOAuth for instructor — they haven't connected.
+    await seedHostileClassControls({ allow: false, provideDefault: false, allowByo: false });
     const r = await resolveUserCreds('g1', 'claude');
     expect(r).toBeNull();
+    expect(r === null || (r.kind !== 'forbidden' && r.kind !== 'connect_required')).toBe(true);
   });
 
-  it('returns null when provideDefault but no owner is configured (solo install)', async () => {
+  it('never returns connect_required, even with a provideDefault=false allowByo=true policy present', async () => {
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
-    await setOwner(null);
-    await writeProvideDefaultPolicy('claude');
+    await seedHostileClassControls({ allow: true, provideDefault: false, allowByo: true });
     const r = await resolveUserCreds('g1', 'claude');
     expect(r).toBeNull();
+    expect(r === null || (r.kind !== 'forbidden' && r.kind !== 'connect_required')).toBe(true);
   });
+});
 
-  it('falls back to sibling API key when codex is empty but openai-platform is set', async () => {
+describe('user-provider-resolver: sibling API-key fallback (re-keyed to the member)', () => {
+  it('falls back to the member’s openai-platform key when codex is requested', async () => {
     const { addApiKey } = await import('./user-provider-auth.js');
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
-    await setOwner('instructor@x.edu');
-    await writeProvideDefaultPolicy('codex');
-    addApiKey('instructor@x.edu', 'openai-platform', 'sk-from-platform');
-    // No codex creds — proxy is asking for /openai/ route.
+    addApiKey('playground:alice', 'openai-platform', 'sk-from-platform');
     const r = await resolveUserCreds('g1', 'codex');
     expect(r).toEqual({ kind: 'apiKey', value: 'sk-from-platform' });
   });
 
-  it('falls back to sibling API key when openai-platform is empty but codex is set', async () => {
+  it('falls back to the member’s codex key when openai-platform is requested', async () => {
     const { addApiKey } = await import('./user-provider-auth.js');
     const { resolveUserCreds } = await import('./user-provider-resolver.js');
-    await setRoster([{ agentGroupId: 'g1', userId: 'student@x.edu' }]);
-    await setOwner('instructor@x.edu');
-    await writeProvideDefaultPolicy('openai-platform');
-    addApiKey('instructor@x.edu', 'codex', 'sk-from-codex');
+    addApiKey('playground:alice', 'codex', 'sk-from-codex');
     const r = await resolveUserCreds('g1', 'openai-platform');
     expect(r).toEqual({ kind: 'apiKey', value: 'sk-from-codex' });
+  });
+});
+
+describe('user-provider-resolver: backstop recorder hook', () => {
+  it('records the backstop when resolution falls through to null', async () => {
+    const { resolveUserCreds, setBackstopRecorder } = await import('./user-provider-resolver.js');
+    const calls: Array<[string, string]> = [];
+    setBackstopRecorder((gid, pid) => calls.push([gid, pid]));
+    const r = await resolveUserCreds('g1', 'claude');
+    expect(r).toBeNull();
+    expect(calls).toEqual([['g1', 'claude']]);
+  });
+
+  it('records the backstop for a memberless group', async () => {
+    const { resolveUserCreds, setBackstopRecorder } = await import('./user-provider-resolver.js');
+    const calls: Array<[string, string]> = [];
+    setBackstopRecorder((gid, pid) => calls.push([gid, pid]));
+    await resolveUserCreds('g_empty', 'codex');
+    expect(calls).toEqual([['g_empty', 'codex']]);
+  });
+
+  it('does NOT record a backstop when the member’s own creds are used', async () => {
+    const { addApiKey } = await import('./user-provider-auth.js');
+    const { resolveUserCreds, setBackstopRecorder } = await import('./user-provider-resolver.js');
+    const calls: Array<[string, string]> = [];
+    setBackstopRecorder((gid, pid) => calls.push([gid, pid]));
+    addApiKey('playground:alice', 'claude', 'sk-test');
+    const r = await resolveUserCreds('g1', 'claude');
+    expect(r).toEqual({ kind: 'apiKey', value: 'sk-test' });
+    expect(calls).toEqual([]);
   });
 });

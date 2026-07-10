@@ -4,9 +4,10 @@
  * Walks the full stack:
  *   registry → handleProviderAuthStart → handleProviderAuthExchange
  *   (mocked token exchanger) → storage → resolveUserCreds
- *   → userCredsHook → returns the student's OAuth access token.
+ *   → userCredsHook → returns the user's OAuth access token.
  *
- * No network calls are made. Token exchanger and roster lookup are injected.
+ * No network calls are made. Token exchanger is injected; the user is
+ * resolved from a real agent_group_members row (the entity model).
  */
 import fs from 'fs';
 import path from 'path';
@@ -19,14 +20,31 @@ import {
   setTokenExchangerForTests,
 } from '../channels/playground/api/provider-auth.js';
 import { setUserCredsHook, userCredsHook } from '../credential-proxy.js';
-import { resolveUserCreds, setRosterLookupForTests } from '../user-provider-resolver.js';
+import { resolveUserCreds } from '../user-provider-resolver.js';
 import { loadUserProviderCreds } from '../user-provider-auth.js';
+import { initTestDb, closeDb, runMigrations, getDb } from '../db/index.js';
+import { createAgentGroup } from '../db/agent-groups.js';
+import { createUser } from '../modules/permissions/db/users.js';
+import { addMember } from '../modules/permissions/db/agent-group-members.js';
 
 // Sanitised path: alice@x.edu → alice_x_edu (sanitizeUserIdForPath squashes all non-alphanum to _)
 const CLEANUP_DIR = path.join(process.cwd(), 'data/user-provider-creds/alice_x_edu');
 
+const NOW = '2026-07-10T00:00:00Z';
+
 beforeAll(() => {
-  setRosterLookupForTests((gid) => (gid === 'alice-gid' ? { userId: 'alice@x.edu', classId: 'default' } : null));
+  initTestDb();
+  runMigrations(getDb());
+  createUser({ id: 'alice@x.edu', kind: 'playground', display_name: 'Alice', created_at: NOW });
+  createAgentGroup({
+    id: 'alice-gid',
+    name: 'Alice',
+    folder: 'user_alice',
+    agent_provider: 'pi',
+    created_at: NOW,
+    metadata: '{}',
+  });
+  addMember({ user_id: 'alice@x.edu', agent_group_id: 'alice-gid', added_by: null, added_at: NOW });
   setUserCredsHook(resolveUserCreds);
   setTokenExchangerForTests(async () => ({
     accessToken: 'integration-at',
@@ -37,6 +55,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  closeDb();
   fs.rmSync(CLEANUP_DIR, { recursive: true, force: true });
 });
 
