@@ -4,6 +4,7 @@ import type { AddressInfo } from 'net';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { EventEmitter } from 'events';
 // `vi.hoisted` ensures mockEnv exists when the vi.mock factory below
 // runs — important now that credential-proxy.ts pulls in
 // student-creds-paths → config → env at import time, which fires the
@@ -56,6 +57,72 @@ function makeRequest(
     req.on('error', reject);
     req.write(body);
     req.end();
+  });
+}
+
+/**
+ * Invoke a live http.Server's registered 'request' listener directly with a
+ * fake req/res pair, so we can control `req.socket.remoteAddress` — a real
+ * TCP connection made from this test process always looks like loopback to
+ * the server, so there is no way to exercise the non-loopback path over the
+ * network. This drives the exact same handler code (`createServer((req,
+ * res) => {...})` inside startCredentialProxy) that a real socket would.
+ */
+function invokeRequestHandler(
+  server: http.Server,
+  opts: {
+    method?: string;
+    url?: string;
+    headers?: Record<string, string>;
+    remoteAddress?: string;
+    body?: string;
+  },
+): Promise<{ statusCode: number; body: string }> {
+  return new Promise((resolve) => {
+    const listener = server.listeners('request')[0] as (req: unknown, res: unknown) => void;
+
+    const req = new EventEmitter() as EventEmitter & {
+      method?: string;
+      url?: string;
+      headers?: Record<string, string>;
+      socket?: { remoteAddress?: string };
+    };
+    req.method = opts.method ?? 'POST';
+    req.url = opts.url ?? '/anthropic/v1/messages';
+    req.headers = opts.headers ?? {};
+    req.socket = { remoteAddress: opts.remoteAddress };
+
+    let statusCode = 0;
+    const bodyChunks: Buffer[] = [];
+    let resolved = false;
+    const res = new EventEmitter() as EventEmitter & {
+      headersSent: boolean;
+      writeHead: (status: number, headers?: unknown) => void;
+      write: (chunk: unknown) => boolean;
+      end: (data?: unknown) => void;
+    };
+    res.headersSent = false;
+    res.writeHead = (status: number) => {
+      statusCode = status;
+      res.headersSent = true;
+    };
+    res.write = (chunk: unknown) => {
+      bodyChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+      return true;
+    };
+    res.end = (data?: unknown) => {
+      if (data) bodyChunks.push(Buffer.isBuffer(data) ? data : Buffer.from(String(data)));
+      if (!resolved) {
+        resolved = true;
+        resolve({ statusCode, body: Buffer.concat(bodyChunks).toString() });
+      }
+    };
+
+    listener(req, res);
+    process.nextTick(() => {
+      req.emit('data', Buffer.from(opts.body ?? '{}'));
+      req.emit('end');
+    });
   });
 }
 
@@ -350,6 +417,71 @@ describe('credential-proxy', () => {
 
     expect(res.statusCode).not.toBe(401);
   });
+
+  // Fix B: pin the `!identity && !loopback → 401` gate (credential-proxy.ts
+  // ~562-570). Previously only the loopback-allowed case was covered, which
+  // stays green even if the 401 branch is deleted entirely. These drive a
+  // simulated non-loopback source (real test-process sockets always look
+  // like loopback, so we invoke the request listener directly — see
+  // invokeRequestHandler) through every identity outcome.
+  describe('non-loopback caller — 401 gate', () => {
+    beforeEach(() => _resetForTest());
+
+    it('no token → 401', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        headers: { 'content-type': 'application/json' },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('unknown token → 401', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        headers: {
+          'content-type': 'application/json',
+          'x-nanoclaw-agent-token': 'deadbeef-not-a-real-token',
+        },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('empty-string token → 401', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        headers: {
+          'content-type': 'application/json',
+          'x-nanoclaw-agent-token': '',
+        },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('valid token → not 401', async () => {
+      proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+      const token = mintContainerToken('ag_carol', 'sess_carol');
+
+      const res = await invokeRequestHandler(proxyServer, {
+        remoteAddress: '192.168.64.7',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'placeholder',
+          'x-nanoclaw-agent-token': token,
+        },
+      });
+
+      expect(res.statusCode).not.toBe(401);
+    });
+  });
 });
 
 describe('isLoopbackSource', () => {
@@ -550,6 +682,56 @@ describe('credential-proxy payload log', () => {
     await new Promise<void>((r) => upstreamServer?.close(() => r()));
     fs.rmSync(payloadDir, { recursive: true, force: true });
     for (const key of Object.keys(mockEnv)) delete mockEnv[key];
+    setUserCredsHook(async () => null);
+  });
+
+  // Fix A: pin credential selection to the token, not the spoofable group
+  // header. The C5 exploit shape: a container presents its own valid token
+  // (ag_alice) plus a victim's group header (ag_bob). If credential-proxy.ts
+  // ever computed `agentGroupId` from `headerGroup ?? identity?.agentGroupId`
+  // instead of the token alone, this test must fail — the pure-helper test
+  // for resolveProxyIdentity alone can't catch this because that helper
+  // never reads the header by construction.
+  it('derives agentGroupId from the token, never a spoofed group header (C5 exploit shape)', async () => {
+    _resetForTest();
+    Object.assign(mockEnv, {
+      ANTHROPIC_API_KEY: 'sk-test',
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
+    proxyPort = (proxyServer.address() as AddressInfo).port;
+
+    const seenGroupIds: string[] = [];
+    setUserCredsHook(async (agentGroupId) => {
+      seenGroupIds.push(agentGroupId);
+      return null;
+    });
+
+    // Alice's real token, but Bob's group header riding along.
+    const aliceToken = mintContainerToken('ag_alice', 'sess_alice');
+
+    await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/anthropic/v1/messages',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'placeholder',
+          'x-nanoclaw-agent-token': aliceToken,
+          'x-nanoclaw-agent-group': 'ag_bob',
+        },
+      },
+      '{}',
+    );
+
+    // The credential hook must only ever see the token's group.
+    expect(seenGroupIds).toEqual(['ag_alice']);
+
+    // The payload row lands under the token's group, never the spoofed one.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fs.existsSync(path.join(payloadDir, 'ag_alice', 'sess_alice.db'))).toBe(true);
+    expect(fs.existsSync(path.join(payloadDir, 'ag_bob'))).toBe(false);
   });
 
   it('writes a payload row when a request flows through the proxy', async () => {
@@ -659,5 +841,46 @@ describe('credential-proxy payload log', () => {
     );
 
     expect(capturedHeaders['x-nanoclaw-session-id']).toBeUndefined();
+  });
+
+  // Fix C: pin the upstream token strip (credential-proxy.ts:636). The
+  // capability token is a live credential — it must never reach an upstream
+  // (Anthropic, OpenAI, omlx, clemson), same reasoning as the session-id
+  // strip above, using the same upstream-capture mechanism.
+  it('strips x-nanoclaw-agent-token before forwarding upstream', async () => {
+    let capturedHeaders: http.IncomingHttpHeaders = {};
+    await new Promise<void>((r) => upstreamServer.close(() => r()));
+    upstreamServer = http.createServer((req, res) => {
+      capturedHeaders = { ...req.headers };
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{}');
+    });
+    await new Promise<void>((r) => upstreamServer.listen(0, '127.0.0.1', r));
+    upstreamPort = (upstreamServer.address() as AddressInfo).port;
+
+    Object.assign(mockEnv, {
+      ANTHROPIC_API_KEY: 'sk-test',
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
+    proxyPort = (proxyServer.address() as AddressInfo).port;
+
+    _resetForTest();
+    const token = mintContainerToken('ag1', 'sess1');
+
+    await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/anthropic/v1/messages',
+        headers: {
+          'x-nanoclaw-agent-token': token,
+          'content-type': 'application/json',
+        },
+      },
+      '{}',
+    );
+
+    expect(capturedHeaders['x-nanoclaw-agent-token']).toBeUndefined();
   });
 });

@@ -163,19 +163,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (20 commits ahead)
+- **Last tag:** `classroom-2026-07` (21 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 7]
+## main...origin/main [ahead 8]
 M  src/credential-proxy.test.ts
-M  src/credential-proxy.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+e0f88be7 fix(proxy): derive agent group from container token, reject unauthenticated non-loopback (C5)
 3b383eef fix(security): attach container exit handlers before bookkeeping; tighten proxy-origin match
 a845c827 feat(identity): mint per-container token at spawn, stamp on proxy + relay calls
 315ef256 feat(identity): per-container token registry
@@ -190,9 +190,8 @@ f84f48bf docs(plans): Plan 2 scope — Apple Container 1.1.0 upgrade after dual-
 075e1804 docs(state): post-Plan-1 reconciliation — refresh volatile state, URL fix, auth-revert + rename tracking
 dcb60c1d Merge remote-tracking branch 'origin/main'
 1a6586d5 docs(state): department-server arc — classroom frozen, Plan 1 complete
-73761b78 feat: department base — trimmed seats, fresh-DB boot verified
 ```
 
 ### Last refresh
 
-2026-07-10T04:35:08Z
+2026-07-10T04:47:50Z
