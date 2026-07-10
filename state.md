@@ -163,19 +163,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (13 commits ahead)
+- **Last tag:** `classroom-2026-07` (14 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  src/channels/playground/api-routes.authz.test.ts
-A  src/channels/playground/require-group-access.ts
+## main...origin/main [ahead 1]
+A  src/channels/playground/require-group-access.bypass.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+6094be37 feat(authz): requireGroupAccess — fail-closed folder authorization helper
 5f848ee4 docs(plans): Plan 1.5 — isolation hardening before any pilot invite
 8a7d50d1 docs(review): full code review — cross-tenant isolation defects, verified findings
 a565f0d2 chore: repo renamed to dept-agents — update origin refs and clear tracked action
@@ -190,9 +190,8 @@ dcb60c1d Merge remote-tracking branch 'origin/main'
 e537607f chore: commit pending seminar-install state before classroom freeze
 cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
 e5493c03 docs(specs): department agent server design — fork strategy, invite flow, isolation, credentials
-0800e63c fix(setup): non-interactive sudo for macOS service install + Apple Container path
 ```
 
 ### Last refresh
 
-2026-07-10T03:32:08Z
+2026-07-10T03:36:38Z
