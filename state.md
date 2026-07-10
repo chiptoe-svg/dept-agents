@@ -176,19 +176,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (66 commits ahead)
+- **Last tag:** `classroom-2026-07` (67 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
-A  src/cli/resources/users-provision.test.ts
-M  src/cli/resources/users.ts
+## main...origin/main [ahead 5]
+M  src/class-login-tokens.test.ts
+M  src/class-login-tokens.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+2f290492 feat(cli): ncl users provision — one-command invite that prints the login URL
 641b04ce fix(provisioning): playground messaging group must use unknown_sender_policy 'public'
 fa5a9640 feat(provisioning): provisionUser — full per-user stack + durable login URL
 89445a50 test(db): pin no-leak invariant for getPlaygroundAgentForUser under bypass=true
@@ -203,9 +204,8 @@ d55dbd39 fix(knowledge): resolve corpus/benchmark storage under GROUPS_DIR
 ffdeed34 fix(agent-runner): retry inbound.db reads on transient readonly errors
 8926d31f fix(container-runner): resolveProviderName throws instead of a dead 'claude' fallback
 ccdde699 fix(container-runner): run ensureRuntimeFields after buildMounts
-605b5aab refactor(pi): reconcile harness with personal repo — best of both
 ```
 
 ### Last refresh
 
-2026-07-10T19:43:22Z
+2026-07-10T19:54:31Z

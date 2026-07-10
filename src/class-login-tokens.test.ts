@@ -51,6 +51,7 @@ import { moduleClassLoginTokens } from './db/migrations/module-class-login-token
 import { migration016 } from './db/migrations/016-classroom-roster.js';
 import {
   issueClassLoginToken,
+  loginPinRequiredFromEnv,
   lookupActiveToken,
   recoverLostLinkForEmail,
   revokeAllForUser,
@@ -203,5 +204,41 @@ describe('recoverLostLinkForEmail', () => {
     // Token was still rotated — that part doesn't depend on Resend.
     // (Instructor can recover via `ncl class-tokens rotate` regardless.)
     fetchSpy.mockRestore();
+  });
+});
+
+describe('loginPinRequiredFromEnv', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('defaults to false when unset', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', undefined);
+    expect(loginPinRequiredFromEnv()).toBe(false);
+  });
+
+  it('is true for "true"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', 'true');
+    expect(loginPinRequiredFromEnv()).toBe(true);
+  });
+
+  it('is true for "1"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', '1');
+    expect(loginPinRequiredFromEnv()).toBe(true);
+  });
+
+  it('is false for "false"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', 'false');
+    expect(loginPinRequiredFromEnv()).toBe(false);
+  });
+
+  it('is false for "0"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', '0');
+    expect(loginPinRequiredFromEnv()).toBe(false);
+  });
+
+  it('is false for an unrecognized truthy-looking string ("yes"), strict parse', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', 'yes');
+    expect(loginPinRequiredFromEnv()).toBe(false);
   });
 });

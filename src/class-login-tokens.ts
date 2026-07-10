@@ -229,7 +229,27 @@ registerPinSender(async (email, pin) => {
   });
 });
 
-setPinRequiredForClassToken(true);
+/**
+ * PIN-2FA requires an email transport (Gmail/Resend) to actually deliver
+ * the 6-digit code. Some installs (e.g. a department pilot with no email
+ * configured yet) can't deliver it at all, which would lock every student
+ * out. So the requirement defaults OFF — the bookmarkable class-token URL
+ * is the credential — and is opted into via `PLAYGROUND_LOGIN_PIN_REQUIRED
+ * =true` once email is wired up.
+ *
+ * Read fresh via the same process.env-then-.env pattern as
+ * `publicPlaygroundBaseUrl()` above (the launchd service doesn't inherit
+ * shell .env, so the readEnvFile path is what makes the value visible to
+ * the running host). Strict boolean parse: only "true"/"1" enable it.
+ */
+export function loginPinRequiredFromEnv(): boolean {
+  const raw =
+    process.env.PLAYGROUND_LOGIN_PIN_REQUIRED ||
+    readEnvFile(['PLAYGROUND_LOGIN_PIN_REQUIRED']).PLAYGROUND_LOGIN_PIN_REQUIRED;
+  return raw === 'true' || raw === '1';
+}
+
+setPinRequiredForClassToken(loginPinRequiredFromEnv());
 
 // Eagerly bind the playground HTTP server at host startup so students can
 // click their class-token URLs without the instructor first nudging via
