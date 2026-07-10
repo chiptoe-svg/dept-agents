@@ -704,10 +704,6 @@ export async function buildContainerArgs(
   // Replace it with the bridge gateway IP in any injected -e value, so a
   // Docker-era literal (e.g. copy-pasted into a per-group container.json env
   // override) resolves correctly inside the VM instead of failing DNS.
-  // Apple Container VMs cannot resolve host.docker.internal (Docker-specific).
-  // Replace it with the bridge gateway IP in any injected -e value, so a
-  // Docker-era literal (e.g. copy-pasted into a per-group container.json env
-  // override) resolves correctly inside the VM instead of failing DNS.
   for (let i = 0; i < args.length - 1; i++) {
     if (args[i] === '-e' && args[i + 1].includes('host.docker.internal')) {
       args[i + 1] = args[i + 1].replaceAll('host.docker.internal', hostGateway);

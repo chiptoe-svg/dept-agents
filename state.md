@@ -167,31 +167,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (42 commits ahead)
+- **Last tag:** `classroom-2026-07` (43 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-M  container/agent-runner/src/config.ts
-M  container/agent-runner/src/index.ts
-M  container/agent-runner/src/providers/pi-mcp-bridge.test.ts
-M  container/agent-runner/src/providers/pi-mcp-bridge.ts
+## main...origin/main [ahead 1]
+M  container/agent-runner/src/providers/pi.test.ts
 M  container/agent-runner/src/providers/pi.ts
-A  container/agent-runner/src/providers/resolve-headers.test.ts
-A  container/agent-runner/src/providers/resolve-headers.ts
-M  container/agent-runner/src/providers/types.ts
-A  src/container-config.test.ts
-M  src/container-config.ts
-A  src/container-runner-mcp.test.ts
 M  src/container-runner.ts
-A  src/mcp-header-env.test.ts
-A  src/mcp-header-env.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+7070232c feat(mcp): HTTP transport, gateway rewrite, and scoped header-secret forwarding
 c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, gateway fix
 488da89f fix(container-runtime): resolve host gateway via runtime query, not a hardcoded constant
 213d59de fix(container-runtime): warn on unrecognized status shape for orphan-reaping visibility
@@ -206,9 +196,8 @@ af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, contain
 40a86698 docs(state): Plan 1.5 complete — identity derived server-side; bypass retirement blocked on Plan 3
 7a3c682c fix(playground): source seat password from env, use timing-safe compare
 89d2b171 docs(plans): amend Plan 1.5 Task 9 — seat password must not live in a tracked file
-13c51951 fix(direct-chat): resolve OpenAI cost attribution and restore Models tab probe
 ```
 
 ### Last refresh
 
-2026-07-10T13:13:26Z
+2026-07-10T13:26:05Z
