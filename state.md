@@ -163,18 +163,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (21 commits ahead)
+- **Last tag:** `classroom-2026-07` (22 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 8]
-M  src/credential-proxy.test.ts
+## main...origin/main [ahead 9]
+A  src/gws-mcp-relay.authz.test.ts
+M  src/gws-mcp-relay.test.ts
+M  src/gws-mcp-relay.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+b48b90c1 test(credential-proxy): pin token-derived agentGroupId, 401 gate, and token strip
 e0f88be7 fix(proxy): derive agent group from container token, reject unauthenticated non-loopback (C5)
 3b383eef fix(security): attach container exit handlers before bookkeeping; tighten proxy-origin match
 a845c827 feat(identity): mint per-container token at spawn, stamp on proxy + relay calls
@@ -189,9 +192,8 @@ a565f0d2 chore: repo renamed to dept-agents — update origin refs and clear tra
 f84f48bf docs(plans): Plan 2 scope — Apple Container 1.1.0 upgrade after dual-shape fix, + T8 follow-ups
 075e1804 docs(state): post-Plan-1 reconciliation — refresh volatile state, URL fix, auth-revert + rename tracking
 dcb60c1d Merge remote-tracking branch 'origin/main'
-1a6586d5 docs(state): department-server arc — classroom frozen, Plan 1 complete
 ```
 
 ### Last refresh
 
-2026-07-10T04:47:50Z
+2026-07-10T04:53:40Z

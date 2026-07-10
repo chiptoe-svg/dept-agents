@@ -8,6 +8,8 @@ import type { AddressInfo } from 'net';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { _resetForTest, mintContainerToken } from './container-identity.js';
+
 const { knownAgentGroups, dispatched } = vi.hoisted(() => ({
   knownAgentGroups: new Set<string>(),
   dispatched: [] as Array<{ ctx: { agentGroupId: string | null }; toolName: string; args: unknown }>,
@@ -43,6 +45,7 @@ import { startGwsMcpRelay, stopGwsMcpRelay } from './gws-mcp-relay.js';
 let port = 0;
 
 beforeEach(async () => {
+  _resetForTest();
   knownAgentGroups.clear();
   dispatched.length = 0;
   const server = await startGwsMcpRelay('127.0.0.1');
@@ -87,7 +90,7 @@ describe('GWS MCP relay', () => {
     expect(body.tools).toContain('drive_doc_read_as_markdown');
   });
 
-  it('POST /tools/<name> without X-NanoClaw-Agent-Group → 401', async () => {
+  it('POST /tools/<name> without X-NanoClaw-Agent-Token → 401', async () => {
     const res = await request({
       method: 'POST',
       path: '/tools/drive_doc_read_as_markdown',
@@ -95,26 +98,28 @@ describe('GWS MCP relay', () => {
       body: JSON.stringify({ file_id: 'x' }),
     });
     expect(res.status).toBe(401);
-    expect(res.body).toContain('X-NanoClaw-Agent-Group');
+    expect(res.body).toContain('X-NanoClaw-Agent-Token');
   });
 
-  it('POST /tools/<name> with unknown agent_group_id → 401', async () => {
+  it('POST /tools/<name> with a token for an unknown agent_group_id → 401', async () => {
+    const token = mintContainerToken('ag_unknown', 'sess_1');
     const res = await request({
       method: 'POST',
       path: '/tools/drive_doc_read_as_markdown',
-      headers: { 'content-type': 'application/json', 'x-nanoclaw-agent-group': 'ag_unknown' },
+      headers: { 'content-type': 'application/json', 'x-nanoclaw-agent-token': token },
       body: JSON.stringify({ file_id: 'x' }),
     });
     expect(res.status).toBe(401);
     expect(res.body).toContain('Unknown agent_group_id');
   });
 
-  it('POST /tools/<name> with valid agent_group dispatches', async () => {
+  it('POST /tools/<name> with a valid token dispatches with the token-derived group', async () => {
     knownAgentGroups.add('ag_real');
+    const token = mintContainerToken('ag_real', 'sess_1');
     const res = await request({
       method: 'POST',
       path: '/tools/drive_doc_read_as_markdown',
-      headers: { 'content-type': 'application/json', 'x-nanoclaw-agent-group': 'ag_real' },
+      headers: { 'content-type': 'application/json', 'x-nanoclaw-agent-token': token },
       body: JSON.stringify({ file_id: 'doc_abc' }),
     });
     expect(res.status).toBe(200);
@@ -126,10 +131,11 @@ describe('GWS MCP relay', () => {
 
   it('POST with malformed JSON → 400', async () => {
     knownAgentGroups.add('ag_real');
+    const token = mintContainerToken('ag_real', 'sess_1');
     const res = await request({
       method: 'POST',
       path: '/tools/drive_doc_read_as_markdown',
-      headers: { 'content-type': 'application/json', 'x-nanoclaw-agent-group': 'ag_real' },
+      headers: { 'content-type': 'application/json', 'x-nanoclaw-agent-token': token },
       body: '{broken',
     });
     expect(res.status).toBe(400);
