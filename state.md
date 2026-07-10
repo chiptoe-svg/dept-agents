@@ -163,19 +163,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (8 commits ahead)
+- **Last tag:** `classroom-2026-07` (9 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
 M  docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md
-M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+075e1804 docs(state): post-Plan-1 reconciliation — refresh volatile state, URL fix, auth-revert + rename tracking
 dcb60c1d Merge remote-tracking branch 'origin/main'
 1a6586d5 docs(state): department-server arc — classroom frozen, Plan 1 complete
 73761b78 feat: department base — trimmed seats, fresh-DB boot verified
@@ -190,9 +190,8 @@ e5493c03 docs(specs): department agent server design — fork strategy, invite f
 c7ab8604 fix(setup): default agent provider to OpenAI when CLI is Codex
 14bbd0d5 fix(setup): infer agent provider from existing .env keys on re-run
 ede7ef1f feat(setup): agent provider selection — Anthropic or OpenAI
-4b762fb3 fix(setup): add ensureAppleContainerReady + Codex auth clarification
 ```
 
 ### Last refresh
 
-2026-07-10T02:35:19Z
+2026-07-10T02:43:20Z
