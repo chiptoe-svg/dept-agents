@@ -167,18 +167,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (30 commits ahead)
+- **Last tag:** `classroom-2026-07` (31 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 17]
-M  state.md
+## main...origin/main
+A  docs/superpowers/reviews/2026-07-09-isolation-verification.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+40a86698 docs(state): Plan 1.5 complete — identity derived server-side; bypass retirement blocked on Plan 3
 7a3c682c fix(playground): source seat password from env, use timing-safe compare
 89d2b171 docs(plans): amend Plan 1.5 Task 9 — seat password must not live in a tracked file
 13c51951 fix(direct-chat): resolve OpenAI cost attribution and restore Models tab probe
@@ -193,9 +194,8 @@ e0f88be7 fix(proxy): derive agent group from container token, reject unauthentic
 a845c827 feat(identity): mint per-container token at spawn, stamp on proxy + relay calls
 315ef256 feat(identity): per-container token registry
 4e0dc03e fix(authz): gate simple-restart/reset, benchmark create/run, library mutations
-bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
 ```
 
 ### Last refresh
 
-2026-07-10T06:21:46Z
+2026-07-10T06:35:50Z
