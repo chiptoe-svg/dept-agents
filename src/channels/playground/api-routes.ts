@@ -40,6 +40,7 @@ import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
 import { checkDraftMutation } from '../playground-gate-registry.js';
 import { canReadDraft } from './draft-read-gate.js';
+import { requireGroupAccess } from './require-group-access.js';
 import { getPlatformPrefix, getSetupConfig, playgroundOutboxDir } from './adapter.js';
 import { isSafeAttachmentName } from '../../attachment-safety.js';
 
@@ -177,6 +178,8 @@ export async function route(
     const body = await readJsonBody(req);
     const targetFolder = body.targetFolder as string | undefined;
     if (!targetFolder) return send(res, 400, { error: 'targetFolder required' });
+    const denied = requireGroupAccess(targetFolder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
     try {
       const draft = createDraft(targetFolder);
       ensureDraftWiring(draft.folder);
@@ -190,6 +193,11 @@ export async function route(
   const draftMatch = url.pathname.match(/^\/api\/drafts\/(draft_[A-Za-z0-9_-]+)$/);
   if (method === 'DELETE' && draftMatch) {
     const draftFolder = draftMatch[1]!;
+    {
+      const target = draftFolder.startsWith('draft_') ? draftFolder.slice('draft_'.length) : draftFolder;
+      const denied = requireGroupAccess(target, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
+    }
     try {
       discardDraft(draftFolder);
       return send(res, 200, { ok: true });
@@ -202,6 +210,11 @@ export async function route(
   const applyMatch = url.pathname.match(/^\/api\/drafts\/(draft_[A-Za-z0-9_-]+)\/apply$/);
   if (method === 'POST' && applyMatch) {
     const draftFolder = applyMatch[1]!;
+    {
+      const target = draftFolder.startsWith('draft_') ? draftFolder.slice('draft_'.length) : draftFolder;
+      const denied = requireGroupAccess(target, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
+    }
     const body = await readJsonBody(req);
     const keepDraft = !!body.keepDraft;
     try {
@@ -214,10 +227,9 @@ export async function route(
 
   // POST /api/drafts/:folder/messages — body: { text, files? } → forward to router.
   // Accepts draft_* (instructor drafts), student_* / ta_* / instructor_*
-  // (classroom roles) — anything that's a valid agent_group folder. The
-  // route is still gated by playground auth (the session check above);
-  // for classroom folders the user must be a member of the agent_group,
-  // which is enforced in getPlaygroundAgentForUser at sign-in time.
+  // (classroom roles) — anything that's a valid agent_group folder. Gated
+  // by requireGroupAccess below: the caller must be a member of the
+  // target agent_group.
   //
   // Optional `files: [{ name, mimeType, base64 }]` lets the playground UI
   // send image and PDF attachments. Images run through processImage()
@@ -228,6 +240,8 @@ export async function route(
   const messagesMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/messages$/);
   if (method === 'POST' && messagesMatch) {
     const draftFolder = messagesMatch[1]!;
+    const denied = requireGroupAccess(draftFolder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
     let body: Record<string, unknown>;
     try {
       body = await readJsonBody(req, { maxBytes: 35_000_000 });
@@ -358,6 +372,8 @@ export async function route(
   // outbound.db, so a host-side respawn is the only clean lever.
   if (method === 'PUT' && personaGet) {
     const draftFolder = personaGet[1]!;
+    const denied = requireGroupAccess(draftFolder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
     const body = await readJsonBody(req);
     const text = body.text;
     if (typeof text !== 'string') return send(res, 400, { error: 'text (string) required' });
@@ -552,6 +568,8 @@ export async function route(
   if (method === 'PUT' && skillsMatch) {
     const draftFolder = skillsMatch[1]!;
     {
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(draftFolder, 'skills_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
@@ -602,6 +620,8 @@ export async function route(
       return send(res, 200, { text });
     }
     if (method === 'PUT') {
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(draftFolder, 'skills_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
       let body: Record<string, unknown>;
@@ -627,6 +647,8 @@ export async function route(
     /^\/api\/drafts\/([A-Za-z0-9_-]+)\/custom-skills\/([A-Za-z0-9][A-Za-z0-9_.-]*)$/,
   );
   if (method === 'DELETE' && customSkillMatch) {
+    const deniedCustomSkill = requireGroupAccess(customSkillMatch[1]!, session.userId);
+    if (deniedCustomSkill) return send(res, 403, { error: 'Forbidden' });
     const decision = checkDraftMutation(customSkillMatch[1]!, 'skills_put', session.userId);
     if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     return send(res, 200, { ok: deleteCustomSkill(customSkillMatch[1]!, customSkillMatch[2]!) });
@@ -643,6 +665,8 @@ export async function route(
   if (method === 'PUT' && modelsMatch) {
     const draftFolder = modelsMatch[1]!;
     {
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(draftFolder, 'models_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
@@ -656,6 +680,8 @@ export async function route(
   if (method === 'PUT' && activeModelMatch) {
     const draftFolder = activeModelMatch[1]!;
     {
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(draftFolder, 'models_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
@@ -681,6 +707,8 @@ export async function route(
   if (method === 'PUT' && nameMatch) {
     const draftFolder = nameMatch[1]!;
     {
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(draftFolder, 'skills_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
@@ -1041,6 +1069,8 @@ export async function route(
       return send(res, r.status, r.body);
     }
     if (method === 'POST') {
+      const denied = requireGroupAccess(folder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(folder, 'file_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
       const body = await readJsonBody(req);
@@ -1063,6 +1093,8 @@ export async function route(
       return send(res, r.status, r.body);
     }
     if (method === 'DELETE') {
+      const denied = requireGroupAccess(folder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(folder, 'file_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
       const r = await handleDeleteCorpus(folder, id);
@@ -1082,6 +1114,8 @@ export async function route(
   if (method === 'PUT' && knowledgeUploadMatch) {
     const folder = knowledgeUploadMatch[1]!;
     const id = knowledgeUploadMatch[2]!;
+    const deniedUpload = requireGroupAccess(folder, session.userId);
+    if (deniedUpload) return send(res, 403, { error: 'Forbidden' });
     const decision = checkDraftMutation(folder, 'file_put', session.userId);
     if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     const filename = url.searchParams.get('filename') ?? 'upload';
@@ -1107,6 +1141,8 @@ export async function route(
   if (method === 'POST' && knowledgeIngestMatch) {
     const folder = knowledgeIngestMatch[1]!;
     const id = knowledgeIngestMatch[2]!;
+    const deniedIngest = requireGroupAccess(folder, session.userId);
+    if (deniedIngest) return send(res, 403, { error: 'Forbidden' });
     const decision = checkDraftMutation(folder, 'file_put', session.userId);
     if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     const r = await handleIngest(folder, id);
@@ -1172,11 +1208,15 @@ export async function route(
       return send(res, r.status, r.body);
     }
     if (method === 'PUT') {
+      const denied = requireGroupAccess(folder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const body = await readJsonBody(req);
       const r = await handleUpdateBenchmark(folder, id, body);
       return send(res, r.status, r.body);
     }
     if (method === 'DELETE') {
+      const denied = requireGroupAccess(folder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const r = await handleDeleteBenchmark(folder, id);
       if (r.status === 204) {
         res.writeHead(204);

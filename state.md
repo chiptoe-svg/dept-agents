@@ -163,18 +163,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (14 commits ahead)
+- **Last tag:** `classroom-2026-07` (15 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-A  src/channels/playground/require-group-access.bypass.test.ts
+## main...origin/main [ahead 2]
+M  src/channels/playground/api-routes.authz.test.ts
+M  src/channels/playground/api-routes.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+73882d15 test(playground): regression-test requireGroupAccess bypass immunity
 6094be37 feat(authz): requireGroupAccess — fail-closed folder authorization helper
 5f848ee4 docs(plans): Plan 1.5 — isolation hardening before any pilot invite
 8a7d50d1 docs(review): full code review — cross-tenant isolation defects, verified findings
@@ -189,9 +191,8 @@ dcb60c1d Merge remote-tracking branch 'origin/main'
 7d99b2cc refactor: delete classroom scenario profile (frozen on classroom-freeze)
 e537607f chore: commit pending seminar-install state before classroom freeze
 cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
-e5493c03 docs(specs): department agent server design — fork strategy, invite flow, isolation, credentials
 ```
 
 ### Last refresh
 
-2026-07-10T03:36:38Z
+2026-07-10T03:42:49Z
