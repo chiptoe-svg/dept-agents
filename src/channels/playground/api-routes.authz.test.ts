@@ -85,27 +85,34 @@ function aliceSession(): PlaygroundSession {
   return { cookieValue: 'c', userId: 'playground:alice', createdAt: Date.now(), lastActivityAt: Date.now() };
 }
 
-/** Minimal req/res doubles: we assert only on the status code. */
+/** Minimal req/res doubles: we assert on the status code, and optionally the JSON body. */
 function fakeReqRes(method: string, body: unknown) {
   const req = Object.assign(new http.IncomingMessage(null as never), { method });
   // readJsonBody() reads the stream; push the body then EOF.
   req.push(body === undefined ? null : JSON.stringify(body));
   req.push(null);
   let status = 0;
+  let responseBody: string | undefined;
   const res = {
     statusCode: 0,
     writeHead(s: number) {
       status = s;
       return this;
     },
-    end() {
+    end(chunk?: unknown) {
+      if (typeof chunk === 'string') responseBody = chunk;
       return this;
     },
     setHeader() {
       return this;
     },
   } as unknown as http.ServerResponse;
-  return { req, res, getStatus: () => status || (res as { statusCode: number }).statusCode };
+  return {
+    req,
+    res,
+    getStatus: () => status || (res as { statusCode: number }).statusCode,
+    getJsonBody: () => (responseBody === undefined ? undefined : JSON.parse(responseBody)),
+  };
 }
 
 /** Every folder-addressed MUTATION route. Add a row here when you add a route. */
@@ -205,24 +212,35 @@ function noSession(): PlaygroundSession {
 }
 
 describe('provider-auth status route requires an authenticated session', () => {
-  // Task 3 / Plan 4: the OAuth connect endpoints (start/exchange/status) are
-  // session-gated so a colleague can only ever start/inspect a flow bound to
-  // their own cookie-validated session — never someone else's, and never an
-  // unauthenticated caller. `status` is asserted here because it's a GET with
-  // no side effects; start/exchange share the identical `if (!session.userId)`
-  // guard in api-routes.ts.
-  it('GET /provider-auth/openai-codex/status with no session.userId → 401', async () => {
+  // Task 3 / Plan 4: `status` is the one provider-auth route genuinely
+  // mounted in api-routes.ts (server.ts intercepts start/exchange ahead of
+  // this dispatcher, so those two are handled there, not here — see Fix 1
+  // in task-p4-3-report.md). Session-gated so a colleague can only ever
+  // inspect a flow bound to their own cookie-validated session — never
+  // someone else's, and never an unauthenticated caller.
+  //
+  // 'codex' (not the made-up 'openai-codex') is the real registered
+  // provider id — see src/providers/codex-spec.ts. Using a fake id would
+  // route the authenticated case into handleGetProviderStatus's
+  // unknown-provider 404 branch, which is indistinguishable from the
+  // catch-all 404 the route() dispatcher returns on a routing miss — i.e.
+  // vacuous, since deleting the route entirely would still make that
+  // assertion pass. Asserting the handler's real 200 "not connected" shape
+  // (no stored creds for alice) instead pins reachability: only a request
+  // that actually reaches handleGetProviderStatus can produce it.
+  it('GET /provider-auth/codex/status with no session.userId → 401', async () => {
     const { req, res, getStatus } = fakeReqRes('GET', undefined);
-    const url = new URL('/provider-auth/openai-codex/status', 'http://localhost');
+    const url = new URL('/provider-auth/codex/status', 'http://localhost');
     await route(req, res, url, 'GET', noSession());
     expect(getStatus()).toBe(401);
   });
 
-  it('GET /provider-auth/openai-codex/status with a real session → reaches the handler (not 401)', async () => {
-    const { req, res, getStatus } = fakeReqRes('GET', undefined);
-    const url = new URL('/provider-auth/openai-codex/status', 'http://localhost');
+  it('GET /provider-auth/codex/status with a real session → reaches handleGetProviderStatus (200, not-connected shape)', async () => {
+    const { req, res, getStatus, getJsonBody } = fakeReqRes('GET', undefined);
+    const url = new URL('/provider-auth/codex/status', 'http://localhost');
     await route(req, res, url, 'GET', aliceSession());
-    expect(getStatus()).toBe(404); // handleGetProviderStatus: 'openai-codex' isn't a registered provider id
+    expect(getStatus()).toBe(200);
+    expect(getJsonBody()).toEqual({ hasApiKey: false, hasOAuth: false, active: null });
   });
 });
 

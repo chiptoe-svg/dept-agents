@@ -177,12 +177,12 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (79 commits ahead)
+- **Last tag:** `classroom-2026-07` (80 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
+## main...origin/main [ahead 4]
 M  src/channels/playground/api-routes.authz.test.ts
 M  src/channels/playground/api-routes.ts
 ```
@@ -190,6 +190,7 @@ M  src/channels/playground/api-routes.ts
 ### Recent commits (last 15)
 
 ```
+55b0e7a5 feat(provider-auth): mount session-gated status route, close /provider-auth path
 9db53335 fix(backstop-usage): debounce per group, not per (group, provider)
 cfb10f5b feat(backstop): record when a group's turn runs on the department key (debounced)
 244b790a feat(provider-auth): resolve creds by the entity model, connect-optional backstop
@@ -204,9 +205,8 @@ a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login li
 42c952a6 fix(classroom-pin): default PIN-required to false, gate via env flag
 2f290492 feat(cli): ncl users provision — one-command invite that prints the login URL
 641b04ce fix(provisioning): playground messaging group must use unknown_sender_policy 'public'
-fa5a9640 feat(provisioning): provisionUser — full per-user stack + durable login URL
 ```
 
 ### Last refresh
 
-2026-07-10T23:05:01Z
+2026-07-10T23:12:52Z
