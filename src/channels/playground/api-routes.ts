@@ -724,6 +724,8 @@ export async function route(
     const folder = typeof body.folder === 'string' ? body.folder : '';
     if (!folder) return send(res, 400, { error: 'folder (string) required' });
     {
+      const denied = requireGroupAccess(folder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(folder, 'skills_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
@@ -738,6 +740,8 @@ export async function route(
     const folder = typeof body.folder === 'string' ? body.folder : '';
     if (!folder) return send(res, 400, { error: 'folder (string) required' });
     {
+      const denied = requireGroupAccess(folder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const decision = checkDraftMutation(folder, 'skills_put', session.userId);
       if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
     }
@@ -907,8 +911,11 @@ export async function route(
   // is not mistaken for a user slug.
   const fromTemplateMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/from-template$/);
   if (method === 'POST' && fromTemplateMatch) {
+    const draftFolder = fromTemplateMatch[1]!;
+    const denied = requireGroupAccess(draftFolder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
     const body = await readJsonBody(req);
-    const r = handleFromTemplate(fromTemplateMatch[1]!, session.userId, body as never);
+    const r = handleFromTemplate(draftFolder, session.userId, body as never);
     return send(res, r.status, r.body);
   }
 
@@ -920,6 +927,8 @@ export async function route(
       return send(res, r.status, r.body);
     }
     if (method === 'POST') {
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const body = await readJsonBody(req);
       const r = handleSaveNew(draftFolder, session.userId, body as never);
       return send(res, r.status, r.body);
@@ -930,8 +939,11 @@ export async function route(
     /^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)\/save$/,
   );
   if (method === 'POST' && libSlugSave) {
+    const draftFolder = libSlugSave[1]!;
+    const denied = requireGroupAccess(draftFolder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
     const body = await readJsonBody(req);
-    const r = handleSaveExisting(libSlugSave[1]!, session.userId, libSlugSave[2]!, body as never);
+    const r = handleSaveExisting(draftFolder, session.userId, libSlugSave[2]!, body as never);
     return send(res, r.status, r.body);
   }
 
@@ -939,19 +951,27 @@ export async function route(
     /^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)\/load$/,
   );
   if (method === 'POST' && libSlugLoad) {
-    const r = handleLoadEntry(libSlugLoad[1]!, session.userId, libSlugLoad[2]!);
+    const draftFolder = libSlugLoad[1]!;
+    const denied = requireGroupAccess(draftFolder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
+    const r = handleLoadEntry(draftFolder, session.userId, libSlugLoad[2]!);
     return send(res, r.status, r.body);
   }
 
   const libSlug = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/library\/([A-Za-z0-9][A-Za-z0-9_-]*)$/);
   if (libSlug) {
+    const draftFolder = libSlug[1]!;
     if (method === 'PUT') {
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const body = await readJsonBody(req);
-      const r = handleRenameEntry(libSlug[1]!, session.userId, libSlug[2]!, body as never);
+      const r = handleRenameEntry(draftFolder, session.userId, libSlug[2]!, body as never);
       return send(res, r.status, r.body);
     }
     if (method === 'DELETE') {
-      const r = handleDeleteEntry(libSlug[1]!, session.userId, libSlug[2]!);
+      const denied = requireGroupAccess(draftFolder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
+      const r = handleDeleteEntry(draftFolder, session.userId, libSlug[2]!);
       return send(res, r.status, r.body);
     }
   }
@@ -1187,6 +1207,8 @@ export async function route(
     }
     if (method === 'POST') {
       if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+      const denied = requireGroupAccess(folder, session.userId);
+      if (denied) return send(res, 403, { error: 'Forbidden' });
       const body = await readJsonBody(req);
       const r = await handleCreateBenchmark(folder, body);
       return send(res, r.status, r.body);
@@ -1235,6 +1257,8 @@ export async function route(
     const folder = benchmarkRunMatch[1]!;
     const id = benchmarkRunMatch[2]!;
     if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    const denied = requireGroupAccess(folder, session.userId);
+    if (denied) return send(res, 403, { error: 'Forbidden' });
     const body = await readJsonBody(req);
     const k = typeof body.k === 'number' ? body.k : 5;
     const r = await handleRunBenchmark(folder, id, k);

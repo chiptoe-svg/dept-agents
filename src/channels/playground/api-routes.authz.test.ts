@@ -125,7 +125,29 @@ const MUTATION_ROUTES: Array<{ method: string; path: string; body?: unknown }> =
   { method: 'DELETE', path: '/api/drafts/user_bob/knowledge/corpora/c1' },
   { method: 'PUT', path: '/api/drafts/user_bob/knowledge/corpora/c1/upload', body: {} },
   { method: 'POST', path: '/api/drafts/user_bob/knowledge/corpora/c1/ingest', body: {} },
+  // NOTE: this row 403s via canReadDraft (checked ahead of requireGroupAccess
+  // in the PUT branch), not via the requireGroupAccess gate added for this
+  // route — see the dedicated 'requireGroupAccess is the operative gate on
+  // benchmarks/:id' test below, which isolates requireGroupAccess with an
+  // unknown folder that canReadDraft would fail OPEN on.
   { method: 'PUT', path: '/api/drafts/user_bob/knowledge/benchmarks/b1', body: {} },
+  // Fix 1 (CRITICAL, task-1p5-2): body-folder routes, previously fully ungated.
+  { method: 'POST', path: '/api/simple-restart', body: { folder: 'user_bob' } },
+  { method: 'POST', path: '/api/simple-reset', body: { folder: 'user_bob' } },
+  // Fix 2: previously gated only by canReadDraft (fails open on unknown
+  // folder, honors PLAYGROUND_AUTH_BYPASS) — upgraded to requireGroupAccess.
+  { method: 'POST', path: '/api/drafts/user_bob/knowledge/benchmarks', body: { name: 'x', corpusId: 'c1' } },
+  { method: 'POST', path: '/api/drafts/user_bob/knowledge/benchmarks/b1/run', body: {} },
+  { method: 'POST', path: '/api/drafts/user_bob/library', body: { name: 'x' } },
+  {
+    method: 'POST',
+    path: '/api/drafts/user_bob/library/from-template',
+    body: { templateSlug: 't', name: 'x' },
+  },
+  { method: 'POST', path: '/api/drafts/user_bob/library/s1/save', body: {} },
+  { method: 'POST', path: '/api/drafts/user_bob/library/s1/load' },
+  { method: 'PUT', path: '/api/drafts/user_bob/library/s1', body: { name: 'x' } },
+  { method: 'DELETE', path: '/api/drafts/user_bob/library/s1' },
 ];
 
 describe('cross-tenant mutation routes are denied', () => {
@@ -140,10 +162,55 @@ describe('cross-tenant mutation routes are denied', () => {
 });
 
 describe('own-group mutation still works', () => {
+  // One own-group positive case per gate *shape* — a route that 403s
+  // unconditionally would still pass every cross-tenant case above, so
+  // these are what actually prove the gate discriminates alice-on-alice
+  // from alice-on-bob rather than just denying everyone.
+
+  // Shape 1: raw URL folder (folder read straight from the path segment).
   it('PUT /api/drafts/user_alice/persona → not 403', async () => {
     const { req, res, getStatus } = fakeReqRes('PUT', { text: 'my persona' });
     const url = new URL('/api/drafts/user_alice/persona', 'http://localhost');
     await route(req, res, url, 'PUT', aliceSession());
     expect(getStatus()).not.toBe(403);
+  });
+
+  // Shape 2: body folder/targetFolder (folder read from the JSON body, not
+  // the URL) — this is the shape Fix 1 gated (simple-restart/simple-reset).
+  it('POST /api/simple-restart (own folder) → 200', async () => {
+    const { req, res, getStatus } = fakeReqRes('POST', { folder: 'user_alice' });
+    const url = new URL('/api/simple-restart', 'http://localhost');
+    await route(req, res, url, 'POST', aliceSession());
+    expect(getStatus()).toBe(200);
+  });
+
+  // Shape 3: "stripped draft_" family — the create-draft route also takes
+  // its target from the body (`targetFolder`), same as shape 2 in the code
+  // path sense, but it is the entry point for the draft_-prefixed routes
+  // (DELETE/apply) that strip the `draft_` prefix back to this target
+  // folder before gating. Exercised here per the review brief; the actual
+  // prefix-stripping code (api-routes.ts's `draftFolder.slice('draft_'.length)`)
+  // is covered by the DELETE/apply cross-tenant cases in MUTATION_ROUTES
+  // above, which would 200/400 instead of 403 if the strip were wrong.
+  it('POST /api/drafts (targetFolder: own folder) → not 403', async () => {
+    const { req, res, getStatus } = fakeReqRes('POST', { targetFolder: 'user_alice' });
+    const url = new URL('/api/drafts', 'http://localhost');
+    await route(req, res, url, 'POST', aliceSession());
+    expect(getStatus()).not.toBe(403);
+  });
+});
+
+describe('requireGroupAccess is the operative gate on benchmarks/:id', () => {
+  // The benchmarks/:id row in MUTATION_ROUTES 403s via canReadDraft (checked
+  // first in that route's shared prelude), which would pass even if
+  // requireGroupAccess were deleted from the PUT/DELETE branches entirely.
+  // Isolate requireGroupAccess with a folder canReadDraft fails OPEN on
+  // (no agent_groups row) — only requireGroupAccess's fail-closed
+  // unknown-folder behavior can deny this one.
+  it('PUT .../knowledge/benchmarks/:id on an unknown folder → 403 via requireGroupAccess', async () => {
+    const { req, res, getStatus } = fakeReqRes('PUT', {});
+    const url = new URL('/api/drafts/user_nonexistent/knowledge/benchmarks/b1', 'http://localhost');
+    await route(req, res, url, 'PUT', aliceSession());
+    expect(getStatus()).toBe(403);
   });
 });
