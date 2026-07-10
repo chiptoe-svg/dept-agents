@@ -27,7 +27,10 @@ import {
   resolveOmlxKey,
   resolveProxyRoute,
   isEgressAllowed,
+  isLoopbackSource,
+  resolveProxyIdentity,
 } from './credential-proxy.js';
+import { mintContainerToken, _resetForTest } from './container-identity.js';
 
 function makeRequest(
   port: number,
@@ -329,6 +332,63 @@ describe('credential-proxy', () => {
     // Mock upstream must NOT have been hit — no credentials forwarded
     expect(lastUpstreamHeaders).toEqual({});
   });
+
+  it('allows a loopback request with no token (host-internal caller, e.g. direct-chat)', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    // makeRequest always connects via 127.0.0.1, so this exercises the
+    // loopback path with no x-nanoclaw-agent-token header at all.
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/anthropic/v1/messages',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).not.toBe(401);
+  });
+});
+
+describe('isLoopbackSource', () => {
+  it.each([
+    ['127.0.0.1', true],
+    ['::1', true],
+    ['::ffff:127.0.0.1', true],
+    ['192.168.64.7', false],
+    ['130.127.162.99', false],
+    [undefined, false],
+  ])('isLoopbackSource(%s) === %s', (addr, expected) => {
+    expect(isLoopbackSource(addr as string | undefined)).toBe(expected);
+  });
+});
+
+describe('resolveProxyIdentity', () => {
+  beforeEach(() => _resetForTest());
+
+  it('resolves the group from the token', () => {
+    const t = mintContainerToken('ag_alice', 'sess_1');
+    expect(resolveProxyIdentity({ 'x-nanoclaw-agent-token': t })).toEqual({
+      agentGroupId: 'ag_alice',
+      sessionId: 'sess_1',
+    });
+  });
+
+  it('ignores a spoofed agent-group header — the token wins', () => {
+    const t = mintContainerToken('ag_alice', 'sess_1');
+    const id = resolveProxyIdentity({ 'x-nanoclaw-agent-token': t, 'x-nanoclaw-agent-group': 'ag_bob' });
+    expect(id!.agentGroupId).toBe('ag_alice'); // NOT ag_bob
+  });
+
+  it('returns null with no token, even when a group header is present', () => {
+    expect(resolveProxyIdentity({ 'x-nanoclaw-agent-group': 'ag_bob' })).toBeNull();
+  });
+
+  it('returns null for an unknown token', () => {
+    expect(resolveProxyIdentity({ 'x-nanoclaw-agent-token': 'deadbeef' })).toBeNull();
+  });
 });
 
 describe('userCredsHook', () => {
@@ -493,6 +553,7 @@ describe('credential-proxy payload log', () => {
   });
 
   it('writes a payload row when a request flows through the proxy', async () => {
+    _resetForTest();
     Object.assign(mockEnv, {
       ANTHROPIC_API_KEY: 'sk-test',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
@@ -500,14 +561,17 @@ describe('credential-proxy payload log', () => {
     proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
     proxyPort = (proxyServer.address() as AddressInfo).port;
 
+    // Attribution now comes from the container token, not the spoofable
+    // group/session headers — mint a real token for this (group, session).
+    const token = mintContainerToken('ag1', 'sess1');
+
     await makeRequest(
       proxyPort,
       {
         method: 'POST',
         path: '/anthropic/v1/messages',
         headers: {
-          'x-nanoclaw-agent-group': 'ag1',
-          'x-nanoclaw-session-id': 'sess1',
+          'x-nanoclaw-agent-token': token,
           'content-type': 'application/json',
         },
       },
@@ -533,6 +597,7 @@ describe('credential-proxy payload log', () => {
   });
 
   it('still forwards the request when payload-store write fails (bad payloadDir)', async () => {
+    _resetForTest();
     Object.assign(mockEnv, {
       ANTHROPIC_API_KEY: 'sk-test',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
@@ -540,14 +605,18 @@ describe('credential-proxy payload log', () => {
     proxyServer = await startCredentialProxy(0, '127.0.0.1', '/dev/null/not-a-dir');
     proxyPort = (proxyServer.address() as AddressInfo).port;
 
+    // Mint a real token so a store open is actually attempted (and fails,
+    // since the payloadDir is bogus) — otherwise this test would pass
+    // trivially with no store lookup at all.
+    const token = mintContainerToken('ag1', 'sess1');
+
     const res = await makeRequest(
       proxyPort,
       {
         method: 'POST',
         path: '/anthropic/v1/messages',
         headers: {
-          'x-nanoclaw-agent-group': 'ag1',
-          'x-nanoclaw-session-id': 'sess1',
+          'x-nanoclaw-agent-token': token,
           'content-type': 'application/json',
         },
       },
