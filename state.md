@@ -27,7 +27,7 @@ DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT to
 **Active arc: department-agent-server transformation** (spec: `docs/superpowers/specs/2026-07-09-department-agent-server-design.md`; plan: `docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md`). Progress:
 - **Plan 1 (freeze & clean base) complete** (`e537607f`..`73761b78`): classroom frozen — branch `classroom-freeze` + tag `classroom-2026-07` pushed to origin at `e537607f`, runtime snapshot verified restorable at `~/archives/classroom-2026-07.tar.gz`. Classroom scenario profile + `/add-classroom*` skills + enrollment/passcode surface + roster-admin/shared-class-base surface deleted from `main` (`7d99b2cc`, `6a887da2`, `09066814`); classroom runtime data purged from disk; fresh `data/v2.db` boots clean (24 migrations); seats trimmed to `owner_01` + `user_01` (`73761b78`); end-to-end owner chat turn live-verified on the fresh base.
 - **Tracked: revert dev auth posture before any non-owner user touches the box** — `PLAYGROUND_AUTH_BYPASS` off + non-empty seat password — owned by Plan 3 (invite & identity).
-- **Tracked: open owner action — GitHub repo rename** (spec §1.7) — remote still `chiptoe-svg/nanoclaw_gccourse`.
+- **Done 2026-07-09: GitHub repo renamed** (spec §1.7) to `chiptoe-svg/dept-agents`; local `origin` updated. GitHub redirects the old `nanoclaw_gccourse` URL, so stale references in classroom-era docs (`docs/shared-classroom.md`, `docs/critique-agent/`, `plans/`, `README.md` links) still resolve — they get cleaned up with the docs pass in Plan 5.
 
 **Next: Plan 2 — ports from personal repo** (pi-harness reconciliation, `hermes-selflearning` + `self-customize`, `agents-compose` size guard, `fetch_url_to_workspace`, Apple Container orphan-cleanup fix), then **Plan 3 — invite & identity**, **Plan 4 — provider auth & backstop**, **Plan 5 — homepage & channels**. Full roadmap (each plan written after the prior lands) at the bottom of the Plan 1 doc. Known deferred gaps: `config/playground-seats.json` provisioning is still hand-edited (a DB-backed bootstrap lands in Plan 3); several classroom-named-but-actually-generic files (login tokens/PINs, Telegram pairing, provider resolver, `class-controls`) are intentionally untouched until Plans 3–5 rename/rewire them (see the Plan 1 doc's "NOT touched in this plan" list); the live playground URL is `http://gcworkflow.clemson.edu:8088` (server IP `130.127.162.67`).
 
@@ -163,18 +163,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (9 commits ahead)
+- **Last tag:** `classroom-2026-07` (10 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
-M  docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md
+M  .claude/skills/add-admintools/SKILL.md
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+f84f48bf docs(plans): Plan 2 scope — Apple Container 1.1.0 upgrade after dual-shape fix, + T8 follow-ups
 075e1804 docs(state): post-Plan-1 reconciliation — refresh volatile state, URL fix, auth-revert + rename tracking
 dcb60c1d Merge remote-tracking branch 'origin/main'
 1a6586d5 docs(state): department-server arc — classroom frozen, Plan 1 complete
@@ -189,9 +191,8 @@ e5493c03 docs(specs): department agent server design — fork strategy, invite f
 01ecb657 fix(setup): Codex skills via on-demand router, not global symlinks
 c7ab8604 fix(setup): default agent provider to OpenAI when CLI is Codex
 14bbd0d5 fix(setup): infer agent provider from existing .env keys on re-run
-ede7ef1f feat(setup): agent provider selection — Anthropic or OpenAI
 ```
 
 ### Last refresh
 
-2026-07-10T02:43:20Z
+2026-07-10T02:48:01Z
