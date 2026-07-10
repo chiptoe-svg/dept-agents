@@ -161,18 +161,25 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (4 commits ahead)
+- **Last tag:** `classroom-2026-07` (5 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 7, behind 2]
-M  state.md
+## main...origin/main [ahead 8, behind 2]
+A  plans/setup-service-sudo-prompt.md
+M  setup/auto.ts
+M  setup/lib/ai-coding-cli/codex.ts
+M  setup/service.ts
+M  src/admin-handlers/index.ts
+M  src/container-runtime.test.ts
+M  src/container-runtime.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+1a6586d5 docs(state): department-server arc — classroom frozen, Plan 1 complete
 73761b78 feat: department base — trimmed seats, fresh-DB boot verified
 09066814 refactor: delete classroom roster-admin and shared-class-base surface
 6a887da2 refactor: delete classroom enrollment-passcode surface
@@ -187,9 +194,8 @@ ede7ef1f feat(setup): agent provider selection — Anthropic or OpenAI
 ce65b3c6 feat(setup): Apple Container + Codex support; LaunchDaemon; Node <26 cap
 eea9795e feat(skills): image-vision + image-metadata container skills
 1c76d15f fix(agent-runner): surface uploaded image paths to the agent
-62d1def2 feat(simple): "Start over" resets agent memory + trace, not just the window
 ```
 
 ### Last refresh
 
-2026-07-10T02:20:29Z
+2026-07-10T02:21:49Z
