@@ -163,33 +163,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (24 commits ahead)
+- **Last tag:** `classroom-2026-07` (25 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 11]
+## main...origin/main [ahead 12]
+M  container/agent-runner/src/mcp-tools/cli.instructions.md
 M  src/cli/crud.ts
-M  src/cli/dispatch.ts
-M  src/cli/frame.ts
-M  src/cli/resources/approvals.ts
-M  src/cli/resources/class-tokens.ts
-M  src/cli/resources/destinations.ts
-M  src/cli/resources/dropped-messages.ts
-M  src/cli/resources/groups.ts
-M  src/cli/resources/members.ts
-M  src/cli/resources/messaging-groups.ts
-M  src/cli/resources/roles.ts
-M  src/cli/resources/sessions.ts
-M  src/cli/resources/user-dms.ts
-M  src/cli/resources/users.ts
-M  src/cli/resources/wirings.ts
-A  src/cli/scope.test.ts
+M  src/cli/scope.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+8e7be465 fix(cli): scope ncl reads to the caller agent group (C6)
 9f6ff357 test(gws-mcp-relay): fix authz test gaps in spoof and array-header cases
 8a621c47 fix(gws-relay): derive agent group from container token (C7)
 b48b90c1 test(credential-proxy): pin token-derived agentGroupId, 401 gate, and token strip
@@ -204,9 +192,8 @@ bd3dcce1 fix(authz): gate every folder-addressed mutation route (C1-C4)
 5f848ee4 docs(plans): Plan 1.5 — isolation hardening before any pilot invite
 8a7d50d1 docs(review): full code review — cross-tenant isolation defects, verified findings
 a565f0d2 chore: repo renamed to dept-agents — update origin refs and clear tracked action
-f84f48bf docs(plans): Plan 2 scope — Apple Container 1.1.0 upgrade after dual-shape fix, + T8 follow-ups
 ```
 
 ### Last refresh
 
-2026-07-10T05:15:47Z
+2026-07-10T05:27:09Z

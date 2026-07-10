@@ -149,10 +149,30 @@ function visibleColumns(def: ResourceDef): string[] {
   return def.columns.map((c) => c.name);
 }
 
+/**
+ * `scopeColumn` is developer-controlled (set in each resource definition in
+ * `resources/*.ts`, never user input), but it still gets interpolated as a
+ * bare SQL identifier below — validate its shape once, at registration time,
+ * so a future resource def with a typo'd or malicious column name fails
+ * loudly instead of building an injectable query string.
+ */
+const SCOPE_COLUMN_PATTERN = /^[a-z_]+$/;
+
 function genericList(def: ResourceDef) {
   const cols = visibleColumns(def).join(', ');
   const filterableNames = new Set(def.columns.filter((c) => !c.generated).map((c) => c.name));
+  if (def.scopeColumn !== null && !SCOPE_COLUMN_PATTERN.test(def.scopeColumn)) {
+    throw new Error(`invalid scopeColumn identifier for resource "${def.plural}": ${def.scopeColumn}`);
+  }
   return async (args: Record<string, unknown>, ctx: CallerContext) => {
+    const scopeCtx = toScopeCtx(ctx);
+    const isScopedAgent = scopeCtx.caller === 'agent' && scopeCtx.cliScope !== 'all';
+
+    // Same short-circuits scopeRowsToCaller would apply post-hoc, but done
+    // *before* querying so a scoped agent's own rows can't fall outside the
+    // LIMIT window (see the SQL branch below for why that matters).
+    if (isScopedAgent && (def.scopeColumn === null || !scopeCtx.agentGroupId)) return [];
+
     const limit = args.limit !== undefined ? Math.max(1, Number(args.limit)) : 200;
     const filters: string[] = [];
     const params: unknown[] = [];
@@ -163,12 +183,24 @@ function genericList(def: ResourceDef) {
         params.push(v);
       }
     }
+    // Push the scope predicate into the SQL itself, not just the post-query
+    // filter — otherwise LIMIT applies across every tenant's rows first, and
+    // an agent whose own rows sort past the limit sees a silently truncated
+    // (possibly empty) list of its own data. scopeColumn was validated
+    // against SCOPE_COLUMN_PATTERN above; the value is still bound as a
+    // parameter, never interpolated.
+    if (isScopedAgent) {
+      filters.push(`${def.scopeColumn} = ?`);
+      params.push(scopeCtx.agentGroupId);
+    }
     const where = filters.length > 0 ? ` WHERE ${filters.join(' AND ')}` : '';
     params.push(limit);
     const rows = getDb()
       .prepare(`SELECT ${cols} FROM ${def.table}${where} LIMIT ?`)
       .all(...params) as Record<string, unknown>[];
-    return scopeRowsToCaller(rows, toScopeCtx(ctx), def.scopeColumn);
+    // Defense in depth: scopeRowsToCaller re-filters even though the SQL
+    // above already scoped for agent callers. Keep it — belt and braces.
+    return scopeRowsToCaller(rows, scopeCtx, def.scopeColumn);
   };
 }
 
