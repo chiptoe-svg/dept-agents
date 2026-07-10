@@ -177,18 +177,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (69 commits ahead)
+- **Last tag:** `classroom-2026-07` (70 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 7]
-M  state.md
+## main...origin/main
+A  src/cli/resources/class-tokens.test.ts
+M  src/cli/resources/class-tokens.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login live; pilot unblocked
 76e7875b docs(auth): bypass retired — operator+canary login and anonymous-refused verified live
 42c952a6 fix(classroom-pin): default PIN-required to false, gate via env flag
 2f290492 feat(cli): ncl users provision — one-command invite that prints the login URL
@@ -203,9 +205,8 @@ ce50da4c fix(container-runner): key the per-group sites mount by unique folder, 
 62a7abcf fix(container-runner): scope the web-hosting mount to each group's own subtree
 02eead0e fix(playground): budget-gate the knowledge/RAG spend routes
 d55dbd39 fix(knowledge): resolve corpus/benchmark storage under GROUPS_DIR
-ffdeed34 fix(agent-runner): retry inbound.db reads on transient readonly errors
 ```
 
 ### Last refresh
 
-2026-07-10T20:02:23Z
+2026-07-10T20:19:25Z
