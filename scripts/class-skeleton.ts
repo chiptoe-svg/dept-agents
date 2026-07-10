@@ -60,6 +60,8 @@ import { collectSkeletonMounts } from '../src/skeleton-mount-registry.js';
 import type { AgentGroup } from '../src/types.js';
 import {
   STUDENT_PERSONA,
+  TA_PERSONA,
+  INSTRUCTOR_PERSONA,
   STUDENT_CLAUDE_MD,
   classSharedStudentMd,
   makeContainerConfig,
@@ -156,10 +158,6 @@ function taFolder(n: number): string {
 function instructorFolder(n: number): string {
   return `instructor_${String(n).padStart(2, '0')}`;
 }
-
-// TA/INSTRUCTOR personas live with the classroom scenario profile alongside
-// STUDENT_PERSONA. See src/scenarios/classroom/personas.ts.
-import { TA_PERSONA, INSTRUCTOR_PERSONA } from '../src/scenarios/classroom/personas.js';
 
 const NON_STUDENT_CLAUDE_MD = `@./.claude-shared.md
 @./CLAUDE.local.md

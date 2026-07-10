@@ -14,7 +14,6 @@ import { ACTIVE_SCENARIO } from '../config.js';
 import { log } from '../log.js';
 
 const loaders: Record<string, () => Promise<unknown>> = {
-  classroom: () => import('./classroom/index.js'),
   industryai_seminar: () => import('./industryai_seminar/index.js'),
 };
 

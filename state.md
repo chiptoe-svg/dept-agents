@@ -164,22 +164,37 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (184 commits ahead)
+- **Last tag:** `classroom-2026-07` (0 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2, behind 2]
-M  .gitignore
-M  config/playground-seats.json
-M  container/CLAUDE.md
-M  container/skills/make-website/SKILL.md
-M  src/channels/playground/public/tabs/skills.js
+## main...origin/main [ahead 3, behind 2]
+D  .claude/skills/add-classroom-auth/REMOVE.md
+D  .claude/skills/add-classroom-auth/SKILL.md
+D  .claude/skills/add-classroom-auth/VERIFY.md
+D  .claude/skills/add-classroom-gws/REMOVE.md
+D  .claude/skills/add-classroom-gws/SKILL.md
+D  .claude/skills/add-classroom-gws/VERIFY.md
+D  .claude/skills/add-classroom-pin/REMOVE.md
+D  .claude/skills/add-classroom-pin/SKILL.md
+D  .claude/skills/add-classroom-pin/add/src/channels/playground/api/login-pin.test.ts
+D  .claude/skills/add-classroom-pin/add/src/channels/playground/api/login-pin.ts
+D  .claude/skills/add-classroom-pin/add/src/channels/playground/public/login-pin.html
+D  .claude/skills/add-classroom-pin/add/src/class-login-pins.test.ts
+D  .claude/skills/add-classroom-pin/add/src/class-login-pins.ts
+D  .claude/skills/add-classroom-pin/add/src/db/migrations/module-class-login-pins.ts
+D  .claude/skills/add-classroom/REMOVE.md
+D  .claude/skills/add-classroom/SKILL.md
+D  .claude/skills/add-classroom/VERIFY.md
+M  scripts/class-skeleton.ts
+M  src/class-student-provision.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+e537607f chore: commit pending seminar-install state before classroom freeze
 cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
 e5493c03 docs(specs): department agent server design — fork strategy, invite flow, isolation, credentials
 c7ab8604 fix(setup): default agent provider to OpenAI when CLI is Codex
@@ -194,9 +209,8 @@ eea9795e feat(skills): image-vision + image-metadata container skills
 6b79f3e4 fix(agent-runner): deliver trailing text models leave outside <message>
 91a2b79b fix(agent-runner): retry transient readonly-DB writes instead of crashing
 3ab35671 feat(simple): "Built in" tools row; web tools always-on; relabel agent-browser
-c68dbf9e fix(agent-runner): compose per-group persona into the system prompt
 ```
 
 ### Last refresh
 
-2026-07-10T00:45:05Z
+2026-07-10T00:53:07Z
