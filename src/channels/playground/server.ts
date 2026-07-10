@@ -14,6 +14,7 @@
  *     workbench under /playground/) or the API router in
  *     `api-routes.ts`.
  */
+import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';
 import os from 'os';
@@ -67,6 +68,17 @@ const OUTBOX_TTL_MS = 24 * 60 * 60 * 1000;
 // browser tabs can each hold a different seat simultaneously.
 
 import { readSeatsConfig } from './seats-config.js';
+
+/**
+ * Timing-safe seat-password comparison. `crypto.timingSafeEqual` throws on
+ * unequal-length buffers, which would both crash the request and leak the
+ * expected password's length via the error path — so compare fixed-length
+ * SHA-256 digests instead of the raw strings.
+ */
+export function seatPasswordMatches(supplied: string, expected: string): boolean {
+  const digest = (s: string) => crypto.createHash('sha256').update(s, 'utf8').digest();
+  return crypto.timingSafeEqual(digest(supplied), digest(expected));
+}
 
 let _bypassSession: PlaygroundSession | null = null;
 function getBypassSession(): PlaygroundSession {
@@ -401,7 +413,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       try {
         const body = (await readJsonBody(req)) as { slug?: string; password?: string };
         const sc = readSeatsConfig();
-        if (sc.password && body.password !== sc.password) {
+        if (sc.password && !seatPasswordMatches(body.password ?? '', sc.password)) {
           send(res, 401, { error: 'Wrong password' });
           return;
         }
