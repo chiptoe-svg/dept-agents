@@ -167,20 +167,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (43 commits ahead)
+- **Last tag:** `classroom-2026-07` (44 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-M  container/agent-runner/src/providers/pi.test.ts
-M  container/agent-runner/src/providers/pi.ts
-M  src/container-runner.ts
+## main...origin/main [ahead 2]
+A  config/default-mcp-servers.json
+A  scripts/backfill-default-mcp-servers.ts
+M  src/config.ts
+A  src/group-init.test.ts
+M  src/group-init.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+2b89b43b fix(pi): test env wiring through to the MCP bridge; dedupe comment
 7070232c feat(mcp): HTTP transport, gateway rewrite, and scoped header-secret forwarding
 c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, gateway fix
 488da89f fix(container-runtime): resolve host gateway via runtime query, not a hardcoded constant
@@ -195,9 +198,8 @@ af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, contain
 16e3cbe5 docs(review): isolation verification evidence — web, proxy, and ncl gates confirmed live
 40a86698 docs(state): Plan 1.5 complete — identity derived server-side; bypass retirement blocked on Plan 3
 7a3c682c fix(playground): source seat password from env, use timing-safe compare
-89d2b171 docs(plans): amend Plan 1.5 Task 9 — seat password must not live in a tracked file
 ```
 
 ### Last refresh
 
-2026-07-10T13:26:05Z
+2026-07-10T13:57:09Z
