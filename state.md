@@ -167,12 +167,12 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (38 commits ahead)
+- **Last tag:** `classroom-2026-07` (39 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
+## main...origin/main [ahead 5]
 M  src/container-runtime.test.ts
 M  src/container-runtime.ts
 ```
@@ -180,6 +180,7 @@ M  src/container-runtime.ts
 ### Recent commits (last 15)
 
 ```
+88c3c4d9 fix(container-runtime): read object-shaped status (Apple Container 1.x)
 b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google token
 301df953 fix(budgets): harden the credential-proxy budget gate (6 review fixes)
 8c8d60ea fix(test): stop seats-config test reading operator's real .env
@@ -194,9 +195,8 @@ af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, contain
 fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budget (H1, H2)
 87f12327 fix(cli): add genericGet mutation-test coverage, push scope predicate into LIMIT query, fix agent instructions
 8e7be465 fix(cli): scope ncl reads to the caller agent group (C6)
-9f6ff357 test(gws-mcp-relay): fix authz test gaps in spoof and array-header cases
 ```
 
 ### Last refresh
 
-2026-07-10T08:07:47Z
+2026-07-10T08:12:22Z

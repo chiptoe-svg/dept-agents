@@ -160,6 +160,13 @@ export function containerState(status: unknown): string {
   if (status && typeof status === 'object' && 'state' in status) {
     const s = (status as { state: unknown }).state;
     if (typeof s === 'string') return s;
+    // object with non-string state value — unrecognizable
+    log.warn('Unrecognized container status shape — orphan reaping may be skipping containers', { status });
+    return '';
+  }
+  if (status !== null && status !== undefined) {
+    // object with no state key — unrecognizable
+    log.warn('Unrecognized container status shape — orphan reaping may be skipping containers', { status });
   }
   return '';
 }

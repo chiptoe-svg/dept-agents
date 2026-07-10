@@ -117,26 +117,44 @@ describe('ensureContainerRuntimeRunning', () => {
 describe('containerState', () => {
   it('passes through a bare string (container 0.12.x)', () => {
     expect(containerState('running')).toBe('running');
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
   it('reads .state from an object (container 1.x)', () => {
     expect(containerState({ state: 'running' })).toBe('running');
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
   it('does not throw on undefined and fails closed (not "running")', () => {
     expect(containerState(undefined)).not.toBe('running');
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
   it('does not throw on null and fails closed (not "running")', () => {
     expect(containerState(null)).not.toBe('running');
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
-  it('does not throw on a non-string state and fails closed (not "running")', () => {
-    expect(containerState({ state: 123 })).not.toBe('running');
+  it('warns on a non-string state and fails closed (not "running")', () => {
+    const result = containerState({ state: 123 });
+    expect(result).not.toBe('running');
+    expect(result).toBe('');
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledWith(
+      'Unrecognized container status shape — orphan reaping may be skipping containers',
+      { status: { state: 123 } },
+    );
   });
 
-  it('does not throw on an object with no state key and fails closed (not "running")', () => {
-    expect(containerState({})).not.toBe('running');
+  it('warns on an object with no state key and fails closed (not "running")', () => {
+    const result = containerState({});
+    expect(result).not.toBe('running');
+    expect(result).toBe('');
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledWith(
+      'Unrecognized container status shape — orphan reaping may be skipping containers',
+      { status: {} },
+    );
   });
 });
 
