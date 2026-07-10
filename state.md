@@ -8,7 +8,7 @@
 
 ## Goal
 
-NanoClaw is a self-hosted personal-Claude assistant. **As of 2026-07-09 this install (Mac Studio, `gcworkflow.clemson.edu:3002` / Caddy `130.127.162.180:8088`) is transforming in place into a department agent server** for ~15 Clemson faculty/staff: each person gets one isolated agent group (own memory, base persona + skill set, ability to add their own skills) reachable via a web homepage and optionally Telegram. Onboarding is a single admin-provisioned email invite (Clemson email = canonical identity; no self-registration). Provider model: per-user ChatGPT (Codex OAuth) covers each person's own usage; a department OpenAI API key covers system functions and steps in as a visible-warning backstop when a user's token is missing/expired/exhausted. Provider-neutral via the pi harness — Claude is a likely later option requiring no code change (`model_provider` is already per-group). Success bar: pilot with 2–3 friendly colleagues, iterate, then open to all ~15. Full design (goal, decisions table, §1–§6): `docs/superpowers/specs/2026-07-09-department-agent-server-design.md`.
+NanoClaw is a self-hosted personal-Claude assistant. **As of 2026-07-09 this install (Mac Studio, playground at `http://gcworkflow.clemson.edu:8088`, box IP `130.127.162.67`; note plain `https://gcworkflow.clemson.edu` on 443 is an unrelated app on the same box) is transforming in place into a department agent server** for ~15 Clemson faculty/staff: each person gets one isolated agent group (own memory, base persona + skill set, ability to add their own skills) reachable via a web homepage and optionally Telegram. Onboarding is a single admin-provisioned email invite (Clemson email = canonical identity; no self-registration). Provider model: per-user ChatGPT (Codex OAuth) covers each person's own usage; a department OpenAI API key covers system functions and steps in as a visible-warning backstop when a user's token is missing/expired/exhausted. Provider-neutral via the pi harness — Claude is a likely later option requiring no code change (`model_provider` is already per-group). Success bar: pilot with 2–3 friendly colleagues, iterate, then open to all ~15. Full design (goal, decisions table, §1–§6): `docs/superpowers/specs/2026-07-09-department-agent-server-design.md`.
 
 **Superseded direction:** the "group-agent platform with in-tree scenario profiles" framing (`plans/group-agent-platform.md`, decision log 2026-06-08 — classroom + `industryai_seminar` scenarios selected by `ACTIVE_SCENARIO`) is retired for this install; `main` now serves the department server exclusively. The classroom scenario/pilot is **frozen, not deleted** — see Decision log 2026-07-09 for the freeze + August revival path.
 
@@ -26,6 +26,8 @@ DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT to
 
 **Active arc: department-agent-server transformation** (spec: `docs/superpowers/specs/2026-07-09-department-agent-server-design.md`; plan: `docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md`). Progress:
 - **Plan 1 (freeze & clean base) complete** (`e537607f`..`73761b78`): classroom frozen — branch `classroom-freeze` + tag `classroom-2026-07` pushed to origin at `e537607f`, runtime snapshot verified restorable at `~/archives/classroom-2026-07.tar.gz`. Classroom scenario profile + `/add-classroom*` skills + enrollment/passcode surface + roster-admin/shared-class-base surface deleted from `main` (`7d99b2cc`, `6a887da2`, `09066814`); classroom runtime data purged from disk; fresh `data/v2.db` boots clean (24 migrations); seats trimmed to `owner_01` + `user_01` (`73761b78`); end-to-end owner chat turn live-verified on the fresh base.
+- **Tracked: revert dev auth posture before any non-owner user touches the box** — `PLAYGROUND_AUTH_BYPASS` off + non-empty seat password — owned by Plan 3 (invite & identity).
+- **Tracked: open owner action — GitHub repo rename** (spec §1.7) — remote still `chiptoe-svg/nanoclaw_gccourse`.
 
 **Next: Plan 2 — ports from personal repo** (pi-harness reconciliation, `hermes-selflearning` + `self-customize`, `agents-compose` size guard, `fetch_url_to_workspace`, Apple Container orphan-cleanup fix), then **Plan 3 — invite & identity**, **Plan 4 — provider auth & backstop**, **Plan 5 — homepage & channels**. Full roadmap (each plan written after the prior lands) at the bottom of the Plan 1 doc. Known deferred gaps: `config/playground-seats.json` provisioning is still hand-edited (a DB-backed bootstrap lands in Plan 3); several classroom-named-but-actually-generic files (login tokens/PINs, Telegram pairing, provider resolver, `class-controls`) are intentionally untouched until Plans 3–5 rename/rewire them (see the Plan 1 doc's "NOT touched in this plan" list); the live playground URL is `http://gcworkflow.clemson.edu:8088` (server IP `130.127.162.67`).
 
@@ -37,7 +39,7 @@ Append-only. Drained by the human, not by `refresh-state`.
 
 - **Wire the platform to the scenario contract (Phase 2 proper).** — DONE 2026-06-09 (branch `scenario-contract-wiring`, commits `7606cf0`..`8e894cd`; plan `docs/superpowers/plans/2026-06-09-scenario-contract-wiring.md`). Generic contract-driven pair consumer + provisioning persona via `roleProfile('user')`; three classroom consumers deleted; `memberName()` added; verified by an `industryai_seminar` integration test. Turned out narrower than the ~30-file estimate — Phase 1 had already moved the pair consumers into the profile.
 - **⚠️ REVERT BEFORE GO-LIVE: playground is in insecure no-auth demo mode (set 2026-06-09).** For pre-launch campus testing, the playground runs with `PLAYGROUND_AUTH_BYPASS=1` + `PLAYGROUND_BIND_HOST=127.0.0.1`, fronted by a `caddy reverse-proxy --from :8088 --to 127.0.0.1:3002` (nohup, NOT durable across reboot) so `http://gcworkflow.clemson.edu:8088/?seat=owner|user_01|user_02|user_03` opens with no login on the Clemson network. This exposes the OWNER (admin) seat with no auth — fine for the breakable pilot, NOT for go-live. **To revert:** `pkill -f 'caddy reverse-proxy --from :8088'`; set `PLAYGROUND_AUTH_BYPASS=0` + `PLAYGROUND_BIND_HOST=0.0.0.0` in `.env`; `launchctl kickstart -k gui/$(id -u)/com.nanoclaw-v2-581fefa4`. The hardening guard (refuses bypass on non-loopback bind) is intact — this routes around it via the proxy, by design per the guard's own message.
-- **Phase 4 (later):** retire the `classroom` sibling branch + `/add-classroom*` skills (superseded by in-tree scenarios).
+- **Phase 4 (later): retire the `classroom` sibling branch + `/add-classroom*` skills** (superseded by in-tree scenarios) — DONE 2026-07-09: `/add-classroom*` skills deleted from `.claude/skills/` in Plan 1 Task 4 (`7d99b2cc`); classroom is frozen (branch `classroom-freeze` / tag `classroom-2026-07`), not deleted — see Decision log 2026-07-09.
 - **Web search: enable Brave (optional) — needs a key.** Brave is greyed in the owner card until `WEB_SEARCH_API_KEY` is set in `.env` (then restart the host). SearXNG is the live default and needs no key. Do NOT auto-extract the Brave key from the personal install's vault — the owner pastes it or authorizes the pull.
 - **Web search: SearXNG bridge-IP coupling.** SearXNG is bound to the Apple-container bridge gateway `192.168.64.1:8888` and `SEARXNG_URL`/the `docker run -p` both hardcode that IP. If the bridge IP ever changes (it's stable in practice — `detectHostGateway()` reads `bridge100`), update both the `-p` bind and `.env` `SEARXNG_URL`. Tracked in `~/.dev-ports.yaml` under `searxng`.
 - **Default-participant apply-to-all: container-config reversibility gap.** The reversible restore point that apply-to-all writes (`pre-default-reset-*` in each Participant's library) reverts persona/CLAUDE.md/custom-skills but NOT `container_configs` (model/provider/skills) — because the agent-library `loadEntry` restores files to disk while the container re-materializes `container.json` from the DB on spawn, and `loadEntry` never writes back to `container_configs`. This is a PRE-EXISTING library/DB-sync limitation (affects all library loads, not just this feature); the restore-point copy is worded to say only persona/skills are reverted. Fix later by reconciling `container.json` → `container_configs` on library load (or in apply-to-all). Introduced/surfaced by the default-participant template feature (commits `85f69cc`..`b3bbfb0`).
@@ -161,24 +163,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (5 commits ahead)
+- **Last tag:** `classroom-2026-07` (8 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 8, behind 2]
-A  plans/setup-service-sudo-prompt.md
-M  setup/auto.ts
-M  setup/lib/ai-coding-cli/codex.ts
-M  setup/service.ts
-M  src/admin-handlers/index.ts
-M  src/container-runtime.test.ts
-M  src/container-runtime.ts
+## main...origin/main
+M  docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+dcb60c1d Merge remote-tracking branch 'origin/main'
 1a6586d5 docs(state): department-server arc — classroom frozen, Plan 1 complete
 73761b78 feat: department base — trimmed seats, fresh-DB boot verified
 09066814 refactor: delete classroom roster-admin and shared-class-base surface
@@ -187,15 +185,14 @@ M  src/container-runtime.ts
 e537607f chore: commit pending seminar-install state before classroom freeze
 cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
 e5493c03 docs(specs): department agent server design — fork strategy, invite flow, isolation, credentials
+0800e63c fix(setup): non-interactive sudo for macOS service install + Apple Container path
+01ecb657 fix(setup): Codex skills via on-demand router, not global symlinks
 c7ab8604 fix(setup): default agent provider to OpenAI when CLI is Codex
 14bbd0d5 fix(setup): infer agent provider from existing .env keys on re-run
 ede7ef1f feat(setup): agent provider selection — Anthropic or OpenAI
 4b762fb3 fix(setup): add ensureAppleContainerReady + Codex auth clarification
-ce65b3c6 feat(setup): Apple Container + Codex support; LaunchDaemon; Node <26 cap
-eea9795e feat(skills): image-vision + image-metadata container skills
-1c76d15f fix(agent-runner): surface uploaded image paths to the agent
 ```
 
 ### Last refresh
 
-2026-07-10T02:21:49Z
+2026-07-10T02:35:19Z

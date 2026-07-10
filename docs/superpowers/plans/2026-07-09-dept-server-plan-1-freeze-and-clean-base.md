@@ -338,6 +338,6 @@ git ls-remote origin main >/dev/null && echo "remote OK"
 ## Roadmap (subsequent plans, each written after the prior lands)
 
 - **Plan 2 — Ports from personal repo:** pi harness reconciliation (best-of-both diff), `hermes-selflearning` + `self-customize`, `agents-compose` size guard, `fetch_url_to_workspace`, Apple Container orphan-cleanup fix.
-- **Plan 3 — Invite & identity:** provisioning primitive (resurrect pattern from `classroom-freeze`), Resend invite email, rename/rewire `class-login-tokens` + `class-login-pins` (+ their `module-class-*` migrations) to per-user invites, department scenario naming.
+- **Plan 3 — Invite & identity:** provisioning primitive (resurrect pattern from `classroom-freeze`), Resend invite email, rename/rewire `class-login-tokens` + `class-login-pins` (+ their `module-class-*` migrations) to per-user invites, department scenario naming; revert dev auth posture (PLAYGROUND_AUTH_BYPASS, seat password).
 - **Plan 4 — Provider auth & backstop:** rewire `user-provider-resolver` (drop `class-controls`/`classroom-roster` deps — then delete those + migration 016 + `config/class-controls.json`), per-user ChatGPT paste-back OAuth, backstop warning events + usage surfacing.
 - **Plan 5 — Homepage & channels:** §5 reorg of the playground (rollups, status strip, `home.js` rebuild), admin roster view, Telegram linking (rewire `class-telegram-pair`), rename remaining classroom-flavored files (`class-playground-gate`, `class-container-env`, `student-creds-paths`, `student-google-auth`, `gws-token` naming).
