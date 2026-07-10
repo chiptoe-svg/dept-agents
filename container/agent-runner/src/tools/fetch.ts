@@ -81,7 +81,11 @@ export function ipIsBlocked(ip: string): boolean {
   }
   const lower = ip.toLowerCase().split('%')[0]; // drop IPv6 zone id (e.g. fe80::1%eth0)
   if (lower === '::1') return true; // loopback
-  if (lower.startsWith('fe80')) return true; // link-local
+  // link-local fe80::/10 — the fixed 10-bit prefix spans hex groups
+  // 0xfe80-0xfebf, i.e. any of fe8x/fe9x/feax/febx, not just literal "fe80".
+  if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) {
+    return true;
+  }
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA fc00::/7
   // IPv4-mapped IPv6, dotted form: ::ffff:192.168.0.1
   const dotted = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);

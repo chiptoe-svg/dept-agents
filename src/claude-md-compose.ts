@@ -34,6 +34,71 @@ const MCP_TOOLS_HOST_SUBPATH = path.join('container', 'agent-runner', 'src', 'mc
 
 const COMPOSED_HEADER = '<!-- Composed at spawn — do not edit. Edit CLAUDE.local.md for per-group content. -->';
 
+// Resolved-persona size guard. `groups/<folder>/CLAUDE.md` is only a
+// manifest of @-imports, so its own byte count is meaningless — what
+// actually reaches the system prompt is the SUM of everything Claude Code
+// resolves (shared base + fragments + CLAUDE.local.md). Warn well above a
+// healthy size; hard-fail only on the pathological, usually an unbounded
+// CLAUDE.local.md. Ported from the personal repo's agents-compose.ts
+// (same budget — this repo doesn't compose the extra per-harness /
+// per-model-provider fragments Pi needs, so nothing here runs hotter).
+export const PERSONA_WARN_BYTES = 48 * 1024;
+export const PERSONA_HARD_MAX_BYTES = 64 * 1024;
+
+function byteSizeOf(hostPath: string | null): number {
+  if (!hostPath) return 0;
+  try {
+    return fs.statSync(hostPath).size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Map a fragment's container path (the symlink target — `/app/skills/...`,
+ * `/app/src/...`) back to its host source, so the resolved size can be
+ * summed at compose time. Returns null for an unrecognized base (counted
+ * as zero — better to under- than over-count).
+ */
+function hostPathForContainer(containerPath: string | null): string | null {
+  if (!containerPath) return null;
+  const root = process.cwd();
+  const bases: Array<[string, string]> = [
+    [SHARED_SKILLS_CONTAINER_BASE, path.join(root, 'container', 'skills')],
+    ['/app/src', path.join(root, 'container', 'agent-runner', 'src')],
+  ];
+  for (const [cBase, hBase] of bases) {
+    if (containerPath === cBase || containerPath.startsWith(`${cBase}/`)) {
+      return hBase + containerPath.slice(cBase.length);
+    }
+  }
+  return null;
+}
+
+/**
+ * Fail-loud guard on the resolved persona size. Warn above {@link PERSONA_WARN_BYTES};
+ * throw above {@link PERSONA_HARD_MAX_BYTES} so a runaway system prompt (usually an
+ * unbounded per-group memory file) blocks the spawn loudly instead of silently
+ * burning tokens every turn. Pure (apart from the warn log) — unit-tested directly.
+ */
+export function evaluatePersonaSize(resolvedBytes: number, ctx: { group: string; memoryFile: string }): void {
+  if (resolvedBytes > PERSONA_HARD_MAX_BYTES) {
+    throw new Error(
+      `Composed persona for group "${ctx.group}" resolves to ${(resolvedBytes / 1024).toFixed(1)} KB, over the ` +
+        `${PERSONA_HARD_MAX_BYTES / 1024} KB hard cap. Refusing to spawn with a runaway system prompt — the usual ` +
+        `cause is an unbounded ${ctx.memoryFile} (per-group memory) or a large MCP \`instructions\` blob. Trim it and respawn.`,
+    );
+  }
+  if (resolvedBytes > PERSONA_WARN_BYTES) {
+    log.warn('Composed persona is large', {
+      group: ctx.group,
+      resolvedKb: +(resolvedBytes / 1024).toFixed(1),
+      warnKb: PERSONA_WARN_BYTES / 1024,
+      hardKb: PERSONA_HARD_MAX_BYTES / 1024,
+    });
+  }
+}
+
 /**
  * Regenerate `groups/<folder>/CLAUDE.md` from the shared base, enabled skill
  * fragments, and MCP server fragments declared in `container.json`. Creates
@@ -120,13 +185,31 @@ export function composeGroupClaudeMd(group: AgentGroup): void {
   for (const name of [...desired.keys()].sort()) {
     imports.push(`@./.claude-fragments/${name}`);
   }
-  const body = [COMPOSED_HEADER, ...imports, ''].join('\n');
-  writeAtomic(path.join(groupDir, 'CLAUDE.md'), body);
 
+  // CLAUDE.local.md is not @-imported above — Claude Code auto-loads it
+  // from the working directory on its own — but its bytes still land in
+  // the system prompt, so it counts toward the size budget below. Ensure
+  // it exists before sizing it.
   const localFile = path.join(groupDir, 'CLAUDE.local.md');
   if (!fs.existsSync(localFile)) {
     fs.writeFileSync(localFile, '');
   }
+
+  // Fail-loud guard on the *resolved* persona size — the sum of everything
+  // that actually reaches the system prompt, not the composed manifest's
+  // own (tiny) byte count. See evaluatePersonaSize.
+  let resolvedBytes = byteSizeOf(path.join(process.cwd(), 'container', 'CLAUDE.md'));
+  for (const frag of desired.values()) {
+    resolvedBytes +=
+      frag.type === 'inline'
+        ? Buffer.byteLength(frag.content, 'utf-8')
+        : byteSizeOf(hostPathForContainer(frag.content));
+  }
+  resolvedBytes += byteSizeOf(localFile);
+  evaluatePersonaSize(resolvedBytes, { group: group.folder, memoryFile: 'CLAUDE.local.md' });
+
+  const body = [COMPOSED_HEADER, ...imports, ''].join('\n');
+  writeAtomic(path.join(groupDir, 'CLAUDE.md'), body);
 }
 
 /**

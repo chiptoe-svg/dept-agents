@@ -167,21 +167,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (48 commits ahead)
+- **Last tag:** `classroom-2026-07` (49 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  container/skills/clemson-curriculum/SKILL.md
-M  container/skills/clemson-procurement/SKILL.md
-M  container/skills/clemson-scheduling/SKILL.md
-M  container/skills/gc-alumni/SKILL.md
+## main...origin/main
+A  container/agent-runner/src/mcp-tools/files.test.ts
+A  container/agent-runner/src/mcp-tools/files.ts
+M  container/agent-runner/src/mcp-tools/index.ts
+M  container/agent-runner/src/tools/fetch.ts
+A  src/claude-md-compose.test.ts
+M  src/claude-md-compose.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+332572a7 fix(skills): remove personal name from skill frontmatter
 ac246117 feat(skills): port the five skills that drive the curated MCP servers
 31e5e94e test(skills): pin per-group confinement of self-authored skills
 95589948 fix(pi-mcp-bridge): isolate per-server MCP connect failures
@@ -196,9 +199,8 @@ b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google to
 301df953 fix(budgets): harden the credential-proxy budget gate (6 review fixes)
 8c8d60ea fix(test): stop seats-config test reading operator's real .env
 f685543a fix(budgets): enforce spend cap on the main agent-turn path at the proxy
-ae6cd07f docs(plans): Plan 2 — HTTP MCP transport, curated server set, and the skills that drive them
 ```
 
 ### Last refresh
 
-2026-07-10T15:32:09Z
+2026-07-10T15:44:19Z
