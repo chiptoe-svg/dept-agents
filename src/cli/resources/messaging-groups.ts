@@ -7,6 +7,10 @@ registerResource({
   description:
     'Messaging group — one chat or channel on one platform (a Telegram DM, a Discord channel, a Slack thread root, an email address). Identity is the (channel_type, platform_id) pair, which must be unique.',
   idColumn: 'id',
+  // No agent-group column — a messaging group is a chat/channel, linked to
+  // agent group(s) only indirectly via `wirings`. No legitimate cross-tenant
+  // read for an agent caller.
+  scopeColumn: null,
   columns: [
     { name: 'id', type: 'string', description: 'UUID.', generated: true },
     {

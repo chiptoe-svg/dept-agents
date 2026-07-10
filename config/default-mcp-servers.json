@@ -1,0 +1,7 @@
+{
+  "cuassistant-public":  { "url": "http://host.docker.internal:8766/" },
+  "cuassistant-catalog": { "url": "http://host.docker.internal:8767/" },
+  "gc-alumni":           { "url": "http://host.docker.internal:8011/mcp" },
+  "gc-wiki":             { "url": "http://gcworkflow.clemson.edu:3000/api/mcp",
+                           "headers": { "Authorization": "Bearer ${WIKI_MCP_TOKEN}" } }
+}

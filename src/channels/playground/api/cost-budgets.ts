@@ -6,20 +6,42 @@ import { getAllAgentGroups } from '../../../db/agent-groups.js';
 import { getContainerConfig } from '../../../db/container-configs.js';
 import { roleForFolder, roleProfile, memberName } from '../../../scenarios/registry.js';
 import { aggregateAgentUsage } from './usage.js';
+import { log } from '../../../log.js';
 import type { PlaygroundSession } from '../auth-store.js';
-import type { ApiResult } from './enrollment.js';
+import type { ApiResult } from './me.js';
 
 export interface CostBudgets {
   defaultMonthlyUsd: number | null;
   warnFraction: number;
   perAgent: Record<string, number>;
+  /**
+   * True only when `config/cost-budgets.json` EXISTS but couldn't be read or
+   * parsed — a corrupted control, distinct from a legitimately absent file
+   * (no budget configured). Never persisted: callers that round-trip this
+   * object into `writeCostBudgets` must not carry it forward (see
+   * `handlePostBudgets`, which strips it before writing).
+   */
+  corrupted?: boolean;
 }
 export type BudgetStatus = 'none' | 'ok' | 'approaching' | 'over';
 
 const CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'cost-budgets.json');
 const DEFAULT_WARN = 0.8;
 
+/**
+ * Reads and validates `config/cost-budgets.json`, distinguishing two failure
+ * shapes that `assertWithinBudget` must treat very differently:
+ *   - file absent:  legitimate "no budget configured" — return the
+ *                    null-budget default (spend enforcement is a no-op).
+ *   - file present but unreadable/unparseable: a corrupted control. Callers
+ *                    must fail closed rather than silently disabling every
+ *                    cap — see the `corrupted` flag on the return value.
+ */
 export function readCostBudgets(): CostBudgets {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    log.warn('cost-budgets: config file not found — no monthly budget is enforced', { path: CONFIG_PATH });
+    return { defaultMonthlyUsd: null, warnFraction: DEFAULT_WARN, perAgent: {} };
+  }
   try {
     const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     return {
@@ -30,8 +52,12 @@ export function readCostBudgets(): CostBudgets {
           : DEFAULT_WARN,
       perAgent: raw.perAgent && typeof raw.perAgent === 'object' && !Array.isArray(raw.perAgent) ? raw.perAgent : {},
     };
-  } catch {
-    return { defaultMonthlyUsd: null, warnFraction: DEFAULT_WARN, perAgent: {} };
+  } catch (err) {
+    log.error('cost-budgets: config file exists but is unreadable/unparseable — failing closed on spend', {
+      path: CONFIG_PATH,
+      err,
+    });
+    return { defaultMonthlyUsd: null, warnFraction: DEFAULT_WARN, perAgent: {}, corrupted: true };
   }
 }
 
@@ -113,6 +139,10 @@ export function handlePostBudgets(
 ): ApiResult<CostBudgets> {
   if (!isOwnerOrAdmin(session.userId)) return { status: 403, body: { error: 'owner or admin required' } };
   const next: CostBudgets = { ...readCostBudgets() };
+  // Never persist the corrupted marker — a POST from the Budgets tab is
+  // exactly how an operator repairs a corrupted file; the write below
+  // produces a clean, valid config regardless of what came before it.
+  delete next.corrupted;
   if ('defaultMonthlyUsd' in body) {
     const v = body.defaultMonthlyUsd;
     if (v !== null && (typeof v !== 'number' || v < 0))

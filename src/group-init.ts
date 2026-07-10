@@ -1,11 +1,31 @@
 import fs from 'fs';
 import path from 'path';
 
-import { DATA_DIR, GROUPS_DIR } from './config.js';
-import { ensureContainerConfig } from './db/container-configs.js';
+import { DATA_DIR, DEFAULT_MCP_SERVERS_PATH, GROUPS_DIR } from './config.js';
 import { seedInitialLibraryEntry } from './channels/playground/api/agent-library.js';
+import type { McpServerConfig } from './container-config.js';
+import { ensureContainerConfig, getContainerConfig, updateContainerConfigJson } from './db/container-configs.js';
 import { log } from './log.js';
 import type { AgentGroup } from './types.js';
+
+/**
+ * Read `config/default-mcp-servers.json` — the operator's curated set of
+ * MCP servers seeded into every newly-created agent group. Absent or
+ * malformed file returns `{}` — never throws, since a bad config must not
+ * prevent an agent from being created.
+ */
+export function readDefaultMcpServers(): Record<string, McpServerConfig> {
+  if (!fs.existsSync(DEFAULT_MCP_SERVERS_PATH)) return {};
+  try {
+    const raw = fs.readFileSync(DEFAULT_MCP_SERVERS_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    return parsed as Record<string, McpServerConfig>;
+  } catch (err) {
+    log.warn('Failed to parse default-mcp-servers.json, using {}', { err: String(err) });
+    return {};
+  }
+}
 
 const DEFAULT_SETTINGS_JSON =
   JSON.stringify(
@@ -67,8 +87,17 @@ export function initGroupFilesystem(group: AgentGroup, opts?: { instructions?: s
   }
 
   // Ensure a container_configs DB row exists for this group. Idempotent —
-  // INSERT OR IGNORE is a no-op if the row already exists.
+  // INSERT OR IGNORE is a no-op if the row already exists. Seed mcp_servers
+  // from the operator's curated default set, but only on first creation —
+  // never overwrite a row (and its mcp_servers) that already exists.
+  const isNewConfigRow = !getContainerConfig(group.id);
   ensureContainerConfig(group.id);
+  if (isNewConfigRow) {
+    const defaultMcpServers = readDefaultMcpServers();
+    if (Object.keys(defaultMcpServers).length > 0) {
+      updateContainerConfigJson(group.id, 'mcp_servers', defaultMcpServers);
+    }
+  }
   initialized.push('container_config row');
 
   // 2. data/v2-sessions/<id>/.claude-shared/ — Claude state + per-group skills

@@ -11,11 +11,11 @@
  * OAuth grant_type=refresh_token POST — no library, just `https`.
  *
  * The per-call attribution header set by the container's proxy-fetch
- * wrapper is what lets `getGoogleAccessTokenForAgentGroup` pick a
- * student's token over the instructor's. Missing header / no
- * student_user_id metadata / no per-student creds file all gracefully
- * fall back to the instructor's token — same behavior as the
- * pre-attribution era.
+ * wrapper is what lets `getGoogleAccessTokenForAgentGroup` resolve a
+ * caller's own token. There is no owner/instructor fallback: a group
+ * with no personal Google credentials of its own resolves to `null`,
+ * full stop. This is a hard security boundary — no agent may operate
+ * inside the owner's Drive/Sheets/Docs/Slides account.
  */
 import fs from 'fs';
 import path from 'path';
@@ -144,9 +144,13 @@ export async function getGoogleAccessTokenForCredsPath(credsPath: string): Promi
 }
 
 /**
- * Instructor / class-default token — the host's
- * `~/.config/gws/credentials.json`. Used when no per-call attribution
- * resolves or no per-student creds exist on disk yet.
+ * Instructor / owner token — the host's `~/.config/gws/credentials.json`.
+ *
+ * NOT used by `getGoogleAccessTokenForAgentGroup` (no agent group may fall
+ * back to this). Kept for host-initiated, non-agent email sending — see
+ * `gmail-send.ts`, used by the classroom-PIN and bulk-token-distribution
+ * flows, which authenticate as the owner directly and are not reachable
+ * from any agent tool call.
  */
 export function getInstructorGoogleAccessToken(): Promise<string | null> {
   return getGoogleAccessTokenForCredsPath(INSTRUCTOR_GWS_CREDENTIALS_PATH);
@@ -173,49 +177,29 @@ export async function getStudentGoogleAccessTokenForAgentGroup(agentGroupId: str
   return token;
 }
 
-/**
- * Caller principal — distinguishes per-student token resolution from
- * instructor-fallback. Mode A / Mode 1 callers always see
- * `instructor-fallback`; Mode B callers with a wired per-student
- * credentials file see `self`. Tools use this to decide whether to
- * run NanoClaw-side ownership checks (Mode A) or trust Google's own
- * boundaries (Mode B).
- */
-export type GwsPrincipal = 'self' | 'instructor-fallback';
-
 export interface GwsTokenResolution {
   token: string;
-  principal: GwsPrincipal;
+  /** Always 'self' — every resolution is the calling group's own token. */
+  principal: 'self';
 }
 
 /**
- * Pick the right Google OAuth token for a caller: per-student first if
- * the agent-group attribution resolves to a per-student credentials
- * file; instructor / class-default otherwise.
+ * Resolve the calling agent group's OWN Google OAuth token — never the
+ * owner's. Returns `null` if the group has no personal Google credentials
+ * on disk (i.e. hasn't connected its own Google account).
  *
- * Graceful fallback chain — missing-attribution, missing-metadata, and
- * missing-creds-file all reduce to "use the instructor's token." Per-
- * student isolation only kicks in once a class deployment has wired
- * the student through the playground OAuth flow.
- *
- * When `options.requirePersonal` is true the function returns null
- * instead of falling back to the instructor token. Gmail (Tier C) and
- * Calendar (Tier D) tools use this gate to refuse to fire until the
- * student has connected their own Google account. Drive/Sheets/Slides
- * tools omit the option (or pass false) to keep Mode A fallback.
+ * There is no fallback to the owner/instructor token here. That fallback
+ * used to exist and was the reason Drive/Sheets/Docs/Slides tools could
+ * silently operate inside the owner's Drive for any agent group without
+ * its own credentials — it has been removed as a hard security boundary.
  */
 export async function getGoogleAccessTokenForAgentGroup(
   agentGroupId: string | null,
-  options?: { requirePersonal?: boolean },
 ): Promise<GwsTokenResolution | null> {
-  if (agentGroupId) {
-    const studentToken = await getStudentGoogleAccessTokenForAgentGroup(agentGroupId);
-    if (studentToken) return { token: studentToken, principal: 'self' };
-  }
-  if (options?.requirePersonal) return null;
-  const instructorToken = await getInstructorGoogleAccessToken();
-  if (instructorToken) return { token: instructorToken, principal: 'instructor-fallback' };
-  return null;
+  if (!agentGroupId) return null;
+  const studentToken = await getStudentGoogleAccessTokenForAgentGroup(agentGroupId);
+  if (!studentToken) return null;
+  return { token: studentToken, principal: 'self' };
 }
 
 /** Test hook — drop the in-memory token cache. */

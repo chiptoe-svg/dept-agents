@@ -14,6 +14,7 @@
  *     workbench under /playground/) or the API router in
  *     `api-routes.ts`.
  */
+import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';
 import os from 'os';
@@ -45,9 +46,6 @@ import { handleOAuthCallback, handleOAuthStart } from './google-oauth.js';
 import { parseCookie, readJsonBody, send } from './http-helpers.js';
 import { readEnvFile } from '../../env.js';
 import { getOwners } from '../../modules/permissions/db/user-roles.js';
-// ── class-enrollment-passcode:imports START ────────────────────────────────
-import { handleGetClassPasscode, handleRotateClassPasscode, handleEnroll } from './api/enrollment.js';
-// ── class-enrollment-passcode:imports END ──────────────────────────────────
 
 // ── classroom-provider-auth:imports START ──────────────────────────────────
 import {
@@ -70,6 +68,17 @@ const OUTBOX_TTL_MS = 24 * 60 * 60 * 1000;
 // browser tabs can each hold a different seat simultaneously.
 
 import { readSeatsConfig } from './seats-config.js';
+
+/**
+ * Timing-safe seat-password comparison. `crypto.timingSafeEqual` throws on
+ * unequal-length buffers, which would both crash the request and leak the
+ * expected password's length via the error path — so compare fixed-length
+ * SHA-256 digests instead of the raw strings.
+ */
+export function seatPasswordMatches(supplied: string, expected: string): boolean {
+  const digest = (s: string) => crypto.createHash('sha256').update(s, 'utf8').digest();
+  return crypto.timingSafeEqual(digest(supplied), digest(expected));
+}
 
 let _bypassSession: PlaygroundSession | null = null;
 function getBypassSession(): PlaygroundSession {
@@ -404,7 +413,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       try {
         const body = (await readJsonBody(req)) as { slug?: string; password?: string };
         const sc = readSeatsConfig();
-        if (sc.password && body.password !== sc.password) {
+        if (sc.password && !seatPasswordMatches(body.password ?? '', sc.password)) {
           send(res, 401, { error: 'Wrong password' });
           return;
         }
@@ -500,25 +509,6 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   }
   // <<< classroom-pin:routes END
 
-  // ── class-enrollment-passcode:routes START ────────────────────────────────
-  if (method === 'POST' && url.pathname === '/login/enroll') {
-    void (async () => {
-      try {
-        const body = (await readJsonBody(req)) as { email?: unknown; passcode?: unknown };
-        const result = handleEnroll(body);
-        const headers: Record<string, string> = { 'content-type': 'application/json' };
-        if (result.setCookie) headers['set-cookie'] = result.setCookie;
-        res.writeHead(result.status, headers);
-        res.end(JSON.stringify(result.body));
-      } catch (err) {
-        log.error('enrollment handler error', { err });
-        if (!res.headersSent) send(res, 500, { error: 'enrollment failed' });
-      }
-    })();
-    return;
-  }
-  // ── class-enrollment-passcode:routes END ──────────────────────────────────
-
   const session = PLAYGROUND_AUTH_BYPASS ? getBypassSession() : authenticate(req);
   if (!session) {
     if (method === 'GET' && isHtmlPagePath(url.pathname)) {
@@ -555,19 +545,6 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     if (!ct) return send(res, 404, { error: `Not served: ${rel}` });
     return serveStatic(res, rel, ct);
   }
-
-  // ── class-enrollment-passcode:routes START ────────────────────────────────
-  if (method === 'GET' && url.pathname === '/api/admin/class-passcode') {
-    const result = handleGetClassPasscode(session);
-    send(res, result.status, result.body);
-    return;
-  }
-  if (method === 'POST' && url.pathname === '/api/admin/class-passcode/rotate') {
-    const result = handleRotateClassPasscode(session);
-    send(res, result.status, result.body);
-    return;
-  }
-  // ── class-enrollment-passcode:routes END ──────────────────────────────────
 
   // ── classroom-provider-auth:routes START ───────────────────────────────────
   if (url.pathname.startsWith('/provider-auth/')) {

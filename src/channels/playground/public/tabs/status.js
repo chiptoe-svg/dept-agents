@@ -141,117 +141,6 @@ function renderBudgetEditor(container) {
     </section>`;
 }
 
-/** Render the Add a Participant form into the given container element. */
-function renderAddParticipant(container, el) {
-  container.innerHTML = `
-    <section class="card" id="add-participant-card">
-      <h2>Add a participant</h2>
-      <p class="muted">Provisions a new student agent + roster entry. Tick "external guest" to also open a 60-minute public tunnel and get an off-campus login link.</p>
-      <div class="home-form">
-        <label>Name<input id="ap-name" type="text" autocomplete="off" placeholder="Jane Doe"></label>
-        <label>Email<input id="ap-email" type="email" autocomplete="off" placeholder="jane@example.edu"></label>
-        <label class="cc-check"><input id="ap-external" type="checkbox"> External guest (start 60-min tunnel)</label>
-      </div>
-      <div class="home-actions">
-        <button id="ap-submit" class="btn btn-primary">Add student</button>
-        <span class="muted" id="ap-status"></span>
-      </div>
-      <div id="ap-result" hidden></div>
-    </section>`;
-
-  const nameInput = container.querySelector('#ap-name');
-  const emailInput = container.querySelector('#ap-email');
-  const externalInput = container.querySelector('#ap-external');
-  const submitBtn = container.querySelector('#ap-submit');
-  const statusEl = container.querySelector('#ap-status');
-  const result = container.querySelector('#ap-result');
-
-  submitBtn.addEventListener('click', async () => {
-    const name = nameInput.value.trim();
-    const email = emailInput.value.trim();
-    const external = externalInput.checked;
-    if (!name || !email) {
-      statusEl.textContent = 'Name and email are required.';
-      return;
-    }
-    submitBtn.disabled = true;
-    statusEl.textContent = external ? 'Provisioning + starting tunnel…' : 'Provisioning…';
-    result.hidden = true;
-    try {
-      const res = await fetch('/api/admin/students', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ name, email, external }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        statusEl.textContent = `Failed: ${data.error || res.status}`;
-        return;
-      }
-      statusEl.textContent = '';
-      nameInput.value = '';
-      emailInput.value = '';
-      externalInput.checked = false;
-      renderAddParticipantResult(result, data);
-      // Refresh table after provisioning so new agent shows up.
-      await loadBudgets(el);
-    } catch (err) {
-      statusEl.textContent = `Failed: ${esc(String(err))}`;
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-}
-
-function renderAddParticipantResult(result, data) {
-  result.hidden = false;
-  let tunnelBlock = '';
-  if (data.external && data.tunnel) {
-    const until = new Date(data.tunnel.expiresAt).toLocaleTimeString();
-    tunnelBlock = `<p class="muted small">Public tunnel live until <strong>${esc(until)}</strong>. <button class="btn" id="ap-stop-tunnel">Stop tunnel</button></p>`;
-  } else if (data.external && !data.tunnel) {
-    tunnelBlock = `<p class="cc-banner-warn">Tunnel didn't start (${esc(data.tunnelError || 'unknown error')}). The link below uses the campus address — only works on-campus.</p>`;
-  }
-  result.innerHTML = `
-    <div class="add-student-result">
-      <p>Added <strong>${esc(data.name)}</strong> as <code>${esc(data.folder)}</code> <span class="muted">(${esc(data.email)})</span>.</p>
-      <p class="muted small">Send this login link to the student:</p>
-      <div class="as-link-row">
-        <input type="text" class="as-link" readonly value="${esc(data.loginUrl)}">
-        <button class="btn" id="ap-copy">Copy</button>
-      </div>
-      ${tunnelBlock}
-      <p class="muted small">The student will appear in the roster on the next budget refresh (within 30s).</p>
-    </div>`;
-  const linkInput = result.querySelector('.as-link');
-  result.querySelector('#ap-copy').addEventListener('click', async () => {
-    linkInput.select();
-    try {
-      await navigator.clipboard.writeText(linkInput.value);
-    } catch {
-      document.execCommand('copy');
-    }
-    const btn = result.querySelector('#ap-copy');
-    btn.textContent = 'Copied';
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-    }, 1500);
-  });
-  const stopBtn = result.querySelector('#ap-stop-tunnel');
-  if (stopBtn) {
-    stopBtn.addEventListener('click', async () => {
-      stopBtn.disabled = true;
-      try {
-        await fetch('/api/admin/tunnel/stop', { method: 'POST', credentials: 'same-origin' });
-      } catch {
-        /* ignore */
-      }
-      stopBtn.textContent = 'Tunnel stopped';
-    });
-  }
-}
-
 export function mountStatus(el) {
   el.innerHTML =
     `<div id="status-budget-editor"></div>` +
@@ -259,11 +148,9 @@ export function mountStatus(el) {
     `<p id="status-host" class="muted">loading…</p>` +
     `<table class="status-table"><thead><tr>` +
     `<th>Role</th><th>Agent</th><th>Model</th><th>Health</th><th>Activity</th><th>Spend / Budget</th><th></th>` +
-    `</tr></thead><tbody id="status-rows"></tbody></table></section>` +
-    `<div id="status-add-participant"></div>`;
+    `</tr></thead><tbody id="status-rows"></tbody></table></section>`;
 
   renderBudgetEditor(el.querySelector('#status-budget-editor'));
-  renderAddParticipant(el.querySelector('#status-add-participant'), el);
 
   // app.js mounts each tab once; this guard also makes a future re-mount safe
   // (no duplicate click handlers → no double POSTs).

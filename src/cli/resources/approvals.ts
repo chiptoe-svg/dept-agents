@@ -7,6 +7,17 @@ registerResource({
   description:
     'Pending approval — in-flight approval cards waiting for an admin response. Created by requestApproval() (self-mod install_packages/add_mcp_server) and OneCLI credential approval flow. Rows are deleted after the admin approves/rejects or the request expires.',
   idColumn: 'approval_id',
+  // JUDGMENT CALL: rows do carry an `agent_group_id` column ("Originating
+  // agent group"), so column-scoping to the caller's own group is technically
+  // possible. Blocking fully instead: `payload` is an arbitrary JSON blob
+  // (e.g. the full cli_command frame, including args, for self-mod/OneCLI
+  // flows) that may originate from a different session/user in the same
+  // group than the calling agent, and some rows (OneCLI credential
+  // approvals) have `session_id`/`agent_group_id` null entirely and would
+  // never match any agent's scope anyway. Full block is the conservative
+  // default per the task brief; revisit if agents need to poll their own
+  // approval status.
+  scopeColumn: null,
   columns: [
     {
       name: 'approval_id',

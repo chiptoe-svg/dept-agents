@@ -13,30 +13,39 @@
  *   POST /tools/<name>             invoke a tool; body is the args object
  *
  * Auth:
- *   - X-NanoClaw-Agent-Group header is required on POST /tools/<name>.
- *     401 if missing. Same primitive the credential proxy added in this
- *     branch.
- *   - The header value must resolve to an existing agent group. 401 if
- *     the agent group ID is unknown.
+ *   - X-NanoClaw-Agent-Token header is required on POST /tools/<name>.
+ *     401 if missing, empty, unknown, or array-valued. The agent group is
+ *     derived server-side from the token (see resolveRelayIdentity) — the
+ *     container-set X-NanoClaw-Agent-Group header is never trusted for
+ *     identity, since any container can set it to another user's group id.
+ *     Same primitive the credential proxy uses (Task 5, C5).
+ *   - The token-derived group id must resolve to an existing agent group.
+ *     401 if the agent group ID is unknown.
  *
- * Bound to loopback by default. The container-side stub reaches us via
- * `host.docker.internal:GWS_MCP_RELAY_PORT` (same gateway pattern as
- * the credential proxy).
+ * Despite the module-level "loopback only" framing in older comments, this
+ * process binds to PROXY_BIND_HOST (often 0.0.0.0 on multi-host setups),
+ * so the token check above is the actual security boundary, not the bind
+ * address.
  *
- * Per-student GWS isolation comes for free: `dispatchTool` calls into
- * `gws-mcp-tools.ts`, which resolves its OAuth token via
- * `getGoogleAccessTokenForAgentGroup(agentGroupId)`. Per-student
- * credentials are picked up automatically when present; instructor's
- * token used as fallback.
+ * The container-side stub reaches us via `host.docker.internal:GWS_MCP_RELAY_PORT`
+ * (same gateway pattern as the credential proxy).
+ *
+ * Per-group GWS isolation is a hard requirement, not best-effort:
+ * `dispatchTool` calls into `gws-mcp-tools.ts`, which resolves its OAuth
+ * token via `getGoogleAccessTokenForAgentGroup(agentGroupId)` — the
+ * calling group's OWN token, or `null`. There is no owner/instructor
+ * fallback; a group with no personal Google credentials gets a clear
+ * "connect your Google account" error, never another group's data.
  */
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
 
 import { GWS_MCP_RELAY_PORT } from './config.js';
+import { resolveContainerToken } from './container-identity.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { dispatchTool, listToolNames } from './gws-mcp-server.js';
 import { log } from './log.js';
 
-const AGENT_GROUP_HEADER = 'x-nanoclaw-agent-group';
+const AGENT_TOKEN_HEADER = 'x-nanoclaw-agent-token';
 
 function send(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -60,10 +69,16 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   });
 }
 
-function readAgentGroupHeader(req: IncomingMessage): string | null {
-  const raw = req.headers[AGENT_GROUP_HEADER];
-  if (typeof raw !== 'string' || raw.length === 0) return null;
-  return raw;
+/**
+ * The calling container's agent group, derived from its per-container token.
+ * The `x-nanoclaw-agent-group` header is NOT trusted: the container sets it
+ * itself, so honoring it let any agent operate on any other user's Google
+ * account. Exported for tests.
+ */
+export function resolveRelayIdentity(headers: Record<string, string | string[] | undefined>): string | null {
+  const raw = headers[AGENT_TOKEN_HEADER];
+  const token = typeof raw === 'string' ? raw : null;
+  return resolveContainerToken(token)?.agentGroupId ?? null;
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -78,13 +93,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (method === 'POST' && toolMatch) {
     const toolName = toolMatch[1]!;
 
-    const agentGroupId = readAgentGroupHeader(req);
+    const agentGroupId = resolveRelayIdentity(req.headers);
     if (!agentGroupId) {
-      return send(res, 401, {
-        ok: false,
-        error:
-          'Missing X-NanoClaw-Agent-Group header. Container-side proxy-fetch wrapper should set this automatically.',
-      });
+      return send(res, 401, { ok: false, error: 'Missing or invalid X-NanoClaw-Agent-Token.' });
     }
     const group = getAgentGroup(agentGroupId);
     if (!group) {

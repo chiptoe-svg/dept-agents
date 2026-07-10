@@ -1,15 +1,24 @@
 # Google Workspace tools
 
-You have MCP tools for reading and writing Google Docs as plain
-markdown. Authentication is handled by the host — you never see
-credentials.
+You have MCP tools for Google Drive, Docs, Sheets, and Slides.
+Authentication is handled by the host — you never see credentials.
+
+**Every tool requires this group's own connected Google account.**
+There is no fallback to anyone else's account. If the account isn't
+connected, a tool call returns a clear error — tell the user to
+connect their Google account (playground home tab → "Connect
+Google") and try again.
+
+**There is no Gmail or Calendar tool.** You cannot read, search, or
+send email, and you cannot read or create calendar events, for
+anyone — not the user, not the owner. If asked, say so plainly and
+don't attempt a workaround.
 
 For raw file access (list, read, copy non-Doc files, upload binary
 attachments) use `/workspace/drive/` directly when the GWS skill is
 installed in your group's Drive folder. That's a real filesystem
 mount via rclone — bash + Read/Write work normally there. Use the
-MCP tools below only for Doc-specific operations the filesystem
-can't do.
+MCP tools below only for operations the filesystem can't do.
 
 ## Tools
 
@@ -48,6 +57,33 @@ drive_doc_write_from_markdown({ markdown: "# Updated\n\n…", fileId: "1AbCdEf..
 Returns `{ fileId, webViewLink, name }`. Send the `webViewLink` so
 the user can open the Doc in their browser.
 
+### `sheet_read_range`
+
+Read a range from a Google Sheet in A1 notation.
+
+```
+sheet_read_range({ spreadsheet_id: "1AbCdEf...", range: "Sheet1!A1:C10" })
+```
+
+Returns a 2D array of string values.
+
+### `sheet_write_range`
+
+Write a 2D array of values into a Google Sheet range.
+
+```
+sheet_write_range({ spreadsheet_id: "1AbCdEf...", range: "A1:B2", values: [["a", "b"], ["c", "d"]] })
+```
+
+Defaults to `value_input_option: "USER_ENTERED"` so formulas
+starting with `=` evaluate; pass `"RAW"` to store literal text.
+
+### `slides_create_deck` / `slides_append_slide` / `slides_replace_text`
+
+Create a new Slides presentation, append a slide to an existing one,
+or find-and-replace text across every slide in a deck (useful for
+templating with placeholders like `{{name}}`).
+
 ## Workflow examples
 
 ### "Summarize my project notes Doc"
@@ -69,17 +105,12 @@ the user can open the Doc in their browser.
 3. `drive_doc_write_from_markdown({ markdown, fileId })` (same fileId, replaces content).
 4. Confirm done.
 
-## What's NOT in V1
+## What's NOT available — and never will be via this skill
 
-These are coming as use cases show up — don't try to call them, they
-don't exist yet:
+- **Gmail** (search, read, send) — no tool exists. Don't attempt it.
+- **Calendar** (list, create events, free/busy) — no tool exists. Don't attempt it.
+- **Drive file listing/search** — use `ls /workspace/drive/` instead via bash.
 
-- Sheets read/write
-- Calendar events
-- Gmail send/search
-- Drive file listing/search (use `ls /workspace/drive/` instead via bash)
-- Slides
-
-If the user asks for one of these, explain that the tool is V2 and
-suggest a workaround (e.g., manual Calendar entry, or asking the
-instructor to add the tool).
+If the user asks for Gmail or Calendar access, say plainly that
+this deployment doesn't support it — there's no workaround, and
+don't suggest routing around it through another account.

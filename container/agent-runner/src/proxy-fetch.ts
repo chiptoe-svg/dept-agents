@@ -30,6 +30,7 @@
 
 const AGENT_GROUP_HEADER = 'X-NanoClaw-Agent-Group';
 const SESSION_ID_HEADER = 'X-NanoClaw-Session-Id';
+const AGENT_TOKEN_HEADER = 'x-nanoclaw-agent-token';
 
 function deriveProxyOrigin(): string | null {
   const candidate = process.env.ANTHROPIC_BASE_URL || process.env.OPENAI_BASE_URL;
@@ -53,6 +54,7 @@ export function installProxyFetch(): void {
 
   const agentGroupId = process.env.X_NANOCLAW_AGENT_GROUP;
   const sessionId = process.env.X_NANOCLAW_SESSION_ID;
+  const agentToken = process.env.X_NANOCLAW_AGENT_TOKEN;
   const proxyOrigin = deriveProxyOrigin();
   // No agent group set OR no proxy origin to match against → nothing to
   // do. (Session id alone is not enough — without an agent group there's
@@ -62,13 +64,18 @@ export function installProxyFetch(): void {
   const original = globalThis.fetch;
   const wrapped = ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const url = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
-    if (!url.startsWith(proxyOrigin)) {
+    // Require a real boundary after the origin — a bare `startsWith` would
+    // also match a hostile service on a prefix-colliding port on the same
+    // host (e.g. proxyOrigin `http://host:3001` matching `http://host:30012/...`),
+    // leaking the agent token to that service.
+    if (url !== proxyOrigin && !url.startsWith(proxyOrigin + '/')) {
       return original(input, init);
     }
     // Build a Headers from whatever shape was passed and add ours.
     const headers = new Headers((init?.headers as HeadersInit | undefined) ?? undefined);
     if (!headers.has(AGENT_GROUP_HEADER)) headers.set(AGENT_GROUP_HEADER, agentGroupId);
     if (sessionId && !headers.has(SESSION_ID_HEADER)) headers.set(SESSION_ID_HEADER, sessionId);
+    if (agentToken && !headers.has(AGENT_TOKEN_HEADER)) headers.set(AGENT_TOKEN_HEADER, agentToken);
     return original(input, { ...init, headers });
   }) as typeof fetch;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

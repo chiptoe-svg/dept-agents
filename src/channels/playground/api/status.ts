@@ -16,7 +16,7 @@ import { getSessionsByAgentGroup } from '../../../db/sessions.js';
 import { getContainerConfig } from '../../../db/container-configs.js';
 import { heartbeatPath } from '../../../session-manager.js';
 import type { PlaygroundSession } from '../auth-store.js';
-import type { ApiResult } from './enrollment.js';
+import type { ApiResult } from './me.js';
 
 export type SessionHealth = 'running' | 'stale' | 'idle';
 export type AgentHealth = SessionHealth | 'never';

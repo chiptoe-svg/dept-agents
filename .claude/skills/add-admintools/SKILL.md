@@ -35,7 +35,7 @@ Treat the selection as a set: if "All" is among the choices, install all three. 
 git fetch origin admin
 ```
 
-If `origin/admin` doesn't exist, this skill is being run on a fork that hasn't published the admin tools yet. Tell the user: "This fork's `origin` doesn't have an `admin` branch. Either point `origin` at a fork that publishes one (`https://github.com/chiptoe-svg/nanoclaw_gccourse.git`), or skip and the install can't complete."
+If `origin/admin` doesn't exist, this skill is being run on a fork that hasn't published the admin tools yet. Tell the user: "This fork's `origin` doesn't have an `admin` branch. Either point `origin` at a fork that publishes one (`https://github.com/chiptoe-svg/dept-agents.git`), or skip and the install can't complete."
 
 ## Step 3: Copy files for each chosen tool
 

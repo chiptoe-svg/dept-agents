@@ -17,7 +17,7 @@ import { readSlotMeta, slotExists } from '../../../default-participant-slot.js';
 import { getAllAgentGroups } from '../../../db/agent-groups.js';
 import { roleForFolder } from '../../../scenarios/registry.js';
 import type { PlaygroundSession } from '../auth-store.js';
-import type { ApiResult } from './enrollment.js';
+import type { ApiResult } from './me.js';
 
 function isOwnerOrAdmin(userId: string | null): boolean {
   if (!userId) return false;
