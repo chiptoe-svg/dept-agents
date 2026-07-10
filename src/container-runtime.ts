@@ -34,19 +34,87 @@ function resolveContainerRuntimeBin(runtime: string | undefined): string {
 
 /**
  * IP address containers use to reach the host machine.
- * Apple Container VMs use a bridge network (192.168.64.x); the host is at the gateway.
- * Detected from bridge100/bridge0, falling back to 192.168.64.1.
+ * Apple Container VMs use a bridge network; the host is at the gateway.
+ *
+ * This is a memoized FUNCTION, not an eagerly-evaluated const, on purpose:
+ * `src/index.ts` imports this module (evaluating its top level) before it
+ * calls `ensureContainerRuntimeRunning()` in `main()`. If resolution ran at
+ * import time, the "ask the runtime" step below could race a cold-started
+ * runtime daemon that isn't up yet and spuriously fall through. Resolving
+ * lazily on first *call* — which in practice happens at first container
+ * spawn, after the runtime is confirmed running — avoids that race.
+ *
+ * Precedence (each step logged so a future breakage is visible):
+ *   1. `CONTAINER_HOST_GATEWAY` env var / .env override — operator escape hatch.
+ *   2. `container network inspect default` → `[0].status.ipv4Gateway`.
+ *      Apple Container 1.0+ shape; verified live against 1.1.0.
+ *   3. bridge100/bridge0 interface scan — back-compat with Apple Container 0.12.x,
+ *      where the bridge only exists while a container is running.
+ *   4. Throw. No silent hardcoded fallback: a wrong-but-plausible constant
+ *      (192.168.64.1, stale after the 0.12.3 -> 1.1.0 bridge subnet change)
+ *      is exactly the bug this replaces — it produced a silent, total outage
+ *      because every container got a dead gateway with no error anywhere.
  */
-export const CONTAINER_HOST_GATEWAY = detectHostGateway();
+let cachedGateway: string | undefined;
 
-function detectHostGateway(): string {
+export function CONTAINER_HOST_GATEWAY(): string {
+  if (cachedGateway === undefined) {
+    cachedGateway = resolveHostGateway();
+  }
+  return cachedGateway;
+}
+
+function isIPv4(addr: string): boolean {
+  const parts = addr.split('.');
+  return parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
+}
+
+function resolveHostGateway(): string {
+  // 1. Explicit override. Only ever read/print this one key from .env.
+  const override = process.env.CONTAINER_HOST_GATEWAY ?? readEnvFile(['CONTAINER_HOST_GATEWAY']).CONTAINER_HOST_GATEWAY;
+  if (override) {
+    log.info('Host gateway resolved from CONTAINER_HOST_GATEWAY override', { gateway: override });
+    return override;
+  }
+
+  // 2. Ask the runtime directly — authoritative and version-agnostic.
+  try {
+    const output = execSync(`${CONTAINER_RUNTIME_BIN} network inspect default`, {
+      stdio: 'pipe',
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
+    const parsed = JSON.parse(output);
+    const gateway = parsed?.[0]?.status?.ipv4Gateway;
+    if (typeof gateway === 'string' && isIPv4(gateway)) {
+      log.debug('Host gateway resolved via `container network inspect default`', { gateway });
+      return gateway;
+    }
+    log.warn('`container network inspect default` returned no usable ipv4Gateway, falling back', {
+      parsed,
+    });
+  } catch (err) {
+    log.debug('`container network inspect default` failed, falling back to interface scan', { err });
+  }
+
+  // 3. Interface scan — back-compat with Apple Container 0.12.x.
   const ifaces = os.networkInterfaces();
   const bridge = ifaces['bridge100'] || ifaces['bridge0'];
   if (bridge) {
     const ipv4 = bridge.find((a) => a.family === 'IPv4');
-    if (ipv4) return ipv4.address;
+    if (ipv4) {
+      log.debug('Host gateway resolved via bridge interface scan', { gateway: ipv4.address });
+      return ipv4.address;
+    }
   }
-  return '192.168.64.1';
+
+  // 4. Last resort — fail loudly rather than hand out a dead address.
+  const message =
+    'Could not detect the container host gateway: no CONTAINER_HOST_GATEWAY override in .env, ' +
+    '`container network inspect default` returned no usable ipv4Gateway, and no bridge100/bridge0 ' +
+    'interface with an IPv4 address was found. Set CONTAINER_HOST_GATEWAY in .env as an escape hatch.';
+  log.error(message);
+  throw new Error(message);
 }
 
 /**

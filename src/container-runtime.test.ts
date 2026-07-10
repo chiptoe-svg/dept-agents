@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock log
 vi.mock('./log.js', () => ({
@@ -17,6 +17,13 @@ vi.mock('child_process', () => ({
   execSync: (...args: unknown[]) => mockExecSync(...args),
 }));
 
+// Mock env.js so gateway-precedence tests never touch the real .env file.
+vi.mock('./env.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./env.js')>();
+  return { ...actual, readEnvFile: vi.fn(() => ({})) };
+});
+
+import os from 'os';
 import {
   CONTAINER_RUNTIME_BIN,
   readonlyMountArgs,
@@ -32,6 +39,26 @@ import { log } from './log.js';
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+// Spy on the real os.networkInterfaces (rather than vi.mock('os', ...)) so
+// interface-scan tests are deterministic regardless of what's actually
+// running on the machine executing the suite. `os` is a genuine Node
+// builtin singleton shared by this file and container-runtime.ts's own
+// `import os from 'os'` — including across the resetModules()-triggered
+// dynamic re-imports in the CONTAINER_HOST_GATEWAY() describe block below,
+// since resetModules() only clears Vite's SSR module registry, not Node's
+// native module cache that backs core modules. vi.mock('os', ...) was
+// tried first and did NOT reliably intercept those re-imports; spyOn
+// mutates the shared object directly and does.
+const networkInterfacesSpy = vi.spyOn(os, 'networkInterfaces');
+
+/** Builds a minimal-but-fully-typed fake NetworkInterfaceInfo for gateway tests. */
+function fakeIface(family: 'IPv4' | 'IPv6', address: string): import('os').NetworkInterfaceInfo {
+  const base = { address, netmask: '255.255.255.0', mac: '00:00:00:00:00:00', internal: false };
+  return family === 'IPv4'
+    ? { ...base, family: 'IPv4', cidr: `${address}/24` }
+    : { ...base, family: 'IPv6', cidr: `${address}/64`, scopeid: 0 };
+}
 
 // --- Pure functions ---
 
@@ -288,5 +315,97 @@ describe('cleanupOrphans', () => {
       count: 2,
       names: ['nanoclaw-a-1', 'nanoclaw-b-2'],
     });
+  });
+});
+
+// --- CONTAINER_HOST_GATEWAY() resolution precedence ---
+//
+// Regression coverage for the Apple Container 0.12.3 -> 1.1.0 bridge change:
+// bridge100 disappeared, bridge0 lost its IPv4, and the subnet moved from
+// 192.168.64.0/24 to 192.168.65.0/24. The old code hardcoded 192.168.64.1
+// as a silent last resort, producing a dead gateway with no error anywhere.
+//
+// Each test re-imports the module fresh (vi.resetModules + dynamic import)
+// because CONTAINER_HOST_GATEWAY() memoizes its result on first call —
+// without a fresh module instance, later tests would just see the first
+// test's cached value.
+describe('CONTAINER_HOST_GATEWAY()', () => {
+  beforeEach(() => {
+    delete process.env.CONTAINER_HOST_GATEWAY;
+    vi.resetModules();
+    // mockReset() (not clearAllMocks) — clearAllMocks leaves queued
+    // *Once implementations/return-values in place, which previously caused
+    // state to leak between these tests (a later test silently consumed an
+    // earlier test's unconsumed queued value). mockReset() wipes the queue.
+    mockExecSync.mockReset();
+    networkInterfacesSpy.mockReset().mockReturnValue({});
+  });
+
+  afterEach(() => {
+    delete process.env.CONTAINER_HOST_GATEWAY;
+  });
+
+  it('env override wins over everything, even when the runtime query would succeed', async () => {
+    process.env.CONTAINER_HOST_GATEWAY = '10.0.0.1';
+    mockExecSync.mockReturnValue(JSON.stringify([{ status: { ipv4Gateway: '192.168.65.1' } }]));
+
+    const mod = await import('./container-runtime.js');
+    expect(mod.CONTAINER_HOST_GATEWAY()).toBe('10.0.0.1');
+    expect(mockExecSync).not.toHaveBeenCalled();
+  });
+
+  it('parses `container network inspect default` JSON correctly', async () => {
+    mockExecSync.mockReturnValue(JSON.stringify([{ status: { ipv4Gateway: '192.168.65.1' } }]));
+
+    const mod = await import('./container-runtime.js');
+    expect(mod.CONTAINER_HOST_GATEWAY()).toBe('192.168.65.1');
+    expect(mockExecSync).toHaveBeenCalledWith(
+      `${mod.CONTAINER_RUNTIME_BIN} network inspect default`,
+      expect.objectContaining({ stdio: 'pipe' }),
+    );
+  });
+
+  it('memoizes: only queries the runtime once across repeated calls', async () => {
+    mockExecSync.mockReturnValue(JSON.stringify([{ status: { ipv4Gateway: '192.168.65.1' } }]));
+
+    const mod = await import('./container-runtime.js');
+    expect(mod.CONTAINER_HOST_GATEWAY()).toBe('192.168.65.1');
+    expect(mod.CONTAINER_HOST_GATEWAY()).toBe('192.168.65.1');
+    expect(mockExecSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('malformed/empty runtime output falls through to the interface scan', async () => {
+    mockExecSync.mockReturnValue('not json');
+    networkInterfacesSpy.mockReturnValue({
+      bridge100: [fakeIface('IPv4', '192.168.64.9')],
+    });
+
+    const mod = await import('./container-runtime.js');
+    expect(mod.CONTAINER_HOST_GATEWAY()).toBe('192.168.64.9');
+  });
+
+  it('bridge100 present -> uses its IPv4 (0.12.x path still works)', async () => {
+    mockExecSync.mockImplementation(() => {
+      throw new Error('container: command not found');
+    });
+    networkInterfacesSpy.mockReturnValue({
+      bridge100: [fakeIface('IPv6', 'fe80::1'), fakeIface('IPv4', '192.168.64.5')],
+    });
+
+    const mod = await import('./container-runtime.js');
+    expect(mod.CONTAINER_HOST_GATEWAY()).toBe('192.168.64.5');
+  });
+
+  it('no bridge100, bridge0 has no IPv4, runtime command fails -> throws rather than returning a silent hardcoded address', async () => {
+    mockExecSync.mockImplementation(() => {
+      throw new Error('container: command not found');
+    });
+    networkInterfacesSpy.mockReturnValue({
+      bridge0: [fakeIface('IPv6', 'fe80::2')],
+    });
+
+    const mod = await import('./container-runtime.js');
+    expect(() => mod.CONTAINER_HOST_GATEWAY()).toThrow(/Could not detect the container host gateway/);
+    expect(log.error).toHaveBeenCalled();
   });
 });

@@ -111,7 +111,7 @@ vi.mock('./container-env-registry.js', () => ({
 }));
 
 vi.mock('./container-runtime.js', () => ({
-  CONTAINER_HOST_GATEWAY: 'test-gateway',
+  CONTAINER_HOST_GATEWAY: vi.fn(() => 'test-gateway'),
   CONTAINER_RUNTIME_BIN: 'test-container-bin',
   hostGatewayArgs: vi.fn(() => []),
   readonlyMountArgs: vi.fn(() => []),

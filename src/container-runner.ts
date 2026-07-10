@@ -568,17 +568,18 @@ async function buildContainerArgs(
   //               proxy injects real OAuth token on that exchange request.
   // Native credential proxy: route container API calls to host:3001 with
   // placeholder credentials. Proxy substitutes real keys/OAuth tokens.
-  args.push('-e', `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}/anthropic`);
+  const hostGateway = CONTAINER_HOST_GATEWAY();
+  args.push('-e', `ANTHROPIC_BASE_URL=http://${hostGateway}:${CREDENTIAL_PROXY_PORT}/anthropic`);
   // OpenAI traffic routes through one of two proxy prefixes per the group's
   // active provider: `codex` (cloud OpenAI) → /openai/v1, `local`
   // (mlx-omni-server) → /omlx/v1. The proxy strips the prefix and substitutes
   // the appropriate API key per upstream.
   const openaiPrefix = provider === 'local' ? '/omlx/v1' : '/openai/v1';
-  args.push('-e', `OPENAI_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}${openaiPrefix}`);
+  args.push('-e', `OPENAI_BASE_URL=http://${hostGateway}:${CREDENTIAL_PROXY_PORT}${openaiPrefix}`);
 
   // Google Workspace MCP relay — host-side gateway that the container's
   // gws.ts shims forward to. Per-call attribution header set by gws.ts.
-  args.push('-e', `GWS_MCP_RELAY_URL=http://${CONTAINER_HOST_GATEWAY}:${GWS_MCP_RELAY_PORT}`);
+  args.push('-e', `GWS_MCP_RELAY_URL=http://${hostGateway}:${GWS_MCP_RELAY_PORT}`);
 
   // Per-container capability token — the caller's real identity as far
   // as the credential proxy and GWS relay are concerned. Minted here at
