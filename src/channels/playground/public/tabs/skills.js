@@ -431,8 +431,8 @@ async function loadEditor(el, category, name, token) {
   el.querySelector('#skill-edit').value = editor.files[editor.current];
   editor.baseline = editorSnapshot(el);
   const nameInput = el.querySelector('#skill-name');
-  nameInput.value = editor.customName || '';
-  nameInput.placeholder = editor.customName ? '' : 'name your custom skill';
+  nameInput.value = editor.customName || (category === 'built-in' ? name : '');
+  nameInput.placeholder = (editor.customName || category === 'built-in') ? '' : 'name your custom skill';
   renderEditorFiles(el);
   refreshDraftBanner(el);
 }
@@ -469,10 +469,12 @@ async function saveSkill(el) {
     alert('Name must start alphanumeric; only letters, digits, dashes, dots, underscores.');
     return;
   }
-  // A custom skill can't shadow a shared built-in / Anthropic skill.
-  const clash = libraryCache.find((e) => e.name === name && e.category !== 'custom');
+  // A custom skill can shadow a built-in (same-name override is intentional —
+  // syncSkillSymlinks routes the container to the custom copy). Only block
+  // Anthropic library skills, which aren't designed for per-agent overrides.
+  const clash = libraryCache.find((e) => e.name === name && e.category === 'skills');
   if (clash) {
-    alert(`"${name}" is already a ${CATEGORY_LABEL[clash.category] || clash.category} skill — pick another name.`);
+    alert(`"${name}" is already an Anthropic library skill — pick another name.`);
     return;
   }
   stashCurrent(el);

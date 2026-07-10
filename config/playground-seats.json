@@ -1,11 +1,9 @@
 {
   "password": "",
   "seats": [
-    { "label": "Instructor", "folder": "dm-with-chiptonkin", "slug": "instructor", "role": "owner"  },
-    { "label": "TA",         "folder": "ta_01",              "role": "ta"     },
-    { "label": "Student 1",  "folder": "student_01",         "role": "member" },
-    { "label": "Student 2",  "folder": "student_02",         "role": "member" },
-    { "label": "Student 3",  "folder": "student_03",         "role": "member" },
-    { "label": "Pi Test",    "folder": "pi-test",            "role": "owner"  }
+    { "label": "Owner (Organizer)", "folder": "owner_01", "slug": "owner",   "role": "owner"  },
+    { "label": "John Doe",          "folder": "user_01",  "slug": "user_01", "role": "member" },
+    { "label": "Jane Doe",          "folder": "user_02",  "slug": "user_02", "role": "member" },
+    { "label": "Richard Roe",       "folder": "user_03",  "slug": "user_03", "role": "member" }
   ]
 }

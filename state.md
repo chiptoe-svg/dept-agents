@@ -164,23 +164,25 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `phase-c-complete-2026-05-28` (181 commits ahead)
+- **Last tag:** `phase-c-complete-2026-05-28` (184 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
- M config/playground-seats.json
- M container/CLAUDE.md
- M container/skills/make-website/SKILL.md
-M  setup/auto.ts
- M src/channels/playground/public/tabs/skills.js
-?? .codegraph/
+## main...origin/main [ahead 2, behind 2]
+M  .gitignore
+M  config/playground-seats.json
+M  container/CLAUDE.md
+M  container/skills/make-website/SKILL.md
+M  src/channels/playground/public/tabs/skills.js
 ```
 
 ### Recent commits (last 15)
 
 ```
+cace115d docs(plans): Plan 1 — freeze classroom, strip, fresh-DB dept base boot
+e5493c03 docs(specs): department agent server design — fork strategy, invite flow, isolation, credentials
+c7ab8604 fix(setup): default agent provider to OpenAI when CLI is Codex
 14bbd0d5 fix(setup): infer agent provider from existing .env keys on re-run
 ede7ef1f feat(setup): agent provider selection — Anthropic or OpenAI
 4b762fb3 fix(setup): add ensureAppleContainerReady + Codex auth clarification
@@ -193,11 +195,8 @@ eea9795e feat(skills): image-vision + image-metadata container skills
 91a2b79b fix(agent-runner): retry transient readonly-DB writes instead of crashing
 3ab35671 feat(simple): "Built in" tools row; web tools always-on; relabel agent-browser
 c68dbf9e fix(agent-runner): compose per-group persona into the system prompt
-b17dbc3c fix(simple): don't auto-roll the trace panel on agent toggle
-3f30ff0d feat(simple): switch toggle, FirstName+Bot default name, trace-first default
-cd10ab69 feat(pi): gate skills and web tools on the enabled-skill set
 ```
 
 ### Last refresh
 
-2026-06-17T16:03:36Z
+2026-07-10T00:45:05Z
