@@ -16,6 +16,10 @@
 | `self-customize` | **Kept.** Agents may write/edit their own skills, confined to their own group folder. |
 | Google Workspace | **Keep Drive/Sheets/Docs/Slides; delete Gmail + Calendar; kill the owner-token fallback.** Drive-family tools must require the calling group's OWN Google token and fail closed without one. |
 | MCP servers | **Curated default set** applied to every agent group, **plus** `add_mcp_server` retained as the admin-approved path to request more. |
+| Default MCP set | `cuassistant-public`, `cuassistant-catalog`, `gc-alumni` (all unauthenticated), and `gc-wiki` (bearer token). |
+| Approval-only MCP | `cuassistant-credentialed` and `procurement` — their bearer tokens would sit in every wired container's env, and procurement data is more sensitive than wiki content. |
+| Skills to port | **The five skills associated with the chosen MCP servers** (Task 6c). The personal repo's *container* skills are already a subset of this repo's 16, except `hermes-selflearning` (deferred) and `whatsapp-formatting` (unwanted) — but its **per-group** skills teach agents how to use the MCP servers, and without them the servers are tools with no instructions. |
+| Skills excluded | `clemson-email` and `email-taskfinder` — both drive Gmail/Outlook **and** depend on `cuassistant-credentialed`, which is not in the default set. |
 
 ## Global Constraints
 
@@ -340,98 +344,251 @@ No code commit unless something needed fixing. Write the upgrade evidence (versi
 
 **Rollback:** `brew uninstall container && brew install container@0.12.3` is not guaranteed available; the real rollback is `brew` pinning or reinstalling the prior bottle. Establish the rollback command **before** Step 2 and record it. If you cannot establish one, report BLOCKED and let the operator decide.
 
-### Task 5: Curated default MCP server set
+### Task 5: HTTP MCP transport support (port from the personal repo)
 
-**The decision:** every agent group gets a curated set by default; `add_mcp_server` (approval-gated, `container/agent-runner/src/mcp-tools/self-mod.ts`) stays as the path to request more.
+**This repo cannot express the servers we want.** `src/container-config.ts:21-29` defines `McpServerConfig` with a **required `command`** — stdio only. Every MCP server the operator actually uses is an **HTTP** server (`url` + `headers`). The personal repo already solved this; port it.
 
-MCP servers here are stdio processes: `{ command, args, env }` stored as JSON in `container_configs.mcp_servers` and read by `src/container-config.ts:98`.
+Three pieces, all from `/Users/admin/projects/nanoclaw_personal` (read-only source):
+1. `McpServerConfig` gains optional `url` and `headers`, and `command` becomes optional (`src/container-config.ts`).
+2. `host.docker.internal` → bridge-gateway rewrite (`src/container-config.ts:57-66`). Apple Container VMs cannot resolve `host.docker.internal`; the rewrite substitutes `CONTAINER_HOST_GATEWAY`. The personal repo also rewrites it inside `-e` args (`src/container-runner.ts:495-500`) — port both.
+3. `src/mcp-header-env.ts` (`collectMcpHeaderEnvRefs`) + its spawn-time forwarding. Headers may reference secrets as `${VAR}`; the host collects exactly those names, forwards only those env vars into the container at spawn, and the in-container pi bridge expands them at connect time. **The secret lives in `.env` and the transient container env — never as a literal in the DB or committed config.**
+
+**Security note to preserve in the code comments, not just here:** MCP bearer tokens differ from LLM keys. LLM keys never enter a container (the credential proxy substitutes them). MCP header tokens *do* enter the container env, so any agent wired to a credentialed server can read that token and use it directly, outside the MCP server. That is why the default set below is unauthenticated except `gc-wiki`.
 
 **Files:**
-- Create: `config/default-mcp-servers.json`
-- Modify: `src/group-init.ts` (seed a new group's `mcp_servers` from the file)
-- Modify: `container/Dockerfile` (install the servers' packages, pinned, in the existing pnpm global-install block — **not** `bun install -g`, which bypasses the supply-chain policy)
+- Modify: `src/container-config.ts` (type + gateway rewrite)
+- Modify: `src/container-runner.ts` (`-e` arg rewrite; forward the collected header env vars at spawn)
+- Create: `src/mcp-header-env.ts` + `src/mcp-header-env.test.ts` (port both)
+- Modify: `container/agent-runner/src/providers/pi-mcp-bridge.ts` if it lacks `resolveHeaders` / HTTP-server support — compare against the personal repo's `harnesses/pi-mcp-bridge.ts` (they differ by ~53 lines; **Task 8 owns the full reconciliation, so port only what HTTP MCP needs here and leave the rest**)
+
+**Interfaces:**
+- Produces: `collectMcpHeaderEnvRefs(servers: Record<string, McpServerConfig>): string[]` — unique `${VAR}` names referenced in any header value.
+- Produces: `McpServerConfig = { command?: string; args?: string[]; env?: Record<string,string>; url?: string; headers?: Record<string,string>; instructions?: string }`.
+
+- [ ] **Step 1: Port `mcp-header-env.ts` with its test first**
+
+```bash
+cat /Users/admin/projects/nanoclaw_personal/src/mcp-header-env.ts
+cat /Users/admin/projects/nanoclaw_personal/src/mcp-header-env.test.ts
+```
+Copy both. The test asserts `{ a: { url: 'http://x', headers: { Authorization: 'Bearer ${CUASSISTANT_MCP_TOKEN}' } } }` yields `['CUASSISTANT_MCP_TOKEN']`. Host test, **vitest**.
+
+Run: `pnpm exec vitest run src/mcp-header-env.test.ts` → PASS.
+
+- [ ] **Step 2: Widen `McpServerConfig`, watch the typecheck tell you every consumer**
+
+Make `command` optional and add `url`/`headers`. Then:
+
+```bash
+pnpm run build
+```
+tsc will flag every site that assumed `command` is present. Fix each — a server with neither `command` nor `url` is invalid; **throw at config-read time with the server name**, do not silently skip it.
+
+- [ ] **Step 3: Port the gateway rewrite, with a test**
+
+Port `src/container-config.ts:57-66` (rewrite `url`) and `src/container-runner.ts:495-500` (rewrite `-e` args). Add a host test asserting a config with `http://host.docker.internal:8766/` comes back as `http://<CONTAINER_HOST_GATEWAY>:8766/`, and that a URL without that host is untouched.
+
+**Prove it:** delete the rewrite, confirm the test FAILS; revert.
+
+- [ ] **Step 4: Forward only the referenced secrets at spawn**
+
+In `src/container-runner.ts` `buildContainerArgs`, call `collectMcpHeaderEnvRefs(config.mcpServers)`, read each name from `.env` via the repo's existing `readEnvFile` helper, and push `-e NAME=value` for each. **Never log the values.** A referenced var that is missing from `.env` must produce a loud warning naming the var and the server — a silently-unexpanded `${WIKI_MCP_TOKEN}` becomes a literal bearer string and the server returns 401 with no clue why.
+
+Add a test asserting: given a config referencing `WIKI_MCP_TOKEN`, the built args contain `-e WIKI_MCP_TOKEN=...`; given a config with no headers, no extra env is forwarded.
+
+- [ ] **Step 5: Both typechecks, both suites, commit**
+
+```bash
+pnpm test && pnpm run build
+pnpm exec tsc -p container/agent-runner/tsconfig.json --noEmit
+cd container/agent-runner && bun test && cd ../..
+git add -A
+git commit -m "feat(mcp): HTTP transport, gateway rewrite, and scoped header-secret forwarding"
+```
+
+### Task 6: Curated default MCP server set
+
+**Depends on Task 5** (HTTP transport must exist first).
+
+**The set** — decided by the operator 2026-07-10. Unauthenticated servers are safe to give everyone; `gc-wiki` is included deliberately despite its token. `cuassistant-credentialed` and `procurement` are **excluded** from the default and remain available through the `add_mcp_server` approval flow.
+
+```json
+{
+  "cuassistant-public":  { "url": "http://host.docker.internal:8766/" },
+  "cuassistant-catalog": { "url": "http://host.docker.internal:8767/" },
+  "gc-alumni":           { "url": "http://host.docker.internal:8011/mcp" },
+  "gc-wiki":             { "url": "http://gcworkflow.clemson.edu:3000/api/mcp",
+                           "headers": { "Authorization": "Bearer ${WIKI_MCP_TOKEN}" } }
+}
+```
+
+Write `host.docker.internal` literally — Task 5's rewrite converts it to the bridge gateway at spawn, and that keeps the config portable if the runtime ever changes back.
+
+**Files:**
+- Create: `config/default-mcp-servers.json` (exact content above)
+- Modify: `src/group-init.ts` (seed a new group's `mcp_servers` from it)
+- Create: `scripts/backfill-default-mcp-servers.ts`
 - Test: `src/group-init.test.ts`
 
 **Interfaces:**
-- Produces: `readDefaultMcpServers(): Record<string, McpServerConfig>` exported from `src/group-init.ts`; new groups get it seeded; existing groups are backfilled by Step 4.
+- Produces: `readDefaultMcpServers(): Record<string, McpServerConfig>` exported from `src/group-init.ts`. Returns `{}` if the file is absent or unparsable — **never throw at group creation**; a malformed config must not prevent an agent from existing.
 
-**Proposed starter set — confirm with the operator before implementing.** Each entry needs a real justification; an MCP server is a process with the agent's file and network access.
+- [ ] **Step 1: `WIKI_MCP_TOKEN` must exist in this install's `.env`**
 
-| Server | Package (pin an exact version) | Why |
-|---|---|---|
-| `context7` | `@upstash/context7-mcp` | Current library/API docs. Faculty write code and scripts; this stops the agent guessing stale APIs. |
-| `fetch` | `@modelcontextprotocol/server-fetch` | Structured URL fetch. Task 7 also adds the SSRF-safe `fetch_url_to_workspace` tool; keep both only if they serve different needs — otherwise drop this row. |
+This repo's `.env` has none of the MCP tokens; the personal repo's has three. Copy **only** `WIKI_MCP_TOKEN` across, without printing it:
 
-Deliberately **excluded** from the default set: anything granting filesystem access beyond `/workspace` (the agent already has scoped file tools), anything with credentials of its own, and Google (Task 2 governs that separately, per-user).
-
-- [ ] **Step 1: Confirm the set with the operator**
-
-Do not guess. Present the table above, ask which rows to keep and what else they want, and record the answer in your report. **If you cannot reach the operator, implement the mechanism with an EMPTY default set** (`{}`) and leave the file's schema + a comment documenting how to add entries. An empty curated set is honest; a guessed one is a process running in every agent's container.
+```bash
+grep -q '^WIKI_MCP_TOKEN=' .env || grep '^WIKI_MCP_TOKEN=' /Users/admin/projects/nanoclaw_personal/.env >> .env
+grep -c '^WIKI_MCP_TOKEN=' .env    # expect 1
+chmod 600 .env
+```
+Do **not** copy `CUASSISTANT_MCP_TOKEN` or `PROCUREMENT_MCP_TOKEN` — those servers are not in the default set, and an unused secret in `.env` is a liability. Never echo any token value.
 
 - [ ] **Step 2: Write the failing test**
 
-In `src/group-init.test.ts`, seed a temp `config/default-mcp-servers.json` with one fake server, call the group-init path for a new folder, and assert the created `container_configs` row's `mcp_servers` JSON contains it. Follow the existing test file's temp-dir + `initTestDb` pattern (see `src/default-participant.test.ts` for the established shape).
+In `src/group-init.test.ts`, point the config path at a temp `default-mcp-servers.json` holding one fake HTTP server, create a new group, and assert the created `container_configs` row's `mcp_servers` JSON contains it. Follow `src/default-participant.test.ts`'s temp-dir + `initTestDb` + `vi.mock('./config.js')` pattern.
 
-- [ ] **Step 3: Run, watch fail; then implement**
+Add a second case: an absent/malformed file yields `{}` and group creation still succeeds.
 
-Run: `pnpm exec vitest run src/group-init.test.ts` → FAIL (mcp_servers is `{}`).
+- [ ] **Step 3: Run, watch fail; implement**
 
-Implement `readDefaultMcpServers()` (read the JSON, return `{}` if the file is absent or unparsable — never throw at group creation) and use it where `group-init.ts` writes the container config.
+Run: `pnpm exec vitest run src/group-init.test.ts` → FAIL (`mcp_servers` is `{}`).
 
-- [ ] **Step 4: Backfill existing groups**
+Implement `readDefaultMcpServers()` and use it where `group-init.ts` writes the container config.
 
-The three existing groups have `mcp_servers = {}`. Write a one-off script under `scripts/` (follow `scripts/backfill-*.ts` conventions) that applies the default set to any group whose `mcp_servers` is empty. Run it. Verify:
+- [ ] **Step 4: Backfill the three existing groups**
+
+All three currently have `mcp_servers = {}`. Write `scripts/backfill-default-mcp-servers.ts` (follow `scripts/backfill-container-configs.ts` for conventions) applying the default set to any group whose `mcp_servers` is empty — **do not overwrite a non-empty value.** Run it, then verify:
 
 ```bash
 pnpm exec tsx scripts/q.ts data/v2.db "SELECT agent_group_id, mcp_servers FROM container_configs"
 ```
+Expected: all three carry the four servers.
 
-- [ ] **Step 5: Rebuild the image and verify an agent sees the tools**
+- [ ] **Step 5: Rebuild the image and prove an agent can actually reach a server**
 
 ```bash
 ./container/build.sh
 ```
-Then drive one agent turn (as in Task 4 Step 4) asking the agent to list its available tools, and confirm the curated servers appear. If the image build cache serves stale files, prune the builder and rebuild — `--no-cache` alone does not invalidate COPY steps.
+If COPY steps serve stale files, prune the builder and rebuild — `--no-cache` alone does not invalidate them.
+
+Then drive one real agent turn (Task 4 Step 4's method) asking the agent to use a **`cuassistant-public`** tool (unauthenticated, so a failure is a wiring bug, not a token bug). Confirm a substantive reply.
+
+Then a second turn against **`gc-wiki`**, which exercises the `${WIKI_MCP_TOKEN}` expansion end-to-end. A 401 here means the token did not expand — check the spawn args for `-e WIKI_MCP_TOKEN` (presence only; never print the value).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A
-git commit -m "feat(mcp): curated default MCP server set seeded at group init"
+git add config/default-mcp-servers.json src/group-init.ts scripts/backfill-default-mcp-servers.ts src/group-init.test.ts
+git commit -m "feat(mcp): curated default server set (cuassistant public+catalog, gc-alumni, gc-wiki)"
 ```
 
-### Task 6: Skills — confirm per-group confinement
+### Task 6b: Skills — confirm per-group confinement
+
+**Nothing to port.** This repo's 16 container skills already superset the personal repo's 9, except `hermes-selflearning` (deferred) and `whatsapp-formatting` (unwanted). `self-customize` is **kept**: agents may write their own skills. This task proves that writing is confined.
 
 **Files:**
-- Test: `src/group-init.test.ts` (or a new `src/skills-confinement.test.ts`)
-- Modify: `container/skills/self-customize/SKILL.md` if it documents behavior that is not true
+- Create: `src/skills-confinement.test.ts`
+- Modify: `container/skills/self-customize/SKILL.md` only if it documents behavior that is not true
 
 **Interfaces:**
-- Produces: a test proving an agent's self-authored skills land only under its own `groups/<folder>/` and are not visible to another group.
-
-`self-customize` is **kept** (agents may write their own skills). The question this task answers is whether that writing is confined.
+- Produces: a test proving an agent's self-authored skills land only under its own `groups/<folder>/` and that no group's container mounts another group's folder.
 
 - [ ] **Step 1: Establish where self-authored skills are written**
 
 ```bash
 grep -rn "skills" container/skills/self-customize/SKILL.md | head -20
-grep -rn "custom-skills\|customSkills" src/channels/playground/ src/group-init.ts | head -10
+grep -rn "custom-skills\|customSkills" src/channels/playground/ src/group-init.ts src/container-runner.ts | head -10
 ```
-Write down the exact path an agent's new skill lands at, and which mount makes it writable. Put this in your report — the rest of the task depends on it.
+Record the exact path a new skill lands at and which mount makes it writable. Put it in your report — the rest of the task depends on it.
 
 - [ ] **Step 2: Write the confinement test**
 
-Assert that the writable skills path for group A resolves under `groups/<A>/` and that group B's container mount does not include it. If the mounts are built by `buildMounts` in `src/container-runner.ts`, test that function directly: for group A, no mount source may resolve inside another group's folder. Use `path.resolve` and compare prefixes with a trailing separator (`/groups/user_a/` — not a bare `startsWith`, which would match `user_ab`).
+Test `buildMounts` (in `src/container-runner.ts`) directly: for group A, no mount source may resolve inside another group's folder, and the writable custom-skills mount must resolve under `groups/<A>/`.
 
-- [ ] **Step 3: Run it**
+Compare with `path.resolve` and a **trailing separator** — `resolved.startsWith(path.join(GROUPS_DIR, 'user_a') + path.sep)` — because a bare `startsWith('/groups/user_a')` also matches `/groups/user_ab`. Include `user_a` / `user_ab` as a case; that prefix trap is the bug this test exists to catch.
 
-If it passes first try, say so plainly and show the assertion — a confinement test that never could have failed is worth little. Then deliberately break it (point group A's skill path at group B) and confirm it fails; revert.
+- [ ] **Step 3: Run it, then break it deliberately**
+
+If it passes first try, say so and show the assertion. Then point group A's custom-skills mount at group B's folder, confirm the test FAILS, and revert. **A confinement test that never could have failed is worth nothing** — report the verbatim failure.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add -A
 git commit -m "test(skills): pin per-group confinement of self-authored skills"
+```
+
+### Task 6c: Port the skills that teach the MCP servers
+
+**Depends on Task 6.** An MCP server without its skill is a set of tools with no instructions — the agent has to guess the schema. These five skills exist in the personal repo as **per-group** skills (`groups/pi-test/skills/`, `groups/coco/skills/`). In this repo they become **shared container skills** (`container/skills/`), because every department agent gets the same curated server set.
+
+Skill → server mapping, verified by grep of each `SKILL.md`:
+
+| Skill | Server it drives | Default set? | Action |
+|---|---|---|---|
+| `clemson-curriculum` (27 lines) | `gc-wiki` | yes | **Port** |
+| `clemson-scheduling` (26 lines) | `cuassistant-public` | yes | **Port** |
+| `gc-advisor` (176 lines) | `cuassistant-catalog` | yes | **Port** |
+| `gc-alumni` (82 lines) | `gc-alumni` | yes | **Port** |
+| `clemson-procurement` (30 lines) | `procurement` | **no** (approval-only) | **Port, dormant** — ships the instructions so that when an operator approves the `procurement` server for a group, the skill is already there. Note in its `SKILL.md` that the server must be wired first. |
+| `clemson-email` | `cuassistant-credentialed` + Gmail + Outlook | no | **Exclude** — email, and an excluded server. |
+| `email-taskfinder` | `cuassistant-credentialed` + Gmail + Outlook | no | **Exclude** — same. |
+
+**A trap:** `gc-alumni`'s `SKILL.md` contains the word `outlook` three times — it is the **BLS job-growth outlook column**, not Microsoft Outlook. Do not "helpfully" strip it. Verify by reading lines 44, 58, 81 before touching anything.
+
+**Files:**
+- Create: `container/skills/{clemson-curriculum,clemson-scheduling,gc-advisor,gc-alumni,clemson-procurement}/` (copy from `/Users/admin/projects/nanoclaw_personal/groups/pi-test/skills/`, which has all five; `coco` has a subset)
+- Modify: whatever enumerates the shared skill set — find it (`grep -rn "container/skills" src/ container/ | head`) and confirm whether a new directory is picked up automatically or must be listed.
+
+**Interfaces:**
+- Produces: five skills mounted into every agent session, four of them backed by a wired server.
+
+- [ ] **Step 1: Copy the five skills and read every line of each**
+
+```bash
+for s in clemson-curriculum clemson-scheduling gc-advisor gc-alumni clemson-procurement; do
+  cp -R "/Users/admin/projects/nanoclaw_personal/groups/pi-test/skills/$s" "container/skills/$s"
+done
+```
+
+Then **read each `SKILL.md` in full.** These were written for a single-user personal install. Check each for:
+- hardcoded absolute paths that only exist in the personal install,
+- references to `groups/pi-test/` or other personal-install group names,
+- credentials, tokens, or personal data,
+- instructions to use Gmail/Outlook/Calendar (must be removed — the operator excluded email and calendar; Task 2 deletes those tools entirely, so any such instruction would send the agent after a tool that does not exist),
+- references to `cuassistant-credentialed` or `procurement` in the four default skills (they should reference only their own server).
+
+Fix what you find; list every edit in your report with the reason.
+
+- [ ] **Step 2: Confirm the shared-skill loader picks them up**
+
+```bash
+grep -rn "container/skills" src/container-runner.ts src/claude-md-compose.ts | head
+```
+`src/container-runner.ts:436` mounts `/app/skills/<skill>`; `claude-md-compose.ts:28` references `SHARED_SKILLS_CONTAINER_BASE`. Determine whether the skill set is discovered from the directory or enumerated somewhere (e.g. an enabled-skills list per group). **If it is enumerated, add the five there too** — a skill that ships but is never enabled is dead weight, and you will not notice from the tests.
+
+- [ ] **Step 3: Rebuild the image**
+
+```bash
+./container/build.sh
+```
+If COPY steps serve stale files, prune the builder and rebuild.
+
+- [ ] **Step 4: Prove an agent can actually use one, end to end**
+
+Drive a real agent turn (Task 4 Step 4's method) with a question that requires `clemson-scheduling` (driven by the unauthenticated `cuassistant-public`, so a failure is a wiring bug, not a token bug). Confirm the agent invokes the tool and returns a substantive answer, not an apology.
+
+Then one turn requiring `clemson-curriculum` (driven by `gc-wiki`), which exercises the `${WIKI_MCP_TOKEN}` expansion through a skill rather than a raw tool call.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add container/skills/
+git commit -m "feat(skills): port the five skills that drive the curated MCP servers
+
+clemson-email and email-taskfinder deliberately excluded: they drive
+Gmail/Outlook and the approval-only cuassistant-credentialed server."
 ```
 
 ### Task 7: Ports from the personal repo
@@ -609,8 +766,9 @@ git commit -m "docs(security): dependency audit findings for host and container 
 1. A normal agent turn is refused with 429 once its group is over budget (proven at the proxy, not just in a unit test).
 2. No agent, with or without its own Google credentials, can reach the owner's Drive; no agent has any Gmail or Calendar tool.
 3. `container --version` is 1.1.0, both installs spawn containers, orphan reaping works against the 1.x status shape.
-4. A new agent group is created with the curated MCP set already wired; `add_mcp_server` still routes to admin approval.
-5. An agent's self-authored skills are provably confined to its own group folder.
+4. A new agent group is created with the curated MCP set already wired; `add_mcp_server` still routes to admin approval. An agent answers a real question through `cuassistant-public` (unauthenticated) **and** through `gc-wiki` (proving `${WIKI_MCP_TOKEN}` expands).
+5. The five associated skills ship; an agent uses `clemson-scheduling` and `clemson-curriculum` end to end. No skill instructs the agent to use Gmail, Outlook, or Calendar.
+6. An agent's self-authored skills are provably confined to its own group folder.
 6. One pi harness carries both repos' fixes; a live turn produces a reply **and** a populated usage row.
 7. All of Plan 1.5's guarantees still hold: `pnpm test` green, and a container still cannot reach the proxy or relay without its token.
 
