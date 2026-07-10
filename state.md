@@ -167,22 +167,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (34 commits ahead)
+- **Last tag:** `classroom-2026-07` (35 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  config/cost-budgets.json
-M  src/credential-proxy.test.ts
-M  src/credential-proxy.ts
-M  src/modules/budgets/enforce.test.ts
-M  src/modules/budgets/enforce.ts
+## main...origin/main [ahead 1]
+M  src/channels/playground/seats-config.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+f685543a fix(budgets): enforce spend cap on the main agent-turn path at the proxy
 ae6cd07f docs(plans): Plan 2 — HTTP MCP transport, curated server set, and the skills that drive them
 af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, container 1.1.0, curated MCP, ports
 16e3cbe5 docs(review): isolation verification evidence — web, proxy, and ncl gates confirmed live
@@ -197,9 +194,8 @@ fc19e2c9 fix(direct-chat): require agentFolder, enforce model allowlist and budg
 8a621c47 fix(gws-relay): derive agent group from container token (C7)
 b48b90c1 test(credential-proxy): pin token-derived agentGroupId, 401 gate, and token strip
 e0f88be7 fix(proxy): derive agent group from container token, reject unauthenticated non-loopback (C5)
-3b383eef fix(security): attach container exit handlers before bookkeeping; tighten proxy-origin match
 ```
 
 ### Last refresh
 
-2026-07-10T07:21:34Z
+2026-07-10T07:26:02Z

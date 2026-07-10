@@ -49,11 +49,15 @@ describe('resolveSeatPassword', () => {
 
 describe('readSeatsConfig', () => {
   afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock('../../env.js');
     delete process.env.PLAYGROUND_SEAT_PASSWORD;
   });
 
   it('with env unset and committed JSON password "" (today\'s behavior), password is empty', async () => {
     delete process.env.PLAYGROUND_SEAT_PASSWORD;
+    // Never let the operator's real .env leak into this assertion — stub readEnvFile too.
+    vi.doMock('../../env.js', () => ({ readEnvFile: () => ({}) }));
     const { readSeatsConfig } = await import('./seats-config.js');
     const sc = readSeatsConfig();
     expect(sc.password).toBe('');
@@ -63,6 +67,7 @@ describe('readSeatsConfig', () => {
   it('never writes the resolved password back to config/playground-seats.json', async () => {
     const before = fs.readFileSync(CONFIG_PATH, 'utf-8');
     process.env.PLAYGROUND_SEAT_PASSWORD = 'test-password-123';
+    vi.doMock('../../env.js', () => ({ readEnvFile: () => ({}) }));
     const { readSeatsConfig } = await import('./seats-config.js');
     readSeatsConfig();
     const after = fs.readFileSync(CONFIG_PATH, 'utf-8');
