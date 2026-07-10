@@ -176,19 +176,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (62 commits ahead)
+- **Last tag:** `classroom-2026-07` (63 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  src/db/agent-groups.test.ts
-M  src/db/agent-groups.ts
+## main...origin/main [ahead 1]
+A  src/db/agent-groups.bypass.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+3de9d335 fix(auth): getPlaygroundAgentForUser returns own-group-or-null, no first-group leak
 a73db877 docs(plans): Plan 3 — invite & identity, retire auth bypass via per-user login tokens
 6c598a5a docs(state): Plan 2 complete — tools, runtime, ports; pilot-gating items tracked
 b8f28b3f docs(security): dependency audit findings for host and container trees
@@ -203,9 +203,8 @@ ccdde699 fix(container-runner): run ensureRuntimeFields after buildMounts
 1f8a9425 fix(agent): pin vetted IP into fetch to close DNS-rebinding SSRF
 8cf94015 feat(agent): SSRF-safe fetch_url_to_workspace + fail-loud persona size guard
 332572a7 fix(skills): remove personal name from skill frontmatter
-ac246117 feat(skills): port the five skills that drive the curated MCP servers
 ```
 
 ### Last refresh
 
-2026-07-10T19:12:38Z
+2026-07-10T19:20:16Z
