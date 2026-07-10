@@ -177,20 +177,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (73 commits ahead)
+- **Last tag:** `classroom-2026-07` (74 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-A  src/channels/playground/bypass-guard.test.ts
-A  src/channels/playground/bypass-guard.ts
-M  src/channels/playground/server.ts
+## main...origin/main [ahead 4]
+M  .env.example
 ```
 
 ### Recent commits (last 15)
 
 ```
+04a910f0 fix(playground): refuse bypass modes when the box is publicly proxied
 495b64a0 fix(cli): redact bearer login URLs from agent-facing approval relay
 5cf8ca94 fix(class-tokens): kill live playground sessions when tokens are revoked
 554bf42d fix(class-tokens): resolve issue/rotate/revoke via --user-id or metadata email
@@ -205,9 +204,8 @@ fa5a9640 feat(provisioning): provisionUser — full per-user stack + durable log
 a73db877 docs(plans): Plan 3 — invite & identity, retire auth bypass via per-user login tokens
 6c598a5a docs(state): Plan 2 complete — tools, runtime, ports; pilot-gating items tracked
 b8f28b3f docs(security): dependency audit findings for host and container trees
-ce50da4c fix(container-runner): key the per-group sites mount by unique folder, not display name
 ```
 
 ### Last refresh
 
-2026-07-10T20:24:57Z
+2026-07-10T20:30:44Z
