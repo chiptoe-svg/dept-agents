@@ -1,23 +1,29 @@
 /**
  * Tests for fetch_url_to_workspace's SSRF guard and happy-path behavior.
  *
- * The guard itself (`assertUrlAllowed` / `ipIsBlocked`) lives in
- * `../tools/fetch.ts` and has its own direct unit tests there. These tests
- * exercise it end-to-end through the MCP tool handler — the thing an agent
- * actually calls — plus the redirect re-validation loop and the DNS
- * resolved-IP check that are specific to how this tool drives the fetch.
+ * The guard + pinned transport (`safeFetch` / `ipIsBlocked`) live in
+ * `../tools/fetch.ts` and have their own direct unit tests there (including
+ * the DNS-rebinding pinning suite). These tests exercise it end-to-end
+ * through the MCP tool handler — the thing an agent actually calls — plus
+ * the redirect re-validation loop specific to how this tool drives the fetch.
  *
  * No real network requests are made: the "happy path" / redirect tests
- * mock `globalThis.fetch`, and the SSRF-refusal tests never reach `fetch`
- * at all (assertUrlAllowed throws before any request is made).
+ * inject a stub resolver + pinned transport via `createFetchUrlToWorkspace`,
+ * and the SSRF-refusal tests never reach the transport at all (safeFetch
+ * throws before any connection is attempted).
  */
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 
-import { fetchUrlToWorkspace } from './files.js';
+import type { LookupFn, PinnedFetchFn } from '../tools/fetch.js';
+import { fetchUrlToWorkspace, createFetchUrlToWorkspace } from './files.js';
+
+/** Stub resolver: any hostname resolves to a fixed public IP. Keeps these
+ * tests offline-safe (no real DNS for example.com). */
+const publicLookup: LookupFn = async () => ['93.184.216.34'];
 
 let scratch: string;
 
@@ -131,99 +137,91 @@ describe('fetch_url_to_workspace — DNS resolved-IP validation (rebinding)', ()
   });
 });
 
-describe('fetch_url_to_workspace — happy path (mocked network)', () => {
+describe('fetch_url_to_workspace — happy path (stubbed transport)', () => {
   it('saves an ordinary public https URL response to the workspace', async () => {
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () => new Response('hello world', { status: 200, headers: { 'content-type': 'text/plain' } }),
-    ) as unknown as typeof fetch;
-    try {
-      const target = path.join(scratch, 'out.txt');
-      const r = await fetchUrlToWorkspace.handler({ url: 'https://example.com/file.txt', filename: target });
-      expect(r.isError).toBeFalsy();
-      expect(content(r)).toContain('Saved');
-      expect(fs.readFileSync(target, 'utf-8')).toBe('hello world');
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    const pinnedFetch: PinnedFetchFn = async () =>
+      new Response('hello world', { status: 200, headers: { 'content-type': 'text/plain' } });
+    const tool = createFetchUrlToWorkspace({ lookup: publicLookup, pinnedFetch });
+    const target = path.join(scratch, 'out.txt');
+    const r = await tool.handler({ url: 'https://example.com/file.txt', filename: target });
+    expect(r.isError).toBeFalsy();
+    expect(content(r)).toContain('Saved');
+    expect(fs.readFileSync(target, 'utf-8')).toBe('hello world');
   });
 
   it('creates missing parent directories', async () => {
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response('data', { status: 200 })) as unknown as typeof fetch;
-    try {
-      const target = path.join(scratch, 'nested', 'dir', 'out.bin');
-      const r = await fetchUrlToWorkspace.handler({ url: 'https://example.com/file.bin', filename: target });
-      expect(r.isError).toBeFalsy();
-      expect(fs.existsSync(target)).toBe(true);
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    const pinnedFetch: PinnedFetchFn = async () => new Response('data', { status: 200 });
+    const tool = createFetchUrlToWorkspace({ lookup: publicLookup, pinnedFetch });
+    const target = path.join(scratch, 'nested', 'dir', 'out.bin');
+    const r = await tool.handler({ url: 'https://example.com/file.bin', filename: target });
+    expect(r.isError).toBeFalsy();
+    expect(fs.existsSync(target)).toBe(true);
   });
 
   it('returns an error for a non-2xx response without writing a file', async () => {
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response('not found', { status: 404 })) as unknown as typeof fetch;
-    try {
-      const target = path.join(scratch, 'missing.txt');
-      const r = await fetchUrlToWorkspace.handler({ url: 'https://example.com/missing', filename: target });
-      expect(r.isError).toBe(true);
-      expect(fs.existsSync(target)).toBe(false);
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    const pinnedFetch: PinnedFetchFn = async () => new Response('not found', { status: 404 });
+    const tool = createFetchUrlToWorkspace({ lookup: publicLookup, pinnedFetch });
+    const target = path.join(scratch, 'missing.txt');
+    const r = await tool.handler({ url: 'https://example.com/missing', filename: target });
+    expect(r.isError).toBe(true);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it('hands the transport the pinned IP from the FIRST resolution — a rebound second resolution never reaches the gateway', async () => {
+    let calls = 0;
+    const rebindingLookup: LookupFn = async () => {
+      calls++;
+      return calls === 1 ? ['93.184.216.34'] : ['192.168.65.1'];
+    };
+    const connections: string[] = [];
+    const pinnedFetch: PinnedFetchFn = async (_url, ip) => {
+      connections.push(ip);
+      return new Response('pinned', { status: 200 });
+    };
+    const tool = createFetchUrlToWorkspace({ lookup: rebindingLookup, pinnedFetch });
+    const target = path.join(scratch, 'pinned.txt');
+    const r = await tool.handler({ url: 'https://rebind.example/file', filename: target });
+    expect(r.isError).toBeFalsy();
+    expect(connections).toEqual(['93.184.216.34']);
+    expect(calls).toBe(1);
   });
 });
 
 describe('fetch_url_to_workspace — redirect re-validation', () => {
   it('follows a redirect to a public URL and saves the final body', async () => {
-    const realFetch = globalThis.fetch;
     let callCount = 0;
-    globalThis.fetch = mock(async () => {
+    const pinnedFetch: PinnedFetchFn = async () => {
       callCount++;
       if (callCount === 1) {
         return new Response(null, { status: 302, headers: { location: 'https://93.184.216.34/final' } });
       }
       return new Response('final body', { status: 200 });
-    }) as unknown as typeof fetch;
-    try {
-      const target = path.join(scratch, 'redirected.txt');
-      const r = await fetchUrlToWorkspace.handler({ url: 'https://example.com/start', filename: target });
-      expect(r.isError).toBeFalsy();
-      expect(fs.readFileSync(target, 'utf-8')).toBe('final body');
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    };
+    const tool = createFetchUrlToWorkspace({ lookup: publicLookup, pinnedFetch });
+    const target = path.join(scratch, 'redirected.txt');
+    const r = await tool.handler({ url: 'https://example.com/start', filename: target });
+    expect(r.isError).toBeFalsy();
+    expect(fs.readFileSync(target, 'utf-8')).toBe('final body');
   });
 
   it('blocks a redirect that points at the bridge gateway — a one-shot check on the original URL would miss this', async () => {
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () => new Response(null, { status: 302, headers: { location: 'http://192.168.65.1:3001/openai/v1/models' } }),
-    ) as unknown as typeof fetch;
-    try {
-      const target = path.join(scratch, 'blocked.txt');
-      const r = await fetchUrlToWorkspace.handler({ url: 'https://example.com/redirect', filename: target });
-      expect(r.isError).toBe(true);
-      expect(content(r)).toMatch(/blocked/);
-      expect(fs.existsSync(target)).toBe(false);
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    const pinnedFetch: PinnedFetchFn = async () =>
+      new Response(null, { status: 302, headers: { location: 'http://192.168.65.1:3001/openai/v1/models' } });
+    const tool = createFetchUrlToWorkspace({ lookup: publicLookup, pinnedFetch });
+    const target = path.join(scratch, 'blocked.txt');
+    const r = await tool.handler({ url: 'https://example.com/redirect', filename: target });
+    expect(r.isError).toBe(true);
+    expect(content(r)).toMatch(/blocked/);
+    expect(fs.existsSync(target)).toBe(false);
   });
 
   it('caps redirect chains', async () => {
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () => new Response(null, { status: 302, headers: { location: 'https://example.com/next' } }),
-    ) as unknown as typeof fetch;
-    try {
-      const target = path.join(scratch, 'loop.txt');
-      const r = await fetchUrlToWorkspace.handler({ url: 'https://example.com/start', filename: target });
-      expect(r.isError).toBe(true);
-      expect(content(r)).toMatch(/too many redirects/);
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    const pinnedFetch: PinnedFetchFn = async () =>
+      new Response(null, { status: 302, headers: { location: 'https://example.com/next' } });
+    const tool = createFetchUrlToWorkspace({ lookup: publicLookup, pinnedFetch });
+    const target = path.join(scratch, 'loop.txt');
+    const r = await tool.handler({ url: 'https://example.com/start', filename: target });
+    expect(r.isError).toBe(true);
+    expect(content(r)).toMatch(/too many redirects/);
   });
 });

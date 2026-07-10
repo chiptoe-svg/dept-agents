@@ -166,24 +166,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ### Branch
 
-- **Current:** `main`
-- **Last tag:** `classroom-2026-07` (49 commits ahead)
+- **Current:** `fix/ssrf-dns-rebinding-pin`
+- **Last tag:** `classroom-2026-07` (50 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  container/agent-runner/src/mcp-tools/files.test.ts
-A  container/agent-runner/src/mcp-tools/files.ts
-M  container/agent-runner/src/mcp-tools/index.ts
+## fix/ssrf-dns-rebinding-pin
+M  container/agent-runner/src/mcp-tools/files.test.ts
+M  container/agent-runner/src/mcp-tools/files.ts
+M  container/agent-runner/src/tools/fetch.test.ts
 M  container/agent-runner/src/tools/fetch.ts
-A  src/claude-md-compose.test.ts
-M  src/claude-md-compose.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+8cf94015 feat(agent): SSRF-safe fetch_url_to_workspace + fail-loud persona size guard
 332572a7 fix(skills): remove personal name from skill frontmatter
 ac246117 feat(skills): port the five skills that drive the curated MCP servers
 31e5e94e test(skills): pin per-group confinement of self-authored skills
@@ -198,9 +197,8 @@ c121515d docs(review): Apple Container 1.1.0 upgrade evidence — subnet moved, 
 b10297bd fix(gws): drop Gmail+Calendar tools, require the caller's own Google token
 301df953 fix(budgets): harden the credential-proxy budget gate (6 review fixes)
 8c8d60ea fix(test): stop seats-config test reading operator's real .env
-f685543a fix(budgets): enforce spend cap on the main agent-turn path at the proxy
 ```
 
 ### Last refresh
 
-2026-07-10T15:44:19Z
+2026-07-10T16:06:31Z
