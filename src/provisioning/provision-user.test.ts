@@ -15,6 +15,7 @@ vi.stubEnv('PUBLIC_PLAYGROUND_URL', 'http://example.test:8088');
 
 import { initTestDb, closeDb, runMigrations, getDb } from '../db/index.js';
 import { getAgentGroupByFolder, getPlaygroundAgentForUser } from '../db/agent-groups.js';
+import { getMessagingGroupByPlatform } from '../db/messaging-groups.js';
 import { isMember } from '../modules/permissions/db/agent-group-members.js';
 import { provisionUser } from './provision-user.js';
 
@@ -45,6 +46,11 @@ describe('provisionUser', () => {
     expect(cfg.provider).toBe('pi');
     // filesystem scaffolded
     expect(fs.existsSync(path.join(TMP, 'groups', r.folder))).toBe(true);
+    // routing gate: messaging group must be 'public', not 'strict' — the
+    // playground route hardcodes a synthetic senderId that 'strict' would
+    // reject, dropping every inbound message at the router's access gate.
+    const mg = getMessagingGroupByPlatform('playground', `playground:${r.folder}`);
+    expect(mg?.unknown_sender_policy).toBe('public');
   });
 
   it('refuses to double-provision the same identity', () => {

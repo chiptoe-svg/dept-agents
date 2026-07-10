@@ -122,6 +122,17 @@ export function provisionUser(input: ProvisionUserInput): ProvisionResult {
     // Playground messaging group, wired exactly like a DM channel (mirrors
     // scripts/init-first-agent.ts's wireIfMissing for is_group=0): "respond
     // to everything" via the '.' pattern sentinel.
+    //
+    // unknown_sender_policy is 'public', matching the existing owner
+    // playground group, not 'strict'. Playground messages are already
+    // authorized at the HTTP layer by requireGroupAccess (real auth +
+    // per-group authorization happen before a message ever reaches the
+    // router), so the router's unknown-sender gate is redundant for this
+    // channel. The playground POST route also hardcodes a synthetic
+    // senderId ('playground-user', api-routes.ts:328) that isn't a real
+    // per-user identity — 'strict' would reject it and every inbound
+    // message would be dropped at the router's access gate, leaving a user
+    // who can log in but whose agent never replies.
     const mgId = generateId('mg');
     createMessagingGroup({
       id: mgId,
@@ -129,7 +140,7 @@ export function provisionUser(input: ProvisionUserInput): ProvisionResult {
       platform_id: `playground:${folder}`,
       name: input.displayName,
       is_group: 0,
-      unknown_sender_policy: 'strict',
+      unknown_sender_policy: 'public',
       created_at: now,
     });
     createMessagingGroupAgent({

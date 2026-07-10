@@ -176,20 +176,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (64 commits ahead)
+- **Last tag:** `classroom-2026-07` (65 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  src/class-login-tokens.ts
-A  src/provisioning/provision-user.test.ts
-A  src/provisioning/provision-user.ts
+## main...origin/main [ahead 3]
+M  src/provisioning/provision-user.test.ts
+M  src/provisioning/provision-user.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+fa5a9640 feat(provisioning): provisionUser — full per-user stack + durable login URL
 89445a50 test(db): pin no-leak invariant for getPlaygroundAgentForUser under bypass=true
 3de9d335 fix(auth): getPlaygroundAgentForUser returns own-group-or-null, no first-group leak
 a73db877 docs(plans): Plan 3 — invite & identity, retire auth bypass via per-user login tokens
@@ -204,9 +204,8 @@ ffdeed34 fix(agent-runner): retry inbound.db reads on transient readonly errors
 ccdde699 fix(container-runner): run ensureRuntimeFields after buildMounts
 605b5aab refactor(pi): reconcile harness with personal repo — best of both
 1f8a9425 fix(agent): pin vetted IP into fetch to close DNS-rebinding SSRF
-8cf94015 feat(agent): SSRF-safe fetch_url_to_workspace + fail-loud persona size guard
 ```
 
 ### Last refresh
 
-2026-07-10T19:27:06Z
+2026-07-10T19:38:56Z
