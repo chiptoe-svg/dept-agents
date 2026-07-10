@@ -8,9 +8,9 @@
 
 ## Goal
 
-NanoClaw is a self-hosted personal-Claude assistant. The Clemson install (Mac Studio at `gcworkflow.clemson.edu:3002`) pairs per-person agents over a shared messaging surface with a playground UI for chat and admin. **As of 2026-06-07 the classroom is a PILOT/test with pilot users — breakable, not live production** (the prior "production, not dev" framing is paused until the owner says otherwise; no real FERPA data expected during the pilot).
+NanoClaw is a self-hosted personal-Claude assistant. **As of 2026-07-09 this install (Mac Studio, `gcworkflow.clemson.edu:3002` / Caddy `130.127.162.180:8088`) is transforming in place into a department agent server** for ~15 Clemson faculty/staff: each person gets one isolated agent group (own memory, base persona + skill set, ability to add their own skills) reachable via a web homepage and optionally Telegram. Onboarding is a single admin-provisioned email invite (Clemson email = canonical identity; no self-registration). Provider model: per-user ChatGPT (Codex OAuth) covers each person's own usage; a department OpenAI API key covers system functions and steps in as a visible-warning backstop when a user's token is missing/expired/exhausted. Provider-neutral via the pi harness — Claude is a likely later option requiring no code change (`model_provider` is already per-group). Success bar: pilot with 2–3 friendly colleagues, iterate, then open to all ~15. Full design (goal, decisions table, §1–§6): `docs/superpowers/specs/2026-07-09-department-agent-server-design.md`.
 
-**Direction (revised 2026-06-08):** this is a **group-agent platform**, not a classroom app — controlled, individuated agent access for a defined set of people, with "classroom" as one of ~5 scenarios (department, agent-optimization, +2 coming). **Model: ONE codebase + in-tree scenario profiles** under `src/scenarios/<name>/`, selected by config. This supersedes both prior attempts: lean-trunk+branch-install (too much sync ceremony) and fold-into-classroom-app (too narrow). Each scenario's code is tiny (~90% of "classroom" code is the general platform), so in-tree profiles beat branch-install ceremony. Separate installs run the same repo with different scenario config + data; platform features reach all installs on `git pull`. See `plans/group-agent-platform.md`. (The earlier `controlled-access` branch-extraction plan and the `classroom` sibling branch + `/add-classroom*` skills are superseded; branch/skills slated for retirement.)
+**Superseded direction:** the "group-agent platform with in-tree scenario profiles" framing (`plans/group-agent-platform.md`, decision log 2026-06-08 — classroom + `industryai_seminar` scenarios selected by `ACTIVE_SCENARIO`) is retired for this install; `main` now serves the department server exclusively. The classroom scenario/pilot is **frozen, not deleted** — see Decision log 2026-07-09 for the freeze + August revival path.
 
 ## Deployment / install map
 
@@ -24,16 +24,12 @@ DBs, image tags, and bot tokens are isolated — restart/rebuild one does NOT to
 
 ## Current arc
 
-**Active arc: the group-agent-platform restructure** (`plans/group-agent-platform.md`) — one codebase, in-tree scenario profiles under `src/scenarios/<name>/`, selected by `ACTIVE_SCENARIO`. Progress:
-- **Phase 1 done** (`dce8da2`): `src/scenarios/` scaffold + registry + classroom profile; teaching-specific pair consumers moved in.
-- **Phase 2 increment 1 done** (`3dcd662`): a **canonical-role scenario contract** (`src/scenarios/types.ts`) — four fixed roles (`owner / it_admin / assistant / user`), each scenario supplies label + permission + persona + greeting + `roleForFolder`. Registry (`registry.ts`) + tests landed. This **un-defers** the Phase 2 that the 2026-06-08 decision log marked deferred (the forcing 2nd scenario arrived — see below).
-- **Second scenario added** (`52dc82a`): `industryai_seminar` profile (Organizer/IT Admin/Facilitator/Participant, all four canonical roles) + `ACTIVE_SCENARIO` env gating. This install's `.env` is set to `ACTIVE_SCENARIO=industryai_seminar`.
+**Active arc: department-agent-server transformation** (spec: `docs/superpowers/specs/2026-07-09-department-agent-server-design.md`; plan: `docs/superpowers/plans/2026-07-09-dept-server-plan-1-freeze-and-clean-base.md`). Progress:
+- **Plan 1 (freeze & clean base) complete** (`e537607f`..`73761b78`): classroom frozen — branch `classroom-freeze` + tag `classroom-2026-07` pushed to origin at `e537607f`, runtime snapshot verified restorable at `~/archives/classroom-2026-07.tar.gz`. Classroom scenario profile + `/add-classroom*` skills + enrollment/passcode surface + roster-admin/shared-class-base surface deleted from `main` (`7d99b2cc`, `6a887da2`, `09066814`); classroom runtime data purged from disk; fresh `data/v2.db` boots clean (24 migrations); seats trimmed to `owner_01` + `user_01` (`73761b78`); end-to-end owner chat turn live-verified on the fresh base.
 
-- **Phase 2 proper done** (branch `scenario-contract-wiring`, pending merge — commits `7606cf0`..`8e894cd`): the platform now **consumes** the contract. A single generic platform pair consumer (`src/scenario-pairing.ts`) drives all pairing from `roleForFolder()` + `roleProfile()` + the new `memberName()`; the three classroom-specific pair consumers (`class-pair-greeting`, `pair-instructor`, `pair-ta`) are deleted; provisioning reads its persona from `roleProfile('user')`. `ACTIVE_SCENARIO` now genuinely changes pairing/persona/permission/greeting behavior — verified by an integration test pairing a real `industryai_seminar` Participant (seminar greeting, no admin grant). Scoped-admin scope is derived from the contract (every other folder whose role is `user`/`assistant`), provably equivalent to the old class-config roster iteration. Metadata keys (`student_*`) kept as-is (downstream features read them; renaming is a deferred vocabulary pass). 1104 tests green; final holistic review approved.
+**Next: Plan 2 — ports from personal repo** (pi-harness reconciliation, `hermes-selflearning` + `self-customize`, `agents-compose` size guard, `fetch_url_to_workspace`, Apple Container orphan-cleanup fix), then **Plan 3 — invite & identity**, **Plan 4 — provider auth & backstop**, **Plan 5 — homepage & channels**. Full roadmap (each plan written after the prior lands) at the bottom of the Plan 1 doc. Known deferred gaps: `config/playground-seats.json` provisioning is still hand-edited (a DB-backed bootstrap lands in Plan 3); several classroom-named-but-actually-generic files (login tokens/PINs, Telegram pairing, provider resolver, `class-controls`) are intentionally untouched until Plans 3–5 rename/rewire them (see the Plan 1 doc's "NOT touched in this plan" list); the live playground URL is `http://gcworkflow.clemson.edu:8088` (server IP `130.127.162.67`).
 
-**Next:** merge the branch, then optionally Phase 4 (retire the `classroom` sibling branch + `/add-classroom*` skills) and Phase 5 (add more scenario profiles). The classroom profile still delegates `roleForFolder`/`memberName` to `classRoleForFolder` + the roster — `class-config.ts` is intentionally retained, not orphaned.
-
-(Prior completed arc: **Phase D**, tag `phase-d-complete-2026-05-26` — pi is the sole agent harness; claude.ts/codex.ts deleted host+container; `container_configs.model_provider` drives upstream API selection. Recorded in the decision log. Other still-open candidate arcs, not currently active: per-student pi auth `docs/superpowers/plans/2026-05-17-per-student-provider-auth.md`, the pi-ai codex-cost-gap PR, RAG Phase 7.)
+(Superseded arc: the **group-agent-platform restructure** — one codebase, in-tree scenario profiles under `src/scenarios/<name>/` selected by `ACTIVE_SCENARIO` — is retired for this install per the 2026-07-09 decision below; its history (Phase 1 `dce8da2`, canonical-role contract `3dcd662`, `industryai_seminar` scenario `52dc82a`, contract wiring `7606cf0`..`8e894cd`) stays in the decision log below for reference. Prior completed arc: **Phase D**, tag `phase-d-complete-2026-05-26` — pi is the sole agent harness; claude.ts/codex.ts deleted host+container; `container_configs.model_provider` drives upstream API selection.)
 
 ## Open follow-ups
 
@@ -111,6 +107,7 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+- **2026-07-09** — **Department agent server: repo transforms in place; classroom frozen, revives in August.** Spec `docs/superpowers/specs/2026-07-09-department-agent-server-design.md` (approved) redirects this install from the group-agent-platform/scenario framing to a single-purpose department server for ~15 Clemson faculty/staff: one agent group per person, web homepage + optional Telegram, per-user ChatGPT (Codex OAuth) for user-initiated turns backstopped by a department OpenAI API key for system functions and outages, admin-provisioned email invites (Clemson email = identity, no self-registration), provider-neutral via the pi harness. Chosen over forking or re-basing: everything hard is already live-verified in this repo (pi runner across anthropic + openai-codex, playground web UI, magic-link + PIN auth, per-user provider OAuth registry, class-pool fallback, Resend email) — stripping classroom-only code is cheaper than porting those pieces elsewhere. Classroom is preserved, not deleted: `classroom-freeze` branch + `classroom-2026-07` tag (pushed to origin at `e537607f`) plus a verified runtime snapshot `~/archives/classroom-2026-07.tar.gz` (`data/`, `groups/`, `.env`); it revives on a different box in August via `/install-handoff`. Plan 1 (freeze & clean base) executed and live-verified — see Current arc. Plans 2–5 (ports from the personal repo, invite & identity, provider auth & backstop, homepage & channels) are roadmapped in the Plan 1 doc, one written after the prior lands.
 - **2026-06-12** — **Simple tab trace roll-up: panel rolls up to reveal the live trace.** The My Agent tab's side panel now rolls up (chevron in the panel header, `aria-expanded`; or clicking the new `🔍 trace — underneath` peek strip) via a `.trace-open` class on the wrapper, collapsing the panel body + strip (max-height 0.3s + reduced-motion guard) to reveal the Chat tab's trace panel on the same plane as the chat — the **live `.trace-panel` that `mountChat` already builds is re-parented** into a new `.simple-trace-host` (`adoptTracePanel`, simple.js) instead of duplicating trace logic; the old `.simple-mode .trace-panel{display:none}` hide rule is gone. Enabler: chat.js trace-log lookups changed to **capture-once at wiring time** (wireChatForm/wireTraceClear aligned with wireSse) so a moved node keeps working — zero Chat-tab behavior change. Works in both agent ON/OFF modes (comparing bare-model vs agent traces is the pedagogical point); default rolled-down every load, no persistence, no drag-resize. Right column became `.simple-side-stack` (owns column sizing; panel lost `flex:1`/`min-width`/`align-self`). Live-verified 9-point matrix incl. same-plane geometry (host bottom == layout bottom), live agent + direct traces, Clear regression, internal trace-log scroll. Spec: docs/superpowers/specs/2026-06-12-simple-tab-trace-rollup-design.md.
 - **2026-06-12** — **Simple tab layering: agent above the model.** The My Agent tab now renders agent mode as an elevated green card (slim `🤖 <name>` header) with a model strip peeking beneath (`⚡ <model> — underneath`), panel fused at the same elevation; toggling the agent off animates the layer away (`.agent-off` class on the wrapper, pure CSS, ~300ms + reduced-motion guard) onto a flat gray dashed model card with a sunken panel. `setLayerLabels` rides the existing `applySelection`/`saveName`/toggle paths. Verification also fixed the simple tab's height chain (`#tab-simple:not([hidden])` flex guard, mirroring `#tab-chat`) so `#chat-log` scrolls inside the card instead of growing the page. No chat.js changes. Spec: docs/superpowers/specs/2026-06-11-simple-tab-layering-design.md.
 - **2026-06-11** — **"My Agent" simple beginner tab.** New `simple` playground tab: embedded real chat (`mountChat` unchanged, `.simple-mode` CSS hides advanced chrome) + side panel (Use-agent toggle driving the hidden mode buttons, editable agent name, template-curated skill checklist with ⓘ descriptions, persona, Save→restart) + left model dropdown fed by the default-participant template's `allowed_models`. Three new endpoints: `GET /api/simple-config`, `PUT /api/drafts/:folder/name` (writes `assistant_name` + group name), `POST /api/simple-restart` (exported `killGroupContainer`). Agent replies green/labeled, model-only replies blue-gray/dashed via CSS vars. Tab strip auto-hides when a student has exactly one visible tab. Instructor curates via the template slot + `tabsVisibleToStudents`. Spec: docs/superpowers/specs/2026-06-11-simple-my-agent-tab-design.md.
@@ -164,18 +161,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (3 commits ahead)
+- **Last tag:** `classroom-2026-07` (4 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 6, behind 2]
-M  config/playground-seats.json
+## main...origin/main [ahead 7, behind 2]
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+73761b78 feat: department base — trimmed seats, fresh-DB boot verified
 09066814 refactor: delete classroom roster-admin and shared-class-base surface
 6a887da2 refactor: delete classroom enrollment-passcode surface
 7d99b2cc refactor: delete classroom scenario profile (frozen on classroom-freeze)
@@ -190,9 +188,8 @@ ce65b3c6 feat(setup): Apple Container + Codex support; LaunchDaemon; Node <26 ca
 eea9795e feat(skills): image-vision + image-metadata container skills
 1c76d15f fix(agent-runner): surface uploaded image paths to the agent
 62d1def2 feat(simple): "Start over" resets agent memory + trace, not just the window
-81b4af81 fix(agent-runner): strip stray message tags from folded trailing text
 ```
 
 ### Last refresh
 
-2026-07-10T01:50:27Z
+2026-07-10T02:20:29Z
