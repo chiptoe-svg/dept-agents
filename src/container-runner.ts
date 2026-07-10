@@ -301,7 +301,9 @@ function resolveProviderContribution(
   return { provider, contribution };
 }
 
-function buildMounts(
+// Exported for direct testing (skills-confinement.test.ts) — confirms a
+// group's mounts never resolve inside another group's folder.
+export function buildMounts(
   agentGroup: AgentGroup,
   session: Session,
   containerConfig: import('./container-config.js').ContainerConfig,

@@ -167,19 +167,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (45 commits ahead)
+- **Last tag:** `classroom-2026-07` (46 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-M  container/agent-runner/src/providers/pi-mcp-bridge.test.ts
-M  container/agent-runner/src/providers/pi-mcp-bridge.ts
+## main...origin/main
+M  src/container-runner.ts
+A  src/skills-confinement.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+95589948 fix(pi-mcp-bridge): isolate per-server MCP connect failures
 91ae4b49 feat(mcp): curated default server set (cuassistant public+catalog, gc-alumni, gc-wiki)
 2b89b43b fix(pi): test env wiring through to the MCP bridge; dedupe comment
 7070232c feat(mcp): HTTP transport, gateway rewrite, and scoped header-secret forwarding
@@ -194,9 +195,8 @@ f685543a fix(budgets): enforce spend cap on the main agent-turn path at the prox
 ae6cd07f docs(plans): Plan 2 — HTTP MCP transport, curated server set, and the skills that drive them
 af062b50 docs(plans): Plan 2 — budgets on the turn path, GWS lockdown, container 1.1.0, curated MCP, ports
 16e3cbe5 docs(review): isolation verification evidence — web, proxy, and ncl gates confirmed live
-40a86698 docs(state): Plan 1.5 complete — identity derived server-side; bypass retirement blocked on Plan 3
 ```
 
 ### Last refresh
 
-2026-07-10T14:13:17Z
+2026-07-10T15:13:43Z

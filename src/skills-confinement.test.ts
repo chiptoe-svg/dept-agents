@@ -1,0 +1,197 @@
+/**
+ * Confirms `self-customize` (container/skills/self-customize) — which lets an
+ * agent write its own skill files — is confined to its own group folder.
+ *
+ * A self-authored skill lands at `groups/<folder>/custom-skills/<name>/`
+ * (src/channels/playground/custom-skills.ts). That path is writable inside
+ * the container only because `groups/<folder>/` itself is mounted RW at
+ * `/workspace/agent` by `buildMounts()` (src/container-runner.ts). So the
+ * confinement guarantee this test pins is: `buildMounts(groupA, ...)` must
+ * never produce a mount whose host path resolves inside a *different*
+ * group's folder — especially not via a naive prefix match, where
+ * `groups/user_a` is a string-prefix of `groups/user_ab` even though they
+ * are unrelated groups.
+ */
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// vi.mock factories are hoisted above top-level const declarations, so the
+// paths must be computed inside vi.hoisted() and re-derived below for the
+// rest of the test file to reference the same values.
+const { TMP, GROUPS, DATA, DEFAULT_MCP_SERVERS_PATH } = vi.hoisted(() => {
+  const fs = require('fs') as typeof import('fs');
+  const os = require('os') as typeof import('os');
+  const path = require('path') as typeof import('path');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-skills-confinement-'));
+  return {
+    TMP: tmp,
+    GROUPS: path.join(tmp, 'groups'),
+    DATA: path.join(tmp, 'data'),
+    DEFAULT_MCP_SERVERS_PATH: path.join(tmp, 'config', 'default-mcp-servers.json'),
+  };
+});
+
+vi.mock('./config.js', async () => {
+  const actual = await vi.importActual<typeof import('./config.js')>('./config.js');
+  return {
+    ...actual,
+    GROUPS_DIR: GROUPS,
+    DATA_DIR: DATA,
+    DEFAULT_MCP_SERVERS_PATH,
+  };
+});
+
+import { initTestDb, closeDb, runMigrations, getDb } from './db/index.js';
+import { createAgentGroup } from './db/agent-groups.js';
+import { buildMounts } from './container-runner.js';
+import { emptyConfig } from './container-config.js';
+import type { AgentGroup, Session } from './types.js';
+
+function makeGroup(id: string, folder: string): AgentGroup {
+  const group: AgentGroup = { id, name: id, folder, agent_provider: 'claude', created_at: '2026-01-01' };
+  createAgentGroup(group);
+  return group;
+}
+
+function makeSession(agentGroupId: string, id: string): Session {
+  return {
+    id,
+    agent_group_id: agentGroupId,
+    messaging_group_id: null,
+    thread_id: null,
+    agent_provider: null,
+    status: 'active',
+    container_status: 'idle',
+    last_active: null,
+    created_at: '2026-01-01',
+  };
+}
+
+/**
+ * Correct containment check — trailing separator so `groups/user_ab` is
+ * never mistaken for a descendant of `groups/user_a`. This is the check
+ * the task brief warns a naive `startsWith(base)` will get wrong.
+ */
+function isConfinedTo(base: string, target: string): boolean {
+  const resolvedBase = path.resolve(base);
+  const resolvedTarget = path.resolve(target);
+  return resolvedTarget === resolvedBase || resolvedTarget.startsWith(resolvedBase + path.sep);
+}
+
+beforeEach(() => {
+  fs.rmSync(TMP, { recursive: true, force: true });
+  fs.mkdirSync(GROUPS, { recursive: true });
+  fs.mkdirSync(path.dirname(DEFAULT_MCP_SERVERS_PATH), { recursive: true });
+  initTestDb();
+  runMigrations(getDb());
+});
+
+afterEach(() => {
+  closeDb();
+  fs.rmSync(TMP, { recursive: true, force: true });
+});
+
+describe('prefix trap: user_a vs user_ab', () => {
+  it('a naive startsWith prefix check is fooled; the trailing-separator check is not', () => {
+    const a = path.resolve(GROUPS, 'user_a');
+    const ab = path.resolve(GROUPS, 'user_ab');
+
+    // This is the bug the task brief calls out: a bare `startsWith` matches
+    // a sibling folder that merely shares a name prefix.
+    expect(ab.startsWith(a)).toBe(true);
+
+    // The correct check (trailing separator, or exact match) rejects it.
+    expect(isConfinedTo(a, ab)).toBe(false);
+    expect(isConfinedTo(a, a)).toBe(true);
+    expect(isConfinedTo(a, path.join(a, 'custom-skills', 'my-skill'))).toBe(true);
+  });
+});
+
+describe('buildMounts confinement', () => {
+  it("every mount for group A that falls under GROUPS_DIR resolves inside group A's own folder", () => {
+    const groupA = makeGroup('ag_user_a', 'user_a');
+    const groupB = makeGroup('ag_user_ab', 'user_ab');
+    // groupB's folder must exist on disk to make the prefix trap concrete —
+    // if buildMounts(A) ever produced a mount resolving into it, that would
+    // be a real cross-group leak.
+    fs.mkdirSync(path.resolve(GROUPS, groupB.folder), { recursive: true });
+
+    const sessionA = makeSession(groupA.id, 'sess_a');
+    const mounts = buildMounts(groupA, sessionA, emptyConfig(), {});
+
+    const groupADir = path.resolve(GROUPS, groupA.folder);
+    const groupBDir = path.resolve(GROUPS, groupB.folder);
+
+    expect(mounts.length).toBeGreaterThan(0);
+
+    for (const m of mounts) {
+      const resolved = path.resolve(m.hostPath);
+      // Never resolve into group B's folder — this is the assertion that
+      // would have caught a `custom-skills` mount pointed at the wrong group.
+      expect(isConfinedTo(groupBDir, resolved)).toBe(false);
+
+      // Any mount that falls under the GROUPS_DIR tree at all must be
+      // confined to group A's own folder (the shared `groups/global`
+      // read-only memory mount is the one intentional exception).
+      if (isConfinedTo(path.resolve(GROUPS), resolved) && resolved !== path.resolve(GROUPS, 'global')) {
+        expect(isConfinedTo(groupADir, resolved)).toBe(true);
+      }
+    }
+  });
+
+  it('the writable custom-skills-enabling mount resolves exactly under groups/<A>/ and is RW', () => {
+    const groupA = makeGroup('ag_user_a2', 'user_a2');
+    const sessionA = makeSession(groupA.id, 'sess_a2');
+    const mounts = buildMounts(groupA, sessionA, emptyConfig(), {});
+
+    const groupADir = path.resolve(GROUPS, groupA.folder);
+    // Self-authored skills land at groups/<folder>/custom-skills/<name>/,
+    // which is writable in-container only via the /workspace/agent mount of
+    // the whole group folder (custom-skills.ts, container-runner.ts:333).
+    const agentMount = mounts.find((m) => m.containerPath === '/workspace/agent');
+    expect(agentMount).toBeDefined();
+    expect(path.resolve(agentMount!.hostPath)).toBe(groupADir);
+    expect(agentMount!.readonly).toBe(false);
+
+    // A self-authored skill file would land here:
+    const selfAuthoredSkillPath = path.join(groupADir, 'custom-skills', 'my-skill', 'SKILL.md');
+    expect(isConfinedTo(groupADir, selfAuthoredSkillPath)).toBe(true);
+  });
+
+  it('the shared skills mount (/app/skills) is present and read-only, not absent', () => {
+    const groupA = makeGroup('ag_user_a3', 'user_a3');
+    const sessionA = makeSession(groupA.id, 'sess_a3');
+    const mounts = buildMounts(groupA, sessionA, emptyConfig(), {});
+
+    // The shared container/skills tree (16 built-in skills) is intentionally
+    // mounted once, read-only, for every group — it's not per-group state,
+    // so sharing it across groups is correct. Confinement only matters for
+    // the RW custom-skills-enabling mount asserted above.
+    const sharedSkillsMount = mounts.find((m) => m.containerPath === '/app/skills');
+    expect(sharedSkillsMount).toBeDefined();
+    expect(sharedSkillsMount!.readonly).toBe(true);
+  });
+
+  it("group A and group B mounts never cross into each other's folder", () => {
+    const groupA = makeGroup('ag_cross_a', 'cross_a');
+    const groupB = makeGroup('ag_cross_b', 'cross_b');
+    const sessionA = makeSession(groupA.id, 'sess_cross_a');
+    const sessionB = makeSession(groupB.id, 'sess_cross_b');
+
+    const mountsA = buildMounts(groupA, sessionA, emptyConfig(), {});
+    const mountsB = buildMounts(groupB, sessionB, emptyConfig(), {});
+
+    const dirA = path.resolve(GROUPS, groupA.folder);
+    const dirB = path.resolve(GROUPS, groupB.folder);
+
+    for (const m of mountsA) {
+      expect(isConfinedTo(dirB, path.resolve(m.hostPath))).toBe(false);
+    }
+    for (const m of mountsB) {
+      expect(isConfinedTo(dirA, path.resolve(m.hostPath))).toBe(false);
+    }
+  });
+});
