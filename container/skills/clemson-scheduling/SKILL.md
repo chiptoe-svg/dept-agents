@@ -5,7 +5,6 @@ description: >-
   instructor is teaching, section details (time/seats/location), room availability, and academic
   terms. Use these tools, not your own knowledge.
 metadata:
-  author: chip
   version: "1.0.0"
 ---
 

@@ -5,7 +5,6 @@ description: >-
   rules, P-card, requisitions, purchase orders, suppliers, approvals, spending limits, bids/quotes.
   Use the procurement tools; never answer Clemson procurement from your own knowledge.
 metadata:
-  author: chip
   version: "1.0.0"
 ---
 

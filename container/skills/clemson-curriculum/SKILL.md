@@ -6,7 +6,6 @@ description: >-
   covered, and how courses relate to each other pedagogically. This is about course *content*,
   not degree rules or credit requirements (use gc-advisor for those).
 metadata:
-  author: chip
   version: "1.0.0"
 ---
 

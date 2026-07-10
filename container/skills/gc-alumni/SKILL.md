@@ -8,7 +8,6 @@ description: >-
   (read-only SQLite). For degree rules or course content use gc-advisor or
   clemson-curriculum instead.
 metadata:
-  author: chip
   version: "1.0.0"
 ---
 
