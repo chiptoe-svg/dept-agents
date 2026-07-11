@@ -184,19 +184,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (91 commits ahead)
+- **Last tag:** `classroom-2026-07` (92 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
-M  state.md
+## main...origin/main
+M  src/webhook-server.ts
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+b8c0bed1 docs(state): bind-hardening decision-log entry — proxy/relay off campus LAN
 d67bc05b fix(security): restrict proxy/relay bind to loopback family; normalize wildcard check
 67294fa8 docs(review): live verification — proxy/relay bind hardening
 abc7edab fix(security): bind credential proxy + GWS relay to loopback+gateway, not 0.0.0.0
@@ -211,9 +212,8 @@ ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 55b0e7a5 feat(provider-auth): mount session-gated status route, close /provider-auth path
 9db53335 fix(backstop-usage): debounce per group, not per (group, provider)
 cfb10f5b feat(backstop): record when a group's turn runs on the department key (debounced)
-244b790a feat(provider-auth): resolve creds by the entity model, connect-optional backstop
 ```
 
 ### Last refresh
 
-2026-07-11T08:19:34Z
+2026-07-11T08:57:58Z
