@@ -190,17 +190,15 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ```
 ## main...origin/main [ahead 7]
- M docs/superpowers/plans/2026-07-11-dept-onboarding-a2.md
- M docs/superpowers/specs/2026-07-11-dept-onboarding-setup-design.md
-M  src/provisioning/provision-user.test.ts
-M  src/provisioning/provision-user.ts
+M  docs/superpowers/plans/2026-07-11-dept-onboarding-a2.md
+M  docs/superpowers/specs/2026-07-11-dept-onboarding-setup-design.md
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
-5037ac09 feat(provisioning): default new members to the free Clemson campus model
+a29733f5 feat(provisioning): default new members to the free Clemson campus model
 b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Home
 139fd10e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
 94a2c9cd docs(plan): A2 member onboarding/setup implementation plan
@@ -219,4 +217,4 @@ ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 
 ### Last refresh
 
-2026-07-11T10:54:12Z
+2026-07-11T10:55:12Z

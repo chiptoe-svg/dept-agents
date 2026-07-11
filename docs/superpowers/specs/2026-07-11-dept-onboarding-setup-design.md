@@ -7,7 +7,7 @@
 
 What began as "homepage polish" decomposed into a 3-part program for the department member experience. This spec covers **A2 only**; A1 and A3 are separate specs/plans, sequenced after A2.
 
-- **A1 · Model & provider foundation (later).** Benchmark real pi agent loops (tool use, multi-step) across candidates — Clemson `qwen3.6-35b-a3b` / `deepseek-v4-pro`, the best local MLX model, and the DGX Spark — and pick defaults on evidence. A *focused* agent-task benchmark, deferred to later in the program. Local models are a **secondary** option (privacy-oriented, future); the **primary** path is the member's own ChatGPT via OAuth.
+- **A1 · Model & provider foundation (later).** Benchmark real pi agent loops (tool use, multi-step) across candidates — Clemson `qwen3.6-35b-a3b-fp8` / `deepseek-v4-pro`, the best local MLX model, and the DGX Spark — and pick defaults on evidence. A *focused* agent-task benchmark, deferred to later in the program. Local models are a **secondary** option (privacy-oriented, future); the **primary** path is the member's own ChatGPT via OAuth.
 - **A2 · Member onboarding / setup (THIS SPEC, first).** The member's landing/setup surface that steers them to connect their ChatGPT and offers Telegram + Google, with the free Clemson campus model keeping the agent working meanwhile.
 - **A3 · File-centric chat (later).** A separate, purpose-built chat page for agent communication with easy file attach/receive — replaces the reused `simple` tab.
 
@@ -21,7 +21,7 @@ Give a department member a first-run landing that (1) actively guides them to co
 2. **Clemson campus model** (free, institution-paid, on-campus, already wired via the credential proxy's `/clemson/*` route) → the **default** when the member hasn't connected / can't. Keeps the agent alive with zero setup and zero marginal cost.
 3. **Department paid key** (Anthropic/OpenAI in `.env`) → frontier backstop, unchanged from Plan 4; not emphasized in onboarding.
 
-**Config dependency (in A2 scope):** a newly-provisioned member's **default model must be a Clemson model** so their agent works pre-OAuth. Use the catalog's agent-recommended pick, `qwen3.6-35b-a3b` (`src/providers/clemson-spec.ts`, *"agentic workflows, tool use, longer outputs"*), pending A1 benchmarking. This is a small change to the provisioning default; deep model selection is A1.
+**Config dependency (in A2 scope):** a newly-provisioned member's **default model must be a Clemson model** so their agent works pre-OAuth. Use the catalog's agent-recommended pick, `qwen3.6-35b-a3b-fp8` (`src/providers/clemson-spec.ts`, *"agentic workflows, tool use, longer outputs"*), pending A1 benchmarking. This is a small change to the provisioning default; deep model selection is A1.
 
 ## Existing infrastructure to reuse (do NOT rebuild)
 
@@ -84,12 +84,12 @@ Member-facing strings use **department vocabulary** — "campus model," "your Ch
 ## Out of scope for A2
 
 - A3 file-centric chat redesign.
-- A1 model benchmark + local/DGX research and selection (A2 uses `qwen3.6-35b-a3b` as a reasonable Clemson default pending A1).
+- A1 model benchmark + local/DGX research and selection (A2 uses `qwen3.6-35b-a3b-fp8` as a reasonable Clemson default pending A1).
 - The `class_*` / `student-*` → department identifier renames (slice D) — only user-visible copy changes here.
 - **Live Google Docs/Sheets connect** — the card is a disabled "Available soon" placeholder in A2; wiring the Phase-14 Google OAuth is deferred until the one-time GCP Console step is done.
 
 ## Open items to confirm during planning
 
 - Exact endpoint/shape for reading the member's current **effective model** and the **Google connection status** (locate or add a minimal read).
-- Where the **provisioning default model** is set (`src/provisioning/*` / container config), to change the new-member default to `qwen3.6-35b-a3b`.
+- Where the **provisioning default model** is set (`src/provisioning/*` / container config), to change the new-member default to `qwen3.6-35b-a3b-fp8`.
 - Whether existing members (already provisioned) need a one-time default-model backfill or only new provisions get the Clemson default.

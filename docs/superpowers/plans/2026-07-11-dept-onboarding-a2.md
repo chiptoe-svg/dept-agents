@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give department members a first-run **Home** setup dashboard (OAuth hero to connect their ChatGPT, a Telegram card, a disabled Google placeholder, a model-status chip, and Go-to-Chat), expand the member tab set to `['home','simple','persona','skills']` landing on Home, and make a newly-provisioned member's default model the free Clemson `qwen3.6-35b-a3b` so the agent works before any login.
+**Goal:** Give department members a first-run **Home** setup dashboard (OAuth hero to connect their ChatGPT, a Telegram card, a disabled Google placeholder, a model-status chip, and Go-to-Chat), expand the member tab set to `['home','simple','persona','skills']` landing on Home, and make a newly-provisioned member's default model the free Clemson `qwen3.6-35b-a3b-fp8` so the agent works before any login.
 
 **Architecture:** Pure frontend assembly of connect flows that already exist (Plan 4 `cred-dialog` + `/provider-auth/codex/*`; `class-telegram-pair` `/api/me/telegram*`). A new member-only dashboard component (`tabs/member-home.js`) plus a tiny extracted `tab-gating.js` for testable role→tabs logic. One server-side line changes the provisioning default model. No new endpoints, no new credential handling.
 
@@ -18,7 +18,7 @@
 - **Nothing gates.** No dashboard state blocks chat; the Clemson default keeps the agent alive.
 - **Frontend tests:** first line `// @vitest-environment happy-dom`; import functions from the `.js` module; build DOM with `document.createElement`; mock `fetch`/`globalThis.fetch` with `vi`. Never import `app.js` in a test (it runs `init()` at module load) — test the extracted `tab-gating.js` instead.
 - **MEMBER_TABS** is exactly `['home', 'simple', 'persona', 'skills']`; members land on `home`.
-- **Clemson default model** is `qwen3.6-35b-a3b` with `model_provider: 'clemson'` (from `src/providers/clemson-spec.ts`).
+- **Clemson default model** is `qwen3.6-35b-a3b-fp8` with `model_provider: 'clemson'` (from `src/providers/clemson-spec.ts`).
 - Host build/test: `pnpm run build` clean and `pnpm test` green before a task is done (run them yourself). Clean any stray `groups/` fixture dirs your run creates (leave `_default_participant`, `owner_01`, `user_01`).
 - Commit messages end (after a blank line) with:
   ```
@@ -35,12 +35,14 @@
 - **Create `src/channels/playground/public/tab-gating.js`** — `TABS`, `MEMBER_TABS`, `hasFullAccess(role)`, `tabsForRole(role)`. Extracted so the gating is unit-testable without importing `app.js`.
 - **Create `src/channels/playground/public/tab-gating.test.ts`** — tests for the gating helpers.
 - **Modify `src/channels/playground/public/app.js`** — import from `tab-gating.js`; route the `home` tab to `mountMemberHome` for non-full-access users; land members on `home`; relabel the `simple` tab button to "Chat" for members.
-- **Modify `src/provisioning/provision-user.ts:~118`** — set the provisioned default model to Clemson `qwen3.6-35b-a3b`.
+- **Modify `src/provisioning/provision-user.ts:~118`** — set the provisioned default model to Clemson `qwen3.6-35b-a3b-fp8`.
 - **Modify `src/provisioning/provision-user.test.ts`** — assert the new default model/provider.
 
 ---
 
 ### Task 1: Member Home dashboard component
+
+> **Amendment (post-review):** the member ChatGPT connect is **OAuth-only** — the plan code below fetched a non-existent `GET /api/me/providers` for the provider spec; that fetch is removed and `openCredDialog` is called with a constant OAuth-only spec (`{ id:'codex', displayName:'ChatGPT', credentialFileShape:'oauth-token' }`), matching the "Connect your ChatGPT" hero. The Telegram pair-code POST is error-guarded and its poll is bounded by the mint's `expiresAt` with a re-entry guard.
 
 **Files:**
 - Create: `src/channels/playground/public/tabs/member-home.js`
@@ -458,7 +460,7 @@ git commit -m "feat(playground): members get Home/Chat/Persona/Skills tabs, land
 
 ---
 
-### Task 3: Provisioned default model = Clemson `qwen3.6-35b-a3b`
+### Task 3: Provisioned default model = Clemson `qwen3.6-35b-a3b-fp8`
 
 **Files:**
 - Modify: `src/provisioning/provision-user.ts:~118`
@@ -476,7 +478,7 @@ const cfg = db
   .prepare('SELECT provider, model, model_provider FROM container_configs WHERE agent_group_id=?')
   .get(r.agentGroupId) as { provider: string; model: string; model_provider: string };
 expect(cfg.provider).toBe('pi');
-expect(cfg.model).toBe('qwen3.6-35b-a3b');
+expect(cfg.model).toBe('qwen3.6-35b-a3b-fp8');
 expect(cfg.model_provider).toBe('clemson');
 ```
 
@@ -498,10 +500,10 @@ to:
 ```ts
     // Free, on-campus default so a newly-provisioned member's agent works
     // before they connect their own ChatGPT. Deep model selection is A1;
-    // qwen3.6-35b-a3b is the Clemson catalog's agentic pick.
+    // qwen3.6-35b-a3b-fp8 is the Clemson catalog's agentic pick.
     updateContainerConfigScalars(agentGroupId, {
       provider: 'pi',
-      model: 'qwen3.6-35b-a3b',
+      model: 'qwen3.6-35b-a3b-fp8',
       model_provider: 'clemson',
     });
 ```
@@ -551,7 +553,7 @@ With the member jar:
 
 - [ ] **Step 4: Verify the provisioned default model**
 
-`pnpm exec tsx scripts/q.ts data/v2.db "SELECT model, model_provider FROM container_configs WHERE agent_group_id=(SELECT agent_group_id FROM agent_group_members WHERE user_id='playground:a2_canary' LIMIT 1);"` → `qwen3.6-35b-a3b|clemson`.
+`pnpm exec tsx scripts/q.ts data/v2.db "SELECT model, model_provider FROM container_configs WHERE agent_group_id=(SELECT agent_group_id FROM agent_group_members WHERE user_id='playground:a2_canary' LIMIT 1);"` → `qwen3.6-35b-a3b-fp8|clemson`.
 
 - [ ] **Step 5: Confirm a turn works on the campus default (pre-OAuth)**
 
