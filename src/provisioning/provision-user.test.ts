@@ -41,9 +41,11 @@ describe('provisionUser', () => {
     expect(isMember(r.userId, r.agentGroupId)).toBe(true);
     // container_configs seeded with provider=pi (the Plan-1 footgun)
     const cfg = getDb()
-      .prepare('SELECT provider FROM container_configs WHERE agent_group_id=?')
-      .get(r.agentGroupId) as { provider: string };
+      .prepare('SELECT provider, model, model_provider FROM container_configs WHERE agent_group_id=?')
+      .get(r.agentGroupId) as { provider: string; model: string; model_provider: string };
     expect(cfg.provider).toBe('pi');
+    expect(cfg.model).toBe('qwen3.6-35b-a3b-fp8');
+    expect(cfg.model_provider).toBe('clemson');
     // filesystem scaffolded
     expect(fs.existsSync(path.join(TMP, 'groups', r.folder))).toBe(true);
     // routing gate: messaging group must be 'public', not 'strict' — the

@@ -115,7 +115,14 @@ export function provisionUser(input: ProvisionUserInput): ProvisionResult {
     // a container_configs row with provider=NULL. Without this explicit
     // set, the container dies at startup with a misleading "Module not
     // found" instead of running the pi harness.
-    updateContainerConfigScalars(agentGroupId, { provider: 'pi' });
+    // Free, on-campus default so a newly-provisioned member's agent works
+    // before they connect their own ChatGPT. Deep model selection is A1;
+    // qwen3.6-35b-a3b-fp8 is the Clemson catalog's agentic pick.
+    updateContainerConfigScalars(agentGroupId, {
+      provider: 'pi',
+      model: 'qwen3.6-35b-a3b-fp8',
+      model_provider: 'clemson',
+    });
 
     addMember({ user_id: userId, agent_group_id: agentGroupId, added_by: null, added_at: now });
 

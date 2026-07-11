@@ -184,22 +184,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (98 commits ahead)
+- **Last tag:** `classroom-2026-07` (100 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 5]
+## main...origin/main [ahead 7]
  M docs/superpowers/plans/2026-07-11-dept-onboarding-a2.md
-M  src/channels/playground/public/app.js
-A  src/channels/playground/public/tab-gating.js
-A  src/channels/playground/public/tab-gating.test.ts
+ M docs/superpowers/specs/2026-07-11-dept-onboarding-setup-design.md
+M  src/provisioning/provision-user.test.ts
+M  src/provisioning/provision-user.ts
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+5037ac09 feat(provisioning): default new members to the free Clemson campus model
+b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Home
 139fd10e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
 94a2c9cd docs(plan): A2 member onboarding/setup implementation plan
 8b26e360 docs(spec): A2 — members get persona + skills tabs (reused as-is)
@@ -213,10 +215,8 @@ abc7edab fix(security): bind credential proxy + GWS relay to loopback+gateway, n
 ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 5e0c8280 docs(state): Plan 4 final review — close codex-lane owner-token leak (C1)
 36049d9c fix(proxy): backstop recorder failure must never fail a request (I1)
-484e4cd8 fix(security): stop leaking owner ChatGPT tokens into non-owner pi containers (C1)
-98982fff docs(state): Plan 4 complete — entity-model creds + recorded dept backstop; class-controls gone
 ```
 
 ### Last refresh
 
-2026-07-11T10:46:00Z
+2026-07-11T10:54:12Z
