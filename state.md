@@ -118,6 +118,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+**2026-07-11 — The credential proxy and GWS relay bind loopback + the bridge gateway, never `0.0.0.0` (bind-hardening plan).** Both credential-bearing local services (`:3001` substitutes Anthropic/OpenAI keys+OAuth; `:3007` substitutes Google OAuth) were bound to `0.0.0.0`, i.e. reachable from the Clemson campus LAN with only their own app-auth in front. A new helper `src/net-bind.ts` `listenLoopbackAndGateway` binds one handler to `127.0.0.1` (immediately) + the container bridge gateway `192.168.65.1` (retry until `bridge100` exists) and **never binds a wildcard** — `loopbackHost` is restricted to the loopback family `{127.0.0.1, ::1}` (anything else, wildcard or LAN, is coerced to `127.0.0.1` with a warn), and the resolved gateway is wildcard-guarded via `isWildcardAddress`. `.env` `CREDENTIAL_PROXY_HOST` is now `127.0.0.1` (the code adds the gateway). *Why:* the macOS app firewall is off and is per-binary (can't separate the public playground node-port from the credential node-port), so binding narrowly is the right lever, not the firewall. Handler logic is byte-identical (verified `git diff -w`); the loopback-trust path is unchanged (host direct-chat still arrives on `127.0.0.1` → trusted; containers arrive on `192.168.65.1` → token-gated). Live-verified: campus IP refused on both ports, a real owner turn still replied through the gateway credential path. **Corollaries:** the webhook `:3003` is deliberately left on `0.0.0.0` (may need inbound platform webhooks — revisit separately); bind-address ≠ interface filtering, so the container per-token gate (not the bind) remains the real credential boundary — never weaken it. `/convert-to-apple-container` writes `CREDENTIAL_PROXY_HOST`; a stale non-loopback value there is now coerced+warned rather than silently binding wide.
+
 **2026-07-10 — Credentials resolve by the entity model; the department key is an optional, recorded backstop (Plan 4).** `resolveUserCreds` keyed off the empty `classroom_roster` (so everyone silently ran on the `.env` key) and enforced a `class-controls` per-class policy. It now resolves the user from `agent_group_members` (`userIdForAgentGroup`) and returns the user's own creds when connected, else `null` → the department `.env` backstop, recorded in `backstop_usage`. **Connect is optional** — there is no `forbidden`/`connect_required` hard block on a flat department server, so `class-controls` was deleted. *Corollaries:* the auth provider id the proxy passes is `codex` (not the catalog name `openai-codex`) — creds must be stored under that key; the backstop recorder runs on the per-request hot path, so it is debounced **per group** (not per group+provider — a group's traffic mixes provider routes) and `try/catch`-wrapped (a DB write throw there must not kill the host); Codex OAuth uses OpenAI's own CLI client, so there is no OAuth-app to register. **The `openai-codex`/ChatGPT lane does not go through the credential proxy** — the container talks to chatgpt.com directly using a `~/.pi-auth/auth.json` provisioned host-side by `provisionPiAuth`, which resolves the group's user via `userIdForAgentGroup` and writes only *that user's own* Codex OAuth (the owner's personal `auth.json` is copied solely into the owner's own group). There is no department backstop on this direct lane (chatgpt.com cannot accept the `.env` API key); the department-key OpenAI backstop lives on the proxy's `/openai-platform` route. Never provision another user's `auth.json` into a container.
 
 **2026-07-10 — The bookmarkable login-token URL is the department's auth credential; bypass retired (Plan 3).** The durable per-user token (`class_login_tokens`, `GET /?token=` → session) already existed and is generic — Plan 3 provisions users into it (`ncl users provision`) rather than building new auth. Invite links are distributed **manually** (no email transport on this box; automated email is a later add-on). *Why:* retiring `PLAYGROUND_AUTH_BYPASS` was the one thing blocking a pilot — with bypass on, every web session is the owner. **Corollaries:** without email there is no PIN, so a login URL is a bearer credential (fine for a 2–3 person trusted pilot, revocable via `ncl class-tokens rotate`); PIN-2FA, automated email, email self-recovery, and the `class-*`→dept renames are deferred. The lockout that failed the first attempt is structural: bootstrap the operator's token and verify login *before* flipping bypass off.
@@ -182,23 +184,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (90 commits ahead)
+- **Last tag:** `classroom-2026-07` (91 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-M  src/credential-proxy.ts
-M  src/gws-mcp-relay.ts
-M  src/index.ts
-M  src/net-bind.test.ts
-M  src/net-bind.ts
+## main...origin/main [ahead 4]
+M  state.md
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+d67bc05b fix(security): restrict proxy/relay bind to loopback family; normalize wildcard check
 67294fa8 docs(review): live verification — proxy/relay bind hardening
 abc7edab fix(security): bind credential proxy + GWS relay to loopback+gateway, not 0.0.0.0
 ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
@@ -213,9 +212,8 @@ ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 9db53335 fix(backstop-usage): debounce per group, not per (group, provider)
 cfb10f5b feat(backstop): record when a group's turn runs on the department key (debounced)
 244b790a feat(provider-auth): resolve creds by the entity model, connect-optional backstop
-4a1115c5 docs(plans): Plan 4 — per-user Codex OAuth + recorded dept-key backstop; remove class-controls
 ```
 
 ### Last refresh
 
-2026-07-11T08:17:49Z
+2026-07-11T08:19:34Z
