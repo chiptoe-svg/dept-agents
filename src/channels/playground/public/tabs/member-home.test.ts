@@ -8,6 +8,7 @@ function baseState(over = {}) {
   return {
     displayName: 'Dr. Smith',
     chatgptConnected: false,
+    modelLabel: 'Clemson campus model (free)',
     telegram: { paired: false, botUsername: 'CUInstructorBot' },
     onConnectChatgpt: vi.fn(),
     onConnectTelegram: vi.fn(),
@@ -25,7 +26,7 @@ describe('renderDashboard', () => {
 
   it('when ChatGPT is NOT connected: hero is prominent and chip shows the campus model', () => {
     const host = document.createElement('div');
-    renderDashboard(host, baseState({ chatgptConnected: false }));
+    renderDashboard(host, baseState({ chatgptConnected: false, modelLabel: 'Clemson campus model (free)' }));
     const hero = host.querySelector('[data-hero]');
     expect(hero).toBeTruthy();
     expect(hero.dataset.hero).toBe('prominent');
@@ -41,10 +42,26 @@ describe('renderDashboard', () => {
 
   it('when ChatGPT IS connected: hero collapses and chip shows Your ChatGPT', () => {
     const host = document.createElement('div');
-    renderDashboard(host, baseState({ chatgptConnected: true }));
+    renderDashboard(host, baseState({ chatgptConnected: true, modelLabel: 'Your ChatGPT' }));
     expect(host.querySelector('[data-hero]').dataset.hero).toBe('collapsed');
     expect(host.textContent).toContain('ChatGPT connected');
     expect(host.querySelector('[data-model-chip]').textContent).toContain('Your ChatGPT');
+  });
+
+  it('chip reads modelLabel: "Your ChatGPT" regardless of hero state', () => {
+    const host = document.createElement('div');
+    renderDashboard(host, baseState({ chatgptConnected: false, modelLabel: 'Your ChatGPT' }));
+    // Hero still driven by chatgptConnected, not modelLabel.
+    expect(host.querySelector('[data-hero]').dataset.hero).toBe('prominent');
+    expect(host.querySelector('[data-model-chip]').textContent).toContain('Your ChatGPT');
+  });
+
+  it('chip reads modelLabel: "Clemson campus model (free)" regardless of hero state', () => {
+    const host = document.createElement('div');
+    renderDashboard(host, baseState({ chatgptConnected: true, modelLabel: 'Clemson campus model (free)' }));
+    // Hero still driven by chatgptConnected, not modelLabel.
+    expect(host.querySelector('[data-hero]').dataset.hero).toBe('collapsed');
+    expect(host.querySelector('[data-model-chip]').textContent).toContain('Clemson campus model (free)');
   });
 
   it('clicking the connect button invokes onConnectChatgpt', () => {
@@ -133,6 +150,40 @@ describe('mountMemberHome', () => {
     // No bare /api/me/providers fetch is made.
     const urls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
     expect(urls.some((u) => u.includes('/api/me/providers'))).toBe(false);
+  });
+
+  it('successful ChatGPT connect (onSaved) switches the agent onto openai-codex via active-model PUT', async () => {
+    const putCalls: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes('/api/me/telegram/pair-code')) return jsonRes({});
+      if (u.includes('/provider-auth/codex/status'))
+        return jsonRes({ active: null, hasApiKey: false, hasOAuth: false });
+      if (u.includes('/api/me/telegram')) return jsonRes({ paired: false, botUsername: 'CUInstructorBot' });
+      if (u.includes('/active-model')) {
+        putCalls.push({ url: u, body: init?.body ? JSON.parse(init.body as string) : undefined });
+        return jsonRes({ ok: true, activeModel: { modelProvider: 'openai-codex', model: 'gpt-5.4' } });
+      }
+      if (u.includes('/api/me/agent')) {
+        return jsonRes({
+          user: { id: 'playground:alice', role: 'member' },
+          agent: { id: 'ag_1', name: 'Alice Agent', folder: 'member_alice', modelProvider: null },
+        });
+      }
+      return jsonRes({});
+    }) as unknown as typeof fetch;
+
+    const el0 = document.createElement('div');
+    await mountMemberHome(el0);
+    el0.querySelector<HTMLButtonElement>('[data-action="connect-chatgpt"]')!.click();
+
+    expect(openCredDialog).toHaveBeenCalledOnce();
+    const arg = (openCredDialog as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    await arg.onSaved();
+
+    expect(putCalls).toHaveLength(1);
+    expect(putCalls[0].url).toContain('/api/drafts/member_alice/active-model');
+    expect(putCalls[0].body).toEqual({ modelProvider: 'openai-codex', model: 'gpt-5.4' });
   });
 
   it('pair-code POST failure renders an error line and does not throw', async () => {

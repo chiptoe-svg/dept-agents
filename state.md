@@ -184,18 +184,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (102 commits ahead)
+- **Last tag:** `classroom-2026-07` (103 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 9]
-A  docs/superpowers/reviews/2026-07-11-a2-onboarding-verification.md
+## main...origin/main [ahead 10]
+M  src/channels/playground/api/me.test.ts
+M  src/channels/playground/api/me.ts
+M  src/channels/playground/public/tabs/member-home.js
+M  src/channels/playground/public/tabs/member-home.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+277f66d0 docs(review): live verification — A2 member onboarding
 62e11fd9 docs(plan): add the proxy-bind-hardening plan (was uncommitted)
 b71c9c72 docs(a2): correct Clemson default model id to qwen3.6-35b-a3b-fp8
 a29733f5 feat(provisioning): default new members to the free Clemson campus model
@@ -210,9 +214,8 @@ b8c0bed1 docs(state): bind-hardening decision-log entry — proxy/relay off camp
 d67bc05b fix(security): restrict proxy/relay bind to loopback family; normalize wildcard check
 67294fa8 docs(review): live verification — proxy/relay bind hardening
 abc7edab fix(security): bind credential proxy + GWS relay to loopback+gateway, not 0.0.0.0
-ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 ```
 
 ### Last refresh
 
-2026-07-11T11:02:42Z
+2026-07-11T11:36:01Z

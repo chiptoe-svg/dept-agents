@@ -24,7 +24,7 @@ function el(tag, attrs = {}, ...children) {
 /** Pure: build the member dashboard into `host` from `state`. */
 export function renderDashboard(host, state) {
   host.replaceChildren();
-  const { displayName, chatgptConnected, telegram } = state;
+  const { displayName, chatgptConnected, telegram, modelLabel } = state;
 
   host.append(el('h2', { class: 'pg-greeting', text: `Welcome, ${displayName}` }));
 
@@ -44,7 +44,7 @@ export function renderDashboard(host, state) {
 
   const chip = el('div', { class: 'pg-model-chip', 'data-model-chip': '' });
   chip.append(el('span', { text: 'Running on: ' }));
-  chip.append(el('b', { text: chatgptConnected ? 'Your ChatGPT' : 'Clemson campus model (free)' }));
+  chip.append(el('b', { text: modelLabel || 'Clemson campus model (free)' }));
   host.append(chip);
 
   // Secondary: Telegram + Google.
@@ -88,32 +88,73 @@ async function getJson(url, fallback) {
   }
 }
 
+const MODEL_LABELS = {
+  'openai-codex': 'Your ChatGPT',
+  openai: 'Your ChatGPT',
+  anthropic: 'Department account',
+};
+
+/** Pure: map a container config's modelProvider to the chip's display label. */
+function labelForModelProvider(modelProvider) {
+  return MODEL_LABELS[modelProvider] || 'Clemson campus model (free)';
+}
+
 /** Tab mount entry: fetch state, render, wire actions. */
 export async function mountMemberHome(el0) {
-  const user = (window.__pg && window.__pg.user) || {};
-  const displayName = user.email || user.id || 'there';
+  const windowUser = (window.__pg && window.__pg.user) || {};
 
-  // Member connect is OAuth-only by design (matches the "Connect your
-  // ChatGPT" hero), so the spec is a constant — there is no per-id
-  // /api/me/providers fetch (that route requires an id and 404s bare).
-  const [codex, tg] = await Promise.all([
+  // Fetch /api/me/agent fresh rather than trusting the possibly-stale
+  // window.__pg snapshot — modelProvider and displayName can change after
+  // a connect action re-mounts this tab.
+  const [codex, tg, meAgent] = await Promise.all([
     getJson('/provider-auth/codex/status', { active: null }),
     getJson('/api/me/telegram', { paired: false, botUsername: '' }),
+    getJson('/api/me/agent', null),
   ]);
+
+  const user = meAgent?.user || windowUser;
+  const agent = meAgent?.agent || {};
+  const displayName = user.displayName || agent.name || user.id || windowUser.email || windowUser.id || 'there';
+  const folder = agent.folder || windowUser.agent?.folder;
 
   // Guard against re-entry: one Telegram pair panel/poll at a time.
   let tgInFlight = false;
+  // Reused across repeated Telegram-connect clicks so failures/expiries
+  // don't stack new panels down the page.
+  let tgPanel = null;
 
   const state = {
     displayName,
     chatgptConnected: codex.active !== null,
+    modelLabel: labelForModelProvider(agent.modelProvider),
     telegram: { paired: !!tg.paired, botUsername: tg.botUsername || '', label: tg.telegramHandle ? '@' + tg.telegramHandle : undefined },
     onConnectChatgpt: () =>
       openCredDialog({
         providerId: 'codex',
         providerSpec: { id: 'codex', displayName: 'ChatGPT', credentialFileShape: 'oauth-token' },
         currentCredState: { hasApiKey: !!codex.hasApiKey, hasOAuth: !!codex.hasOAuth, active: codex.active },
-        onSaved: () => mountMemberHome(el0),
+        onSaved: async () => {
+          // Connecting ChatGPT must actually switch the agent onto it —
+          // otherwise the agent keeps running on Clemson while the chip
+          // (once re-mounted) would lie about what's active.
+          if (folder) {
+            try {
+              const r = await fetch(`/api/drafts/${encodeURIComponent(folder)}/active-model`, {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ modelProvider: 'openai-codex', model: 'gpt-5.4' }),
+              });
+              // Non-ok is not fatal here — the OAuth connect itself already
+              // succeeded; the chip will just stay on its prior label until
+              // the member retries.
+              void r.ok;
+            } catch {
+              // Same as above: don't throw on a failed model switch.
+            }
+          }
+          mountMemberHome(el0);
+        },
       }),
     onConnectTelegram: async () => {
       if (tgInFlight) return;
@@ -125,8 +166,13 @@ export async function mountMemberHome(el0) {
         if (btn) btn.disabled = false;
       };
 
-      const panel = document.createElement('div');
-      el0.append(panel);
+      if (!tgPanel) {
+        tgPanel = document.createElement('div');
+        el0.append(tgPanel);
+      } else {
+        tgPanel.replaceChildren();
+      }
+      const panel = tgPanel;
 
       // POST mints a fresh single-use code (GET only reports status).
       let minted;
