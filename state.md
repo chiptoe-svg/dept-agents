@@ -184,20 +184,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (100 commits ahead)
+- **Last tag:** `classroom-2026-07` (101 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 7]
-M  docs/superpowers/plans/2026-07-11-dept-onboarding-a2.md
-M  docs/superpowers/specs/2026-07-11-dept-onboarding-setup-design.md
-?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
+## main...origin/main [ahead 8]
+A  docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+b71c9c72 docs(a2): correct Clemson default model id to qwen3.6-35b-a3b-fp8
 a29733f5 feat(provisioning): default new members to the free Clemson campus model
 b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Home
 139fd10e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
@@ -212,9 +211,8 @@ d67bc05b fix(security): restrict proxy/relay bind to loopback family; normalize 
 abc7edab fix(security): bind credential proxy + GWS relay to loopback+gateway, not 0.0.0.0
 ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 5e0c8280 docs(state): Plan 4 final review — close codex-lane owner-token leak (C1)
-36049d9c fix(proxy): backstop recorder failure must never fail a request (I1)
 ```
 
 ### Last refresh
 
-2026-07-11T10:55:12Z
+2026-07-11T10:55:14Z
