@@ -10,9 +10,15 @@ import { mountRetrieval } from './tabs/retrieval.js';
 import { mountBenchmarks } from './tabs/benchmarks.js';
 import { mountStatus } from './tabs/status.js';
 import { initDraftBanner } from './draft-banner.js';
+import { mountMemberHome } from './tabs/member-home.js';
+import { TABS, MEMBER_TABS, hasFullAccess, tabsForRole } from './tab-gating.js';
 
-const TABS = ['home', 'simple', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks', 'status'];
-const mounters = { home: mountHome, simple: mountSimple, chat: mountChat, persona: mountPersona, skills: mountSkills, models: mountModels, agents: mountAgents, sources: mountSources, retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus };
+const mounters = {
+  home: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountHome(tabEl) : mountMemberHome(tabEl)),
+  simple: mountSimple, chat: mountChat, persona: mountPersona, skills: mountSkills,
+  models: mountModels, agents: mountAgents, sources: mountSources,
+  retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus,
+};
 const mounted = {};
 let allowedTabs = TABS.slice();
 
@@ -31,25 +37,22 @@ function showTab(name) {
   }
 }
 
-// Department tab gating: owners/TAs see every tab; everyone else gets the
-// single "simple" (My Agent) surface. No per-class config on the
-// department server.
-const MEMBER_TABS = ['simple'];
-
 function applyTabGating(user) {
-  allowedTabs = (user.role === 'owner' || user.role === 'ta') ? TABS : MEMBER_TABS;
+  allowedTabs = tabsForRole(user.role);
   for (const t of TABS) {
     const btn = document.querySelector(`[data-tab="${t}"]`);
     if (btn) btn.hidden = !allowedTabs.includes(t);
   }
-  // If the currently visible tab was just hidden, jump to the first allowed one.
+  // Members see the chat surface labeled "Chat" rather than "My Agent".
+  if (!hasFullAccess(user.role)) {
+    const chatBtn = document.querySelector('[data-tab="simple"]');
+    if (chatBtn) chatBtn.textContent = 'Chat';
+  }
   const activeBtn = document.querySelector('[data-tab].active');
   const currentTab = activeBtn?.dataset?.tab;
   if (currentTab && !allowedTabs.includes(currentTab)) {
     showTab(allowedTabs[0] || 'home');
   }
-  // A user stripped down to exactly one tab gets a single uncluttered
-  // page — no tab strip at all.
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.hidden = allowedTabs.length === 1;
 }

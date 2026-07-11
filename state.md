@@ -191,15 +191,16 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ```
 ## main...origin/main [ahead 5]
  M docs/superpowers/plans/2026-07-11-dept-onboarding-a2.md
-M  src/channels/playground/public/tabs/member-home.js
-M  src/channels/playground/public/tabs/member-home.test.ts
+M  src/channels/playground/public/app.js
+A  src/channels/playground/public/tab-gating.js
+A  src/channels/playground/public/tab-gating.test.ts
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
-34d6516e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
+139fd10e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
 94a2c9cd docs(plan): A2 member onboarding/setup implementation plan
 8b26e360 docs(spec): A2 — members get persona + skills tabs (reused as-is)
 d985b9bf docs(spec): A2 — Google card is a disabled "Available soon" placeholder
@@ -218,4 +219,4 @@ ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 
 ### Last refresh
 
-2026-07-11T10:41:55Z
+2026-07-11T10:46:00Z
