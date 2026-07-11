@@ -13,12 +13,38 @@
  * bind until it succeeds has no correctness gap.
  */
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
-import { AddressInfo } from 'net';
+import { AddressInfo, isIP } from 'net';
 
 import { CONTAINER_HOST_GATEWAY } from './container-runtime.js';
 import { log } from './log.js';
 
-const WILDCARD_HOSTS = new Set(['0.0.0.0', '::', '']);
+/** The only hosts the loopback bind is allowed to use verbatim. */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1']);
+
+/**
+ * True if `host` denotes an all-interfaces / all-zero address in any common
+ * spelling (IPv4 `0.0.0.0`, IPv6 `::`, `::0`, `0:0:0:0:0:0:0:0`, the
+ * IPv4-mapped `::ffff:0.0.0.0`, or the empty string). Used to refuse binding
+ * the gateway server to a wildcard.
+ */
+export function isWildcardAddress(host: string): boolean {
+  const trimmed = host.trim();
+  if (trimmed === '') return true;
+  const family = isIP(trimmed);
+  if (family === 4) {
+    return trimmed.split('.').every((octet) => Number(octet) === 0);
+  }
+  if (family === 6) {
+    const lower = trimmed.toLowerCase();
+    const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) {
+      return mapped[1].split('.').every((octet) => Number(octet) === 0);
+    }
+    const stripped = lower.replace(/:/g, '');
+    return stripped === '' || /^0+$/.test(stripped);
+  }
+  return false;
+}
 
 export interface DualBindHandle {
   /** Bound servers: loopback always; gateway appended once the bridge is up. */
@@ -44,8 +70,11 @@ export function listenLoopbackAndGateway(
   const resolveGateway = opts.resolveGateway ?? CONTAINER_HOST_GATEWAY;
 
   let loopbackHost = opts.loopbackHost ?? '127.0.0.1';
-  if (WILDCARD_HOSTS.has(loopbackHost)) {
-    log.warn(`Refusing to bind ${label} to a wildcard address; using 127.0.0.1`, {
+  if (!LOOPBACK_HOSTS.has(loopbackHost.trim())) {
+    // Covers both wildcards (0.0.0.0, ::, '') and any other non-loopback
+    // address (LAN/campus IP, a stale gateway value, etc.) — none of these
+    // may ever back the loopback listener.
+    log.warn(`Refusing to bind ${label} to a non-loopback bind address; using 127.0.0.1`, {
       requested: loopbackHost,
     });
     loopbackHost = '127.0.0.1';
@@ -75,8 +104,19 @@ export function listenLoopbackAndGateway(
 
   return new Promise((resolve, reject) => {
     const loopback = createServer(handler);
-    loopback.on('error', reject);
+    let loopbackListening = false;
+    loopback.on('error', (err) => {
+      // Reject only while we're still trying to come up; once listening, a
+      // later runtime error must be logged, not silently swallowed by an
+      // already-settled promise.
+      if (loopbackListening) {
+        log.error(`${label}: loopback server error`, { err: String(err) });
+      } else {
+        reject(err);
+      }
+    });
     loopback.listen(port, loopbackHost, () => {
+      loopbackListening = true;
       servers.push(loopback);
       const boundPort = (loopback.address() as AddressInfo).port;
       log.info(`${label} listening`, { host: loopbackHost, port: boundPort });
@@ -96,7 +136,7 @@ export function listenLoopbackAndGateway(
           log.debug(`${label}: gateway equals loopback, no second bind needed`, { gateway });
           return;
         }
-        if (WILDCARD_HOSTS.has(gateway)) {
+        if (isWildcardAddress(gateway)) {
           log.warn(`Refusing to bind ${label} to a wildcard address; will retry`, {
             requested: gateway,
           });

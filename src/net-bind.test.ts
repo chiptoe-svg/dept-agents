@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createServer, get as httpGet, IncomingMessage, ServerResponse } from 'http';
 import { AddressInfo } from 'net';
-import { listenLoopbackAndGateway, DualBindHandle } from './net-bind.js';
+import { listenLoopbackAndGateway, isWildcardAddress, DualBindHandle } from './net-bind.js';
 
 // Mock the default gateway resolver so tests never touch a real bridge.
 vi.mock('./container-runtime.js', () => ({
@@ -101,6 +101,19 @@ describe('listenLoopbackAndGateway', () => {
     expect(h.servers).toHaveLength(1);
   });
 
+  it('coerces a non-loopback loopbackHost (e.g. a stale LAN address) to 127.0.0.1', async () => {
+    const h = await listenLoopbackAndGateway(okHandler, 0, {
+      loopbackHost: '192.168.65.1',
+      resolveGateway: () => '::1',
+      retryMs: 20,
+    });
+    handles.push(h);
+    await new Promise((r) => setTimeout(r, 100));
+    const boundAddrs = h.servers.map((s) => (s.address() as AddressInfo).address);
+    expect(boundAddrs).not.toContain('192.168.65.1');
+    expect(boundAddrs).toContain('127.0.0.1');
+  });
+
   it('never binds a wildcard even when the gateway resolves to one', async () => {
     const h = await listenLoopbackAndGateway(okHandler, 0, {
       resolveGateway: () => '0.0.0.0',
@@ -130,5 +143,20 @@ describe('listenLoopbackAndGateway', () => {
     }
     expect(await reachable('127.0.0.1', port)).toBe(false);
     expect(await reachable('::1', port)).toBe(false);
+  });
+});
+
+describe('isWildcardAddress', () => {
+  it.each([
+    ['0.0.0.0', true],
+    ['::', true],
+    ['::0', true],
+    ['::ffff:0.0.0.0', true],
+    [' ', true],
+    ['127.0.0.1', false],
+    ['192.168.65.1', false],
+    ['::1', false],
+  ])('%s -> %s', (host, expected) => {
+    expect(isWildcardAddress(host)).toBe(expected);
   });
 });

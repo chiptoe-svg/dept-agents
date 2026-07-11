@@ -916,9 +916,11 @@ export async function startCredentialProxy(
   });
 
   // The payload-log store cleanup used to run on the single server's 'close'
-  // event; attach it to every bound server (in practice just the loopback
-  // one in tests, loopback + gateway in production) so shutdown still
-  // flushes stores regardless of which server fires close first.
+  // event; attach it here to `handle.servers`, which at this point holds
+  // only the loopback server — the gateway server is pushed later, inside
+  // its own async listen callback in `listenLoopbackAndGateway`. The
+  // loopback server is always present and always closed at shutdown, so
+  // this alone is enough to guarantee stores flush.
   if (payloadLogCtx) {
     const closeStores = () => {
       // Close all open stores on server shutdown. In-flight responses whose

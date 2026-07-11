@@ -172,7 +172,8 @@ async function main(): Promise<void> {
 
   // 2c. GWS MCP relay — host-side Google Workspace tools. Containers reach
   // it via the same host-gateway pattern as the credential proxy; per-call
-  // attribution header authenticates the calling agent group. Loopback only.
+  // attribution header authenticates the calling agent group. Dual-bound to
+  // loopback + the container bridge gateway, never a wildcard.
   await startGwsMcpRelay(PROXY_BIND_HOST);
 
   // 3. Channel adapters

@@ -182,19 +182,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (89 commits ahead)
+- **Last tag:** `classroom-2026-07` (90 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-A  docs/superpowers/reviews/2026-07-11-proxy-bind-verification.md
+## main...origin/main [ahead 3]
+M  src/credential-proxy.ts
+M  src/gws-mcp-relay.ts
+M  src/index.ts
+M  src/net-bind.test.ts
+M  src/net-bind.ts
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+67294fa8 docs(review): live verification — proxy/relay bind hardening
 abc7edab fix(security): bind credential proxy + GWS relay to loopback+gateway, not 0.0.0.0
 ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 5e0c8280 docs(state): Plan 4 final review — close codex-lane owner-token leak (C1)
@@ -209,9 +214,8 @@ ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 cfb10f5b feat(backstop): record when a group's turn runs on the department key (debounced)
 244b790a feat(provider-auth): resolve creds by the entity model, connect-optional backstop
 4a1115c5 docs(plans): Plan 4 — per-user Codex OAuth + recorded dept-key backstop; remove class-controls
-beac5bb2 docs(env): document playground auth flags — PUBLIC_PLAYGROUND_URL, bypass, PIN
 ```
 
 ### Last refresh
 
-2026-07-11T08:08:10Z
+2026-07-11T08:17:49Z

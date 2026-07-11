@@ -22,10 +22,11 @@
  *   - The token-derived group id must resolve to an existing agent group.
  *     401 if the agent group ID is unknown.
  *
- * Despite the module-level "loopback only" framing in older comments, this
- * process binds to PROXY_BIND_HOST (often 0.0.0.0 on multi-host setups),
- * so the token check above is the actual security boundary, not the bind
- * address.
+ * This process dual-binds via `listenLoopbackAndGateway`: loopback
+ * (127.0.0.1) plus the resolved container bridge gateway, and never a
+ * wildcard — `net-bind.ts` refuses 0.0.0.0/:: outright. The per-call token
+ * check above is still the primary auth boundary; the bind restriction is
+ * defense in depth so the relay is never reachable from the campus LAN.
  *
  * The container-side stub reaches us via `host.docker.internal:GWS_MCP_RELAY_PORT`
  * (same gateway pattern as the credential proxy).
