@@ -43,6 +43,7 @@ const configOverrides = vi.hoisted(() => {
   return {
     dataDir: `/tmp/nanoclaw-crtest-data-${suffix}`,
     groupsDir: `/tmp/nanoclaw-crtest-groups-${suffix}`,
+    sitesDir: `/tmp/nanoclaw-crtest-sites-${suffix}`,
   };
 });
 
@@ -52,13 +53,19 @@ vi.mock('./log.js', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn() },
 }));
 
-// Redirect the only two path roots container-runner.ts writes under
-// (DATA_DIR for .claude-shared skill symlinks, GROUPS_DIR for the group
-// folder) into an ephemeral tmp dir so this test never touches the real
-// project's groups/ or data/ trees. Everything else in config.js stays real.
+// Redirect the path roots container-runner.ts writes under (DATA_DIR for
+// .claude-shared skill symlinks, GROUPS_DIR for the group folder, SITES_DIR
+// for the make-website mount) into an ephemeral tmp dir so this test never
+// touches the real project's groups/, data/, or Homebrew sites trees.
+// Everything else in config.js stays real.
 vi.mock('./config.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./config.js')>();
-  return { ...actual, DATA_DIR: configOverrides.dataDir, GROUPS_DIR: configOverrides.groupsDir };
+  return {
+    ...actual,
+    DATA_DIR: configOverrides.dataDir,
+    GROUPS_DIR: configOverrides.groupsDir,
+    SITES_DIR: configOverrides.sitesDir,
+  };
 });
 
 vi.mock('./db/agent-groups.js', () => ({
@@ -220,6 +227,7 @@ describe('container token lifecycle (Fix 1 regression)', () => {
   afterAll(() => {
     fs.rmSync(configOverrides.dataDir, { recursive: true, force: true });
     fs.rmSync(configOverrides.groupsDir, { recursive: true, force: true });
+    fs.rmSync(configOverrides.sitesDir, { recursive: true, force: true });
   });
 
   it('revokes the token on close, even when markContainerRunning throws mid-spawn', async () => {

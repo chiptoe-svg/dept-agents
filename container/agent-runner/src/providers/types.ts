@@ -61,6 +61,12 @@ export interface ProviderOptions {
    * var to read for Anthropic.
    */
   authMode?: 'auto' | 'api_key' | 'subscription' | 'oauth' | 'native';
+  /**
+   * When a message arrives mid-turn, inject it into the active turn's
+   * steering queue (agent re-plans at the next tool-call boundary) instead of
+   * queueing it as an after-turn follow-up. Defaults to true; pi-only.
+   */
+  midTurnSteering?: boolean;
   /** URL of the host-side MCP server (for pi's HTTP bridge). */
   hostMcpUrl?: string;
   /** Session identifier passed to host MCP server. */

@@ -15,6 +15,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _resetForTest, mintContainerToken } from './container-identity.js';
 
+// listenLoopbackAndGateway (used by startGwsMcpRelay) resolves the gateway
+// via CONTAINER_HOST_GATEWAY(), which memoizes on first call and otherwise
+// tries to bind the real container bridge. Force it to resolve to
+// 127.0.0.1 — equal to the loopback host — so the helper skips the second
+// bind and this suite exercises a single 127.0.0.1 listener.
+process.env.CONTAINER_HOST_GATEWAY = '127.0.0.1';
+
 const { knownAgentGroups, dispatched } = vi.hoisted(() => ({
   knownAgentGroups: new Set<string>(),
   dispatched: [] as Array<{ ctx: { agentGroupId: string | null }; toolName: string; args: unknown }>,
@@ -88,8 +95,9 @@ describe('GWS relay request path — token authorization (C7)', () => {
     _resetForTest();
     knownAgentGroups.clear();
     dispatched.length = 0;
-    const server = await startGwsMcpRelay('127.0.0.1');
-    port = (server.address() as AddressInfo).port;
+    const handle = await startGwsMcpRelay('127.0.0.1');
+    const loopback = handle.servers.find((s) => (s.address() as AddressInfo).address === '127.0.0.1')!;
+    port = (loopback.address() as AddressInfo).port;
   });
 
   afterEach(async () => {

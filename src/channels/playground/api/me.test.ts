@@ -158,8 +158,23 @@ describe('GET /api/me/agent', () => {
     });
   }
 
+  // getContainerConfig/getUser inside me.ts also hit getDb() — mock them for
+  // every 200-status path the same way as mockUserRoles above.
+  function mockAgentExtras({
+    modelProvider = null as string | null,
+    displayName,
+  }: { modelProvider?: string | null; displayName?: string } = {}) {
+    vi.doMock('../../../db/container-configs.js', () => ({
+      getContainerConfig: () => (modelProvider !== null ? { model_provider: modelProvider } : undefined),
+    }));
+    vi.doMock('../../../modules/permissions/db/users.js', () => ({
+      getUser: () => (displayName ? { display_name: displayName } : undefined),
+    }));
+  }
+
   it('owner can load any agent via ?seat (for editing the template)', async () => {
     mockUserRoles({ ownerUserId: 'telegram:owner' });
+    mockAgentExtras({ modelProvider: 'anthropic', displayName: 'Dr. Owner' });
     vi.doMock('../../../db/agent-groups.js', () => ({
       getPlaygroundAgentForUser: () => null,
       getAgentGroupByFolder: (folder: string) =>
@@ -178,11 +193,15 @@ describe('GET /api/me/agent', () => {
     const { handleGetMyAgent } = await import('./me.js');
     const r = handleGetMyAgent({ userId: 'telegram:owner', cookieValue: 'c' } as any, '_default_participant');
     expect(r.status).toBe(200);
-    expect((r.body as { agent: { folder: string } }).agent.folder).toBe('_default_participant');
+    const body = r.body as { user: { displayName?: string }; agent: { folder: string; modelProvider: string | null } };
+    expect(body.agent.folder).toBe('_default_participant');
+    expect(body.agent.modelProvider).toBe('anthropic');
+    expect(body.user.displayName).toBe('Dr. Owner');
   });
 
   it('ignores ?seat for a non-owner (falls back to their own agent or 4xx)', async () => {
     mockUserRoles(); // no ownerUserId → isOwner always false
+    mockAgentExtras();
     vi.doMock('../../../db/agent-groups.js', () => ({
       getPlaygroundAgentForUser: () => ({ id: 'ag_member', name: 'Member', folder: 'member_folder' }),
       getAgentGroupByFolder: (folder: string) =>
@@ -208,13 +227,17 @@ describe('GET /api/me/agent', () => {
 
   it('returns the user-assigned agent group + user info', async () => {
     mockUserRoles();
+    mockAgentExtras({ modelProvider: 'openai-codex', displayName: 'Felix Member' });
     vi.doMock('../../../db/agent-groups.js', () => ({
       getPlaygroundAgentForUser: () => ({ id: 'ag_123', name: 'Felix', folder: 'telegram_main' }),
     }));
     const { handleGetMyAgent } = await import('./me.js');
     const r = handleGetMyAgent(sess('telegram:42'));
     expect(r.status).toBe(200);
-    expect((r.body as { agent: { name: string } }).agent.name).toBe('Felix');
+    const body = r.body as { user: { displayName?: string }; agent: { name: string; modelProvider: string | null } };
+    expect(body.agent.name).toBe('Felix');
+    expect(body.agent.modelProvider).toBe('openai-codex');
+    expect(body.user.displayName).toBe('Felix Member');
   });
 
   it('returns 404 when no agent group can be resolved', async () => {
@@ -229,13 +252,17 @@ describe('GET /api/me/agent', () => {
 
   it('handles anonymous (userId null) via the fallback path', async () => {
     mockUserRoles();
+    mockAgentExtras({ modelProvider: null });
     vi.doMock('../../../db/agent-groups.js', () => ({
       getPlaygroundAgentForUser: () => ({ id: 'ag_999', name: 'main', folder: 'main' }),
     }));
     const { handleGetMyAgent } = await import('./me.js');
     const r = handleGetMyAgent(sess(null));
     expect(r.status).toBe(200);
-    expect((r.body as { agent: { id: string } }).agent.id).toBe('ag_999');
+    const body = r.body as { user: { displayName?: string }; agent: { id: string; modelProvider: string | null } };
+    expect(body.agent.id).toBe('ag_999');
+    expect(body.agent.modelProvider).toBeNull();
+    expect(body.user.displayName).toBeUndefined();
   });
 });
 

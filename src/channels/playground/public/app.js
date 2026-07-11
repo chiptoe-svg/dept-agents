@@ -10,9 +10,15 @@ import { mountRetrieval } from './tabs/retrieval.js';
 import { mountBenchmarks } from './tabs/benchmarks.js';
 import { mountStatus } from './tabs/status.js';
 import { initDraftBanner } from './draft-banner.js';
+import { mountMemberHome } from './tabs/member-home.js';
+import { TABS, MEMBER_TABS, hasFullAccess, tabsForRole } from './tab-gating.js';
 
-const TABS = ['home', 'simple', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks', 'status'];
-const mounters = { home: mountHome, simple: mountSimple, chat: mountChat, persona: mountPersona, skills: mountSkills, models: mountModels, agents: mountAgents, sources: mountSources, retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus };
+const mounters = {
+  home: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountHome(tabEl) : mountMemberHome(tabEl)),
+  simple: mountSimple, chat: mountChat, persona: mountPersona, skills: mountSkills,
+  models: mountModels, agents: mountAgents, sources: mountSources,
+  retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus,
+};
 const mounted = {};
 let allowedTabs = TABS.slice();
 
@@ -31,23 +37,22 @@ function showTab(name) {
   }
 }
 
-function applyClassControls(classControls, user) {
-  const activeClass = classControls.classes['default'];
-  window.__pg.classControls = classControls;
-  window.__pg.activeClass = activeClass;
-  allowedTabs = (user.role === 'owner' || user.role === 'ta') ? TABS : TABS.filter((t) => activeClass.tabsVisibleToStudents.includes(t));
+function applyTabGating(user) {
+  allowedTabs = tabsForRole(user.role);
   for (const t of TABS) {
     const btn = document.querySelector(`[data-tab="${t}"]`);
     if (btn) btn.hidden = !allowedTabs.includes(t);
   }
-  // If the currently visible tab was just hidden, jump to the first allowed one.
+  // Members see the chat surface labeled "Chat" rather than "My Agent".
+  if (!hasFullAccess(user.role)) {
+    const chatBtn = document.querySelector('[data-tab="simple"]');
+    if (chatBtn) chatBtn.textContent = 'Chat';
+  }
   const activeBtn = document.querySelector('[data-tab].active');
   const currentTab = activeBtn?.dataset?.tab;
   if (currentTab && !allowedTabs.includes(currentTab)) {
     showTab(allowedTabs[0] || 'home');
   }
-  // A student stripped down to exactly one tab gets a single uncluttered
-  // page — no tab strip at all.
   const tabBar = document.getElementById('tab-bar');
   if (tabBar) tabBar.hidden = allowedTabs.length === 1;
 }
@@ -71,35 +76,7 @@ async function init() {
     /* /api/me/agent not yet wired or user not signed in */
   }
 
-  // Pull the class-controls config so we can gate tabs (and Models/auth UIs
-  // later). Owner always sees every tab. Other roles see only what the
-  // instructor authorized — empty/missing config falls back to "everything"
-  // so installs that never touched the file behave as before.
-  // v2 shape: { classes: { default: { tabsVisibleToStudents, authModesAvailable,
-  //   providers: { [id]: { allow, provideDefault, allowByo } } } } }
-  const DEFAULT_CLASS_ID = 'default';
-  let classControls = {
-    classes: {
-      [DEFAULT_CLASS_ID]: {
-        tabsVisibleToStudents: ['home', 'chat', 'persona', 'skills', 'models', 'agents'],
-        authModesAvailable: ['api-key', 'oauth', 'claude-code-oauth'],
-        providers: {
-          codex:  { allow: true, provideDefault: true,  allowByo: true  },
-          claude: { allow: true, provideDefault: false, allowByo: true  },
-          local:  { allow: true, provideDefault: true,  allowByo: false },
-        },
-      },
-    },
-  };
-  try {
-    const r = await fetch('/api/class-controls', { credentials: 'same-origin' });
-    if (r.ok) classControls = await r.json();
-  } catch {
-    /* default stands */
-  }
-  const activeClass = classControls.classes[DEFAULT_CLASS_ID];
-
-  window.__pg = { agent, user, classControls, activeClass, DEFAULT_CLASS_ID };
+  window.__pg = { agent, user };
   if (user.role === 'ta') document.body.classList.add('pg-ta-view');
   document.getElementById('active-agent-name').textContent = agent.name;
   document.getElementById('who').textContent = user.email || user.id || '';
@@ -117,19 +94,11 @@ async function init() {
     if (btn) btn.addEventListener('click', () => showTab(t));
   }
 
-  applyClassControls(classControls, user);
+  applyTabGating(user);
   initDraftBanner();
 
   // First visible tab — home if allowed, else whatever's available.
   showTab(allowedTabs.includes('home') ? 'home' : allowedTabs[0] || 'home');
-
-  // Listen for live class-controls updates pushed by the instructor.
-  const es = new EventSource(`/api/drafts/${agent.folder}/stream`);
-  es.addEventListener('class-controls-changed', (e) => {
-    try {
-      applyClassControls(JSON.parse(e.data), window.__pg.user);
-    } catch { /* malformed push — ignore */ }
-  });
 }
 
 init();

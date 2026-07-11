@@ -1,12 +1,11 @@
 /**
- * UI-side provider grouping. The Class Controls form and Home Providers
- * card render one row per user-facing group; underneath, each group maps
- * to one or more registered auth-registry spec ids.
+ * UI-side provider grouping. The Home Providers card renders one row per
+ * user-facing group; underneath, each group maps to one or more
+ * registered auth-registry spec ids.
  *
  * Why hard-coded: the user-facing list is intentionally a curated 4 — it's
- * the mental model the instructor and students operate on. Registered
- * specs (and the credential-proxy routing keyed on them) stay flexible
- * underneath. See plans/class-controls-provider-grouping.md.
+ * the mental model users operate on. Registered specs (and the
+ * credential-proxy routing keyed on them) stay flexible underneath.
  */
 /**
  * Per-group metadata for the instructor LLM Providers card:

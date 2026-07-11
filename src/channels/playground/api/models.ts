@@ -12,7 +12,6 @@ import { setModelProviderAndModel } from '../../../model-provider-switch.js';
 import { PROVIDER_GROUPS, findGroupById } from '../../../provider-groups.js';
 import { loadUserProviderCreds } from '../../../user-provider-auth.js';
 import { getOwnerUserId } from '../../../modules/permissions/db/user-roles.js';
-import { DEFAULT_CLASS_ID } from './class-controls.js';
 import { computeProviderAvailability } from './models-tab-state.js';
 
 export interface ApiResult<T> {
@@ -81,7 +80,7 @@ export async function handleGetModels(draftFolder: string, userId: string): Prom
       listAllForProvider('codex').catch(() => []),
       listAllForProvider('local').catch(() => []),
       probeLocalServer(),
-      computeProviderAvailability({ userId, classId: DEFAULT_CLASS_ID }),
+      computeProviderAvailability({ userId }),
     ]);
 
     const discovered: DiscoveredModel[] = [];

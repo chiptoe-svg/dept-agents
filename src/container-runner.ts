@@ -15,6 +15,8 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   GWS_MCP_RELAY_PORT,
+  CONTAINER_SITES_ROOT,
+  SITES_DIR,
   TIMEZONE,
 } from './config.js';
 import { collectContainerEnv } from './container-env-registry.js';
@@ -138,13 +140,18 @@ async function spawnContainer(session: Session): Promise<void> {
   // buildMounts and buildContainerArgs so side effects (mkdir, etc.) fire once.
   const { provider, contribution } = resolveProviderContribution(session, agentGroup, containerConfig);
 
-  // Ensure container.json has the agent group identity fields + the resolved
-  // provider so the in-container runner picks the right runtime. Written at
-  // spawn time so the runner can read them from the RO mount.
-  ensureRuntimeFields(containerConfig, agentGroup, provider);
-
   const mounts = buildMounts(agentGroup, session, containerConfig, contribution);
   assertDirectoryMounts(mounts);
+
+  // Ensure container.json has the agent group identity fields + the resolved
+  // provider so the in-container runner picks the right runtime. Written at
+  // spawn time so the runner can read them from the RO mount. MUST run after
+  // buildMounts(): composeGroupClaudeMd() (called from buildMounts) re-
+  // materializes container.json straight from the DB internally, which would
+  // clobber these runtime-only fields (notably `provider`, when it's resolved
+  // from session/group level and not yet synced into the container_configs
+  // row) if this ran first. Whichever write happens last wins on disk.
+  ensureRuntimeFields(containerConfig, agentGroup, provider);
   const containerName = `nanoclaw-v2-${agentGroup.folder}-${Date.now()}`;
   // OneCLI agent identifier is always the agent group id — stable across
   // sessions and reversible via getAgentGroup() for approval routing.
@@ -272,7 +279,13 @@ export function killContainer(sessionId: string, reason: string, onExit?: () => 
  *   sessions.agent_provider
  *     → agent_groups.agent_provider
  *     → container.json `provider`
- *     → 'claude'
+ *
+ * There is no implicit default: `'claude'` is no longer a registered
+ * container-side provider (pi is the sole harness — see Phase D), so
+ * silently falling back to it produced `{}` for a group with every level
+ * unset, which the container then failed to launch against with an opaque
+ * error. Throws instead, naming the group so the failure is diagnosable at
+ * spawn time rather than inside a `--rm` container whose logs are gone.
  *
  * Pure so the precedence can be unit-tested without a DB or filesystem.
  */
@@ -280,8 +293,16 @@ export function resolveProviderName(
   sessionProvider: string | null | undefined,
   agentGroupProvider: string | null | undefined,
   containerConfigProvider: string | null | undefined,
+  agentGroupId: string,
 ): string {
-  return (sessionProvider || agentGroupProvider || containerConfigProvider || 'claude').toLowerCase();
+  const resolved = sessionProvider || agentGroupProvider || containerConfigProvider;
+  if (!resolved) {
+    throw new Error(
+      `No agent_provider configured for agent group "${agentGroupId}" — session, group, and container.json are ` +
+        `all unset. Set one via \`ncl groups update ${agentGroupId} --agent-provider <name>\` or a provider-install skill.`,
+    );
+  }
+  return resolved.toLowerCase();
 }
 
 function resolveProviderContribution(
@@ -289,7 +310,12 @@ function resolveProviderContribution(
   agentGroup: AgentGroup,
   containerConfig: import('./container-config.js').ContainerConfig,
 ): { provider: string; contribution: ProviderContainerContribution } {
-  const provider = resolveProviderName(session.agent_provider, agentGroup.agent_provider, containerConfig.provider);
+  const provider = resolveProviderName(
+    session.agent_provider,
+    agentGroup.agent_provider,
+    containerConfig.provider,
+    agentGroup.id,
+  );
   const fn = getProviderContainerConfig(provider);
   const contribution = fn
     ? fn({
@@ -301,7 +327,9 @@ function resolveProviderContribution(
   return { provider, contribution };
 }
 
-function buildMounts(
+// Exported for direct testing (skills-confinement.test.ts) — confirms a
+// group's mounts never resolve inside another group's folder.
+export function buildMounts(
   agentGroup: AgentGroup,
   session: Session,
   containerConfig: import('./container-config.js').ContainerConfig,
@@ -397,16 +425,48 @@ function buildMounts(
     mounts.push(...providerContribution.mounts);
   }
 
-  // Mount web hosting directory so agents can create and deploy websites.
-  // Host path lives under /opt/homebrew/var/www/sites — user-writable
-  // (no sudo needed), served by the user-level Homebrew Caddy on :8080.
-  // Container path stays /var/www/sites so the make-website skill keeps
-  // one canonical in-container path regardless of host OS conventions.
-  const sitesDir = '/opt/homebrew/var/www/sites';
-  if (fs.existsSync(sitesDir)) {
+  // Mount web hosting directory so agents can create and deploy websites —
+  // scoped to THIS group's own subtree only. Host path lives under
+  // /opt/homebrew/var/www/sites/<folder> — user-writable (no sudo
+  // needed); the user-level Homebrew Caddy on :8080 serves
+  // /opt/homebrew/var/www/sites/ as a single static root, so URLs are
+  // http://.../<folder>/<sitename>/...
+  //
+  // Keyed by agentGroup.folder, NOT agentGroup.name: the DB enforces
+  // uniqueness only on `folder` (migrations/001-initial.ts), and `name`
+  // is user-settable to arbitrary duplicates via the playground rename
+  // route. Keying by name would let two same-named groups (different
+  // folders) resolve the SAME host dir and share an RW mount — the exact
+  // cross-tenant channel this mount exists to close. The make-website
+  // skill learns the per-group path from container.json's `sitesPath`
+  // field (set to CONTAINER_SITES_ROOT/<folder> in configFromDb), so the
+  // mount and the skill's writes agree on the unique key.
+  //
+  // Previously this mounted the ENTIRE shared sitesDir RW into every
+  // group's container at the identical container path (/var/www/sites),
+  // with isolation enforced only by the skill's own "don't write outside
+  // your folder" instruction — a real cross-tenant write channel: one
+  // group's agent could read, overwrite, or delete another group's site
+  // files. Scoping the host source to this group's own subdir closes
+  // that — no two groups' containers can share a writable host path.
+  const sitesBaseDir = SITES_DIR;
+  if (fs.existsSync(sitesBaseDir)) {
+    const siteFolder = agentGroup.folder;
+    // A single path segment — configFromDb joins it onto
+    // CONTAINER_SITES_ROOT and this joins it onto the host sitesBaseDir,
+    // so a "/" or ".." in the folder could otherwise escape either root.
+    // `folder` is created sanitized, but keep the defense.
+    if (!siteFolder || /[/\\]/.test(siteFolder) || siteFolder === '.' || siteFolder === '..') {
+      throw new Error(
+        `Agent group folder "${siteFolder}" is not a safe path segment for the web-hosting mount ` +
+          `(no "/", "\\", or ".."). Fix the group's folder before it can spawn.`,
+      );
+    }
+    const groupSitesDir = path.join(sitesBaseDir, siteFolder);
+    fs.mkdirSync(groupSitesDir, { recursive: true });
     mounts.push({
-      hostPath: sitesDir,
-      containerPath: '/var/www/sites',
+      hostPath: groupSitesDir,
+      containerPath: `${CONTAINER_SITES_ROOT}/${siteFolder}`,
       readonly: false,
     });
   }

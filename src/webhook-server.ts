@@ -118,8 +118,14 @@ function ensureServer(): void {
     }
   });
 
-  server.listen(port, '0.0.0.0', () => {
-    log.info('Webhook server started', { port, adapters: [...routes.keys()] });
+  // Bind loopback only. This receives inbound platform webhooks for push-mode
+  // channels (Slack Events, Teams, GitHub, WhatsApp Cloud, …); those always
+  // arrive over HTTPS and must be fronted by Caddy on the host, which reaches
+  // us at 127.0.0.1. No container or campus host ever calls this directly, so
+  // there is no reason to expose it on 0.0.0.0. (Unlike the credential proxy /
+  // GWS relay, it needs no bridge-gateway bind — containers don't call it.)
+  server.listen(port, '127.0.0.1', () => {
+    log.info('Webhook server started', { port, host: '127.0.0.1', adapters: [...routes.keys()] });
   });
 }
 

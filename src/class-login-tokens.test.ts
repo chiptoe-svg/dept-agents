@@ -11,6 +11,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 const { mockEnv } = vi.hoisted(() => ({ mockEnv: {} as Record<string, string> }));
 
 const minted: string[] = [];
+const { revokeSessionsForUserMock } = vi.hoisted(() => ({
+  revokeSessionsForUserMock: vi.fn(() => 0),
+}));
 vi.mock('./channels/playground/auth-store.js', () => ({
   // Capture what mintSessionForUser was called with so we can verify
   // the redeemer hooks into it correctly.
@@ -20,6 +23,8 @@ vi.mock('./channels/playground/auth-store.js', () => ({
   }),
   registerClassTokenRedeemer: vi.fn(),
   registerLostLinkRecoverer: vi.fn(),
+  // Token revocation must cascade into live playground sessions.
+  revokeSessionsForUser: revokeSessionsForUserMock,
   // /add-classroom-pin wiring — registered at module load.
   setPinRequiredForClassToken: vi.fn(),
 }));
@@ -51,6 +56,7 @@ import { moduleClassLoginTokens } from './db/migrations/module-class-login-token
 import { migration016 } from './db/migrations/016-classroom-roster.js';
 import {
   issueClassLoginToken,
+  loginPinRequiredFromEnv,
   lookupActiveToken,
   recoverLostLinkForEmail,
   revokeAllForUser,
@@ -63,6 +69,7 @@ beforeEach(() => {
   moduleClassLoginTokens.up(testDb);
   migration016.up(testDb);
   minted.length = 0;
+  revokeSessionsForUserMock.mockClear();
   for (const k of Object.keys(mockEnv)) delete mockEnv[k];
 });
 
@@ -113,6 +120,18 @@ describe('revokeAllForUser', () => {
 
   it('returns 0 when no active tokens exist', () => {
     expect(revokeAllForUser('user_ghost')).toBe(0);
+  });
+
+  it('cascades into live playground sessions for the user', () => {
+    issueClassLoginToken('user_alice');
+    revokeAllForUser('user_alice');
+    expect(revokeSessionsForUserMock).toHaveBeenCalledWith('user_alice');
+  });
+
+  it('kills sessions on rotate too (rotate revokes before re-issuing)', () => {
+    issueClassLoginToken('user_alice');
+    rotateClassLoginToken('user_alice');
+    expect(revokeSessionsForUserMock).toHaveBeenCalledWith('user_alice');
   });
 });
 
@@ -203,5 +222,41 @@ describe('recoverLostLinkForEmail', () => {
     // Token was still rotated — that part doesn't depend on Resend.
     // (Instructor can recover via `ncl class-tokens rotate` regardless.)
     fetchSpy.mockRestore();
+  });
+});
+
+describe('loginPinRequiredFromEnv', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('defaults to false when unset', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', undefined);
+    expect(loginPinRequiredFromEnv()).toBe(false);
+  });
+
+  it('is true for "true"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', 'true');
+    expect(loginPinRequiredFromEnv()).toBe(true);
+  });
+
+  it('is true for "1"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', '1');
+    expect(loginPinRequiredFromEnv()).toBe(true);
+  });
+
+  it('is false for "false"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', 'false');
+    expect(loginPinRequiredFromEnv()).toBe(false);
+  });
+
+  it('is false for "0"', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', '0');
+    expect(loginPinRequiredFromEnv()).toBe(false);
+  });
+
+  it('is false for an unrecognized truthy-looking string ("yes"), strict parse', () => {
+    vi.stubEnv('PLAYGROUND_LOGIN_PIN_REQUIRED', 'yes');
+    expect(loginPinRequiredFromEnv()).toBe(false);
   });
 });

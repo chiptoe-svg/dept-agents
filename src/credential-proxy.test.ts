@@ -5,6 +5,16 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { EventEmitter } from 'events';
+import type { DualBindHandle } from './net-bind.js';
+
+// listenLoopbackAndGateway (used by startCredentialProxy) resolves the
+// gateway via CONTAINER_HOST_GATEWAY(), which memoizes on first call and
+// otherwise tries to bind the real container bridge. Force it to resolve to
+// 127.0.0.1 — equal to the loopback host — so the helper's "gateway equals
+// loopback, no second bind needed" branch fires and every test below keeps
+// exercising a single 127.0.0.1 listener.
+process.env.CONTAINER_HOST_GATEWAY = '127.0.0.1';
+
 // `vi.hoisted` ensures mockEnv exists when the vi.mock factory below
 // runs — important now that credential-proxy.ts pulls in
 // student-creds-paths → config → env at import time, which fires the
@@ -162,8 +172,18 @@ function invokeRequestHandler(
   });
 }
 
+/**
+ * startCredentialProxy now returns a DualBindHandle (loopback server always;
+ * gateway server appended once the bridge is up — a no-op in this file since
+ * CONTAINER_HOST_GATEWAY is forced to equal the loopback host above). Tests
+ * exercise the loopback server directly.
+ */
+function loopbackServer(handle: DualBindHandle): http.Server {
+  return handle.servers.find((s) => (s.address() as AddressInfo).address === '127.0.0.1')!;
+}
+
 describe('credential-proxy', () => {
-  let proxyServer: http.Server;
+  let proxyServer: DualBindHandle;
   let upstreamServer: http.Server;
   let proxyPort: number;
   let upstreamPort: number;
@@ -182,7 +202,7 @@ describe('credential-proxy', () => {
   });
 
   afterEach(async () => {
-    await new Promise<void>((r) => proxyServer?.close(() => r()));
+    proxyServer?.close();
     await new Promise<void>((r) => upstreamServer?.close(() => r()));
     for (const key of Object.keys(mockEnv)) delete mockEnv[key];
   });
@@ -192,7 +212,7 @@ describe('credential-proxy', () => {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
     });
     proxyServer = await startCredentialProxy(0);
-    return (proxyServer.address() as AddressInfo).port;
+    return (loopbackServer(proxyServer).address() as AddressInfo).port;
   }
 
   it('API-key mode injects x-api-key and strips placeholder', async () => {
@@ -363,7 +383,7 @@ describe('credential-proxy', () => {
       ANTHROPIC_BASE_URL: 'http://127.0.0.1:59999',
     });
     proxyServer = await startCredentialProxy(0);
-    proxyPort = (proxyServer.address() as AddressInfo).port;
+    proxyPort = (loopbackServer(proxyServer).address() as AddressInfo).port;
 
     const res = await makeRequest(
       proxyPort,
@@ -466,7 +486,7 @@ describe('credential-proxy', () => {
     it('no token → 401', async () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         headers: { 'content-type': 'application/json' },
       });
@@ -477,7 +497,7 @@ describe('credential-proxy', () => {
     it('unknown token → 401', async () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         headers: {
           'content-type': 'application/json',
@@ -491,7 +511,7 @@ describe('credential-proxy', () => {
     it('empty-string token → 401', async () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         headers: {
           'content-type': 'application/json',
@@ -506,7 +526,7 @@ describe('credential-proxy', () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
       const token = mintContainerToken('ag_carol', 'sess_carol');
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         headers: {
           'content-type': 'application/json',
@@ -535,7 +555,7 @@ describe('credential-proxy', () => {
       setUserCredsHook(hook);
       const token = mintContainerToken('ag_broke', 'sess_broke');
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         headers: {
           'content-type': 'application/json',
@@ -590,7 +610,7 @@ describe('credential-proxy', () => {
       });
       const token = mintContainerToken('ag_broke', 'sess_broke_omlx');
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         url: '/omlx/v1/chat/completions',
         headers: {
@@ -606,7 +626,7 @@ describe('credential-proxy', () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
       const token = mintContainerToken('ag_broke', 'sess_broke_openai');
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         url: '/openai/v1/chat/completions',
         headers: {
@@ -626,7 +646,7 @@ describe('credential-proxy', () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
       const token = mintContainerToken('ag_throws', 'sess_throws');
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         headers: {
           'content-type': 'application/json',
@@ -642,7 +662,7 @@ describe('credential-proxy', () => {
       proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
       const token = mintContainerToken('ag_solvent', 'sess_solvent');
 
-      const res = await invokeRequestHandler(proxyServer, {
+      const res = await invokeRequestHandler(loopbackServer(proxyServer), {
         remoteAddress: '192.168.64.7',
         headers: {
           'content-type': 'application/json',
@@ -847,7 +867,7 @@ describe('resolveProxyRoute', () => {
 });
 
 describe('credential-proxy payload log', () => {
-  let proxyServer: http.Server;
+  let proxyServer: DualBindHandle;
   let upstreamServer: http.Server;
   let proxyPort: number;
   let upstreamPort: number;
@@ -864,7 +884,7 @@ describe('credential-proxy payload log', () => {
   });
 
   afterEach(async () => {
-    await new Promise<void>((r) => proxyServer?.close(() => r()));
+    proxyServer?.close();
     await new Promise<void>((r) => upstreamServer?.close(() => r()));
     fs.rmSync(payloadDir, { recursive: true, force: true });
     for (const key of Object.keys(mockEnv)) delete mockEnv[key];
@@ -885,7 +905,7 @@ describe('credential-proxy payload log', () => {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
     });
     proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
-    proxyPort = (proxyServer.address() as AddressInfo).port;
+    proxyPort = (loopbackServer(proxyServer).address() as AddressInfo).port;
 
     const seenGroupIds: string[] = [];
     setUserCredsHook(async (agentGroupId) => {
@@ -927,7 +947,7 @@ describe('credential-proxy payload log', () => {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
     });
     proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
-    proxyPort = (proxyServer.address() as AddressInfo).port;
+    proxyPort = (loopbackServer(proxyServer).address() as AddressInfo).port;
 
     // Attribution now comes from the container token, not the spoofable
     // group/session headers — mint a real token for this (group, session).
@@ -971,7 +991,7 @@ describe('credential-proxy payload log', () => {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
     });
     proxyServer = await startCredentialProxy(0, '127.0.0.1', '/dev/null/not-a-dir');
-    proxyPort = (proxyServer.address() as AddressInfo).port;
+    proxyPort = (loopbackServer(proxyServer).address() as AddressInfo).port;
 
     // Mint a real token so a store open is actually attempted (and fails,
     // since the payloadDir is bogus) — otherwise this test would pass
@@ -1010,7 +1030,7 @@ describe('credential-proxy payload log', () => {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
     });
     proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
-    proxyPort = (proxyServer.address() as AddressInfo).port;
+    proxyPort = (loopbackServer(proxyServer).address() as AddressInfo).port;
 
     await makeRequest(
       proxyPort,
@@ -1049,7 +1069,7 @@ describe('credential-proxy payload log', () => {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
     });
     proxyServer = await startCredentialProxy(0, '127.0.0.1', payloadDir);
-    proxyPort = (proxyServer.address() as AddressInfo).port;
+    proxyPort = (loopbackServer(proxyServer).address() as AddressInfo).port;
 
     _resetForTest();
     const token = mintContainerToken('ag1', 'sess1');

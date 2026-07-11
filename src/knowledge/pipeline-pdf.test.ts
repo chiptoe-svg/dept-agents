@@ -12,13 +12,26 @@ vi.mock('./stages/extract-text.js', async (importOriginal) => {
   };
 });
 
+// corpus.ts resolves folder names under GROUPS_DIR — mock it to the
+// os.tmpdir() parent of tmpFolder so `folder` stays a bare basename
+// (matching real usage) while the resolved on-disk path is unchanged.
+let mockGroupsDir: string;
+vi.mock('../config.js', () => ({
+  get GROUPS_DIR() {
+    return mockGroupsDir;
+  },
+}));
+
 import { createCorpus, corpusDir, readMeta } from './corpus.js';
 import { runTextPipeline } from './pipeline.js';
 
 let tmpFolder: string;
+let folderName: string;
 
 beforeEach(() => {
   tmpFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-pdf-test-'));
+  mockGroupsDir = path.dirname(tmpFolder);
+  folderName = path.basename(tmpFolder);
 });
 
 afterEach(() => {
@@ -28,12 +41,12 @@ afterEach(() => {
 describe('runTextPipeline — PDF routing', () => {
   it('processes .pdf files via extractPdf and sets status to ready', async () => {
     const { extractPdf } = await import('./stages/extract-text.js');
-    const meta = createCorpus(tmpFolder, { name: 'pdf-test', sourceType: 'text' });
-    fs.writeFileSync(path.join(corpusDir(tmpFolder, meta.id), 'raw', 'sample.pdf'), Buffer.from('%PDF-1.4 fake'));
+    const meta = createCorpus(folderName, { name: 'pdf-test', sourceType: 'text' });
+    fs.writeFileSync(path.join(corpusDir(folderName, meta.id), 'raw', 'sample.pdf'), Buffer.from('%PDF-1.4 fake'));
 
-    await runTextPipeline(tmpFolder, meta.id);
+    await runTextPipeline(folderName, meta.id);
 
-    const updated = readMeta(tmpFolder, meta.id);
+    const updated = readMeta(folderName, meta.id);
     expect(updated.status).toBe('ready');
     expect(updated.chunkCount).toBeGreaterThan(0);
     expect(vi.mocked(extractPdf)).toHaveBeenCalled();

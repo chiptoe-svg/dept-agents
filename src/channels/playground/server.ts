@@ -40,6 +40,7 @@ import {
   stopIdleSweep,
   mintSessionForUser,
 } from './auth-store.js';
+import { bypassRefusalReason } from './bypass-guard.js';
 import { handleIssue as handleLoginPinIssue, handleVerify as handleLoginPinVerify } from './api/login-pin.js';
 import { handleGoogleAuthCallback, handleGoogleAuthStart } from './api/google-auth.js';
 import { handleOAuthCallback, handleOAuthStart } from './google-oauth.js';
@@ -157,18 +158,22 @@ export async function startPlaygroundServer(
   }
 
   // Guardrail: auth-bypass modes mint an owner session for any caller, so they
-  // must never run on a network-reachable bind. Refuse to start if a bypass is
-  // on while bound to a non-loopback host — this makes "forgot to flip the dev
-  // toggle before go-live" a hard failure instead of a silent exposure.
+  // must never be network-reachable. Refuse to start if a bypass is on while
+  // bound to a non-loopback host, OR while PUBLIC_PLAYGROUND_URL points at a
+  // remote address (loopback bind behind a reverse proxy is still publicly
+  // reachable) — this makes "forgot to flip the dev toggle before go-live" a
+  // hard failure instead of a silent exposure. Logic in bypass-guard.ts.
   const benchMode = (process.env.BENCH_MODE ?? readEnvFile(['BENCH_MODE']).BENCH_MODE) === '1';
-  const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1', '::ffff:127.0.0.1']);
-  if ((PLAYGROUND_AUTH_BYPASS || benchMode) && !loopbackHosts.has(PLAYGROUND_BIND_HOST)) {
-    throw new Error(
-      `Refusing to start: ${PLAYGROUND_AUTH_BYPASS ? 'PLAYGROUND_AUTH_BYPASS' : 'BENCH_MODE'} is enabled ` +
-        `while PLAYGROUND_BIND_HOST=${PLAYGROUND_BIND_HOST} (non-loopback). A bypass mode mints an owner ` +
-        `session for every request — it must only run on 127.0.0.1. Set the bind host to 127.0.0.1, or ` +
-        `disable the bypass before exposing the playground.`,
-    );
+  const publicPlaygroundUrl =
+    process.env.PUBLIC_PLAYGROUND_URL || readEnvFile(['PUBLIC_PLAYGROUND_URL']).PUBLIC_PLAYGROUND_URL;
+  const refusal = bypassRefusalReason({
+    authBypass: PLAYGROUND_AUTH_BYPASS,
+    benchMode,
+    bindHost: PLAYGROUND_BIND_HOST,
+    publicPlaygroundUrl,
+  });
+  if (refusal) {
+    throw new Error(`Refusing to start: ${refusal}`);
   }
   // Mint a fresh single-use magic token bound to the requesting user.
   // Existing sessions from earlier /playground invocations stay valid —

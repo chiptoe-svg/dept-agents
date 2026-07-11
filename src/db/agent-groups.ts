@@ -1,4 +1,5 @@
 import type { AgentGroup } from '../types.js';
+import { PLAYGROUND_AUTH_BYPASS } from '../config.js';
 import { getDb } from './connection.js';
 
 export function createAgentGroup(group: AgentGroup): void {
@@ -77,9 +78,14 @@ export function deleteAgentGroup(id: string): void {
  * Resolution order:
  *  1. The user's first `agent_group_members` row (oldest by added_at) —
  *     this is how the classroom feature assigns a student to an agent.
- *  2. Falls back to the first non-draft agent group in the install —
- *     for operators / admins who aren't formally members of any group.
- *  3. null if neither resolves.
+ *  2. null — a signed-in user with no membership row gets nothing of their
+ *     own. Falling through to "first group in the DB" here would hand one
+ *     user another user's agent (cross-tenant leak) the moment real auth
+ *     is in play.
+ *
+ * The anonymous (no userId) case only gets a default-seat fallback when
+ * PLAYGROUND_AUTH_BYPASS is on — bypass mode wants a default seat for
+ * dev/iteration. With real auth, an unauthenticated caller has no agent.
  */
 export function getPlaygroundAgentForUser(userId: string | null): AgentGroup | null {
   if (userId) {
@@ -92,8 +98,9 @@ export function getPlaygroundAgentForUser(userId: string | null): AgentGroup | n
            LIMIT 1`,
       )
       .get(userId) as AgentGroup | undefined;
-    if (row) return row;
+    return row ?? null;
   }
+  if (!PLAYGROUND_AUTH_BYPASS) return null;
   const fallback = getDb()
     .prepare(`SELECT * FROM agent_groups WHERE folder NOT LIKE 'draft_%' ORDER BY created_at ASC LIMIT 1`)
     .get() as AgentGroup | undefined;

@@ -1,4 +1,5 @@
 import { registerResource } from '../crud.js';
+import { provisionUser } from '../../provisioning/provision-user.js';
 
 registerResource({
   name: 'user',
@@ -37,4 +38,26 @@ registerResource({
     { name: 'created_at', type: 'string', description: 'Auto-set.', generated: true },
   ],
   operations: { list: 'open', get: 'open', create: 'approval', update: 'approval' },
+  customOperations: {
+    provision: {
+      access: 'approval',
+      description:
+        'Provision a brand-new, fully-isolated playground user — user row, agent group + filesystem, ' +
+        'playground messaging group wired to that agent, and a durable login token. Use --display-name ' +
+        '"<name>" --email <email>. Prints the login URL to distribute.',
+      handler: async (args) => {
+        const displayName = args.display_name as string;
+        const email = args.email as string;
+        if (!displayName) throw new Error('--display-name is required');
+        if (!email) throw new Error('--email is required');
+        const result = provisionUser({ displayName, email });
+        return {
+          ok: true,
+          userId: result.userId,
+          agentGroupId: result.agentGroupId,
+          loginUrl: result.loginUrl,
+        };
+      },
+    },
+  },
 });

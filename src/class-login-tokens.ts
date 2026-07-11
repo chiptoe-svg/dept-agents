@@ -29,6 +29,7 @@ import {
   mintSessionForUser,
   registerClassTokenRedeemer,
   registerLostLinkRecoverer,
+  revokeSessionsForUser,
   setPinRequiredForClassToken,
   type PlaygroundSession,
 } from './channels/playground/auth-store.js';
@@ -65,12 +66,22 @@ export function issueClassLoginToken(userId: string): string {
  * Mark every currently-active token for `userId` as revoked. Returns
  * the number of rows updated. Idempotent: a no-op when the user has
  * no active tokens.
+ *
+ * Also kills the user's live playground sessions. A token URL is a
+ * bearer credential whose only mitigation is revocability — but a
+ * session minted from a since-revoked token would otherwise stay
+ * valid indefinitely (activity bumps beat the idle sweep), so DB-row
+ * revocation without session revocation leaves an attacker who
+ * already redeemed the stolen URL logged in. Runs unconditionally
+ * (not gated on `changes > 0`) so a second revoke still clears any
+ * session that slipped in between.
  */
 export function revokeAllForUser(userId: string): number {
   const revokedAt = new Date().toISOString();
   const info = getDb()
     .prepare('UPDATE class_login_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL')
     .run(revokedAt, userId);
+  revokeSessionsForUser(userId);
   return info.changes;
 }
 
@@ -146,7 +157,7 @@ function resolveUserIdByEmail(email: string): string | null {
   return row?.user_id ?? null;
 }
 
-function publicPlaygroundBaseUrl(): string {
+export function publicPlaygroundBaseUrl(): string {
   // Read fresh on every call: process.env first, then .env (the launchd
   // service spawns without inheriting shell .env, so the readEnvFile path
   // is what makes the value available to the running host).
@@ -229,7 +240,27 @@ registerPinSender(async (email, pin) => {
   });
 });
 
-setPinRequiredForClassToken(true);
+/**
+ * PIN-2FA requires an email transport (Gmail/Resend) to actually deliver
+ * the 6-digit code. Some installs (e.g. a department pilot with no email
+ * configured yet) can't deliver it at all, which would lock every student
+ * out. So the requirement defaults OFF — the bookmarkable class-token URL
+ * is the credential — and is opted into via `PLAYGROUND_LOGIN_PIN_REQUIRED
+ * =true` once email is wired up.
+ *
+ * Read fresh via the same process.env-then-.env pattern as
+ * `publicPlaygroundBaseUrl()` above (the launchd service doesn't inherit
+ * shell .env, so the readEnvFile path is what makes the value visible to
+ * the running host). Strict boolean parse: only "true"/"1" enable it.
+ */
+export function loginPinRequiredFromEnv(): boolean {
+  const raw =
+    process.env.PLAYGROUND_LOGIN_PIN_REQUIRED ||
+    readEnvFile(['PLAYGROUND_LOGIN_PIN_REQUIRED']).PLAYGROUND_LOGIN_PIN_REQUIRED;
+  return raw === 'true' || raw === '1';
+}
+
+setPinRequiredForClassToken(loginPinRequiredFromEnv());
 
 // Eagerly bind the playground HTTP server at host startup so students can
 // click their class-token URLs without the instructor first nudging via

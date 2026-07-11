@@ -13,7 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { GROUPS_DIR } from './config.js';
+import { CONTAINER_SITES_ROOT, GROUPS_DIR } from './config.js';
 import { getContainerConfig } from './db/container-configs.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { CONTAINER_HOST_GATEWAY } from './container-runtime.js';
@@ -67,6 +67,14 @@ export interface ContainerConfig {
   effort?: string;
   /** Agent group display name (used in transcript archiving). */
   groupName?: string;
+  /**
+   * Container-side root this group's published sites live under
+   * (CONTAINER_SITES_ROOT/<folder>). The make-website skill writes here.
+   * Keyed by the DB-unique `folder` — never the display name, which can
+   * collide — so it always matches the per-group host mount in
+   * buildMounts() (src/container-runner.ts).
+   */
+  sitesPath?: string;
   /** Assistant display name (used in system prompt / responses). */
   assistantName?: string;
   /** Agent group ID — set by the host, read by the runner. */
@@ -153,6 +161,7 @@ export function configFromDb(row: ContainerConfigRow, group: AgentGroup): Contai
     skills: JSON.parse(row.skills) as string[] | 'all',
     provider: row.provider ?? undefined,
     groupName: group.name,
+    sitesPath: `${CONTAINER_SITES_ROOT}/${group.folder}`,
     assistantName: row.assistant_name ?? group.name,
     agentGroupId: group.id,
     maxMessagesPerPrompt: row.max_messages_per_prompt ?? undefined,

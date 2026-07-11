@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
+import { GROUPS_DIR } from '../../config.js';
 import type { BenchmarkMeta } from './types.js';
 
 function benchmarksDir(folder: string): string {
-  return path.join(folder, 'knowledge', 'benchmarks');
+  return path.join(GROUPS_DIR, folder, 'knowledge', 'benchmarks');
 }
 
 function benchmarkDir(folder: string, id: string): string {
