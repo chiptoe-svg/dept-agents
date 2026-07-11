@@ -182,18 +182,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (86 commits ahead)
+- **Last tag:** `classroom-2026-07` (88 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  state.md
+## main...origin/main [ahead 1]
+M  src/net-bind.test.ts
+M  src/net-bind.ts
+?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+50a0563e feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
+5e0c8280 docs(state): Plan 4 final review — close codex-lane owner-token leak (C1)
 36049d9c fix(proxy): backstop recorder failure must never fail a request (I1)
 484e4cd8 fix(security): stop leaking owner ChatGPT tokens into non-owner pi containers (C1)
 98982fff docs(state): Plan 4 complete — entity-model creds + recorded dept backstop; class-controls gone
@@ -207,10 +211,8 @@ cfb10f5b feat(backstop): record when a group's turn runs on the department key (
 4a1115c5 docs(plans): Plan 4 — per-user Codex OAuth + recorded dept-key backstop; remove class-controls
 beac5bb2 docs(env): document playground auth flags — PUBLIC_PLAYGROUND_URL, bypass, PIN
 04a910f0 fix(playground): refuse bypass modes when the box is publicly proxied
-495b64a0 fix(cli): redact bearer login URLs from agent-facing approval relay
-5cf8ca94 fix(class-tokens): kill live playground sessions when tokens are revoked
 ```
 
 ### Last refresh
 
-2026-07-11T00:08:07Z
+2026-07-11T07:50:33Z
