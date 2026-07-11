@@ -27,7 +27,7 @@ Give a department member a first-run landing that (1) actively guides them to co
 
 - **Connect ChatGPT (OAuth):** `src/channels/playground/public/components/cred-dialog.js` (`openCredDialog`) + endpoints `POST /provider-auth/codex/start`, `POST /provider-auth/codex/exchange`, `GET /api/me/providers`, `POST /api/me/providers/<id>/api-key`, `POST /api/me/providers/<id>/active`, `DELETE /api/me/providers/<id>`. Built in Plan 4; currently surfaced only in owner tabs (home/models/chat).
 - **Connect Telegram:** `src/class-telegram-pair.ts` — `POST /api/me/telegram/pair-code` mints a 10-char single-use code (15-min TTL); the member sends it to the bot (`@CUInstructorBot`); `GET /api/me/telegram` reports link state. Fully built; needs a member-facing button + poll.
-- **Connect Google Docs/Sheets:** Phase-14 per-user Google OAuth (`src/user-provider-auth.ts`, `src/student-creds-paths.ts`, resolved by `getGoogleAccessTokenForAgentGroup`). Built, but completing the live OAuth requires a one-time GCP Console step (redirect URI + test users + scopes) that may not be done — the UI must degrade gracefully.
+- **Connect Google Docs/Sheets:** Phase-14 per-user Google OAuth exists (`src/user-provider-auth.ts`, `src/student-creds-paths.ts`, resolved by `getGoogleAccessTokenForAgentGroup`) **but is NOT wired in A2.** Completing the live OAuth requires a one-time GCP Console step (redirect URI + test users + scopes) that isn't done. A2 shows a **greyed-out "Available soon" card** only; enabling it is a deferred follow-up once the GCP step lands.
 
 ## Tab structure change
 
@@ -43,7 +43,7 @@ After A2: **`MEMBER_TABS = ['home', 'simple']`**, members **land on `home`** (th
 4. **Model-status chip** — what the agent currently runs on: *"Your ChatGPT"* when codex is connected, else *"Clemson campus model (free)"*. This is the backstop-visibility element from the original ask.
 5. **Secondary cards:**
    - **Telegram** — status (linked / not) + Connect → `POST /api/me/telegram/pair-code`, display the code with "Message @CUInstructorBot with this code," poll `GET /api/me/telegram` until linked (show the 15-min TTL; allow re-mint on expiry).
-   - **Google Docs/Sheets** — status + Connect → the Phase-14 Google OAuth. If the OAuth app isn't configured (GCP step pending), show "Not yet available — ask your admin" instead of a broken flow.
+   - **Google Docs/Sheets** — **greyed-out placeholder** in A2. The card is present (so members see it's coming) but disabled, labeled "Available soon." No live OAuth flow is wired in A2. Enabling it (the Phase-14 per-user Google OAuth) is deferred until the one-time GCP Console step is done, and will be a small follow-up that flips the card from disabled to active.
 6. **Go to Chat** — navigates to the `simple`/Chat tab.
 
 ## Data flow
@@ -63,13 +63,13 @@ Member-facing strings use **department vocabulary** — "campus model," "your Ch
 ## Error handling
 
 - **Nothing blocks** — the Clemson default keeps the agent alive regardless of connection state; the dashboard is never a gate.
-- **Google not configured** → graceful "ask admin" state, not a broken OAuth redirect.
+- **Google card** is a disabled "Available soon" placeholder in A2 — no OAuth redirect to fail.
 - **Telegram pair-code expiry** → show remaining TTL; offer re-mint (endpoint already revokes prior active code).
 - **Connect failure** → surfaced by the existing `cred-dialog` error handling.
 
 ## Testing
 
-- **Unit (frontend):** the dashboard composes correct card states from mocked `/api/me/*` responses — each of ChatGPT / Telegram / Google in connected vs not-connected; hero prominent when codex unconnected and collapsed when connected; model-status chip shows "Your ChatGPT" vs "Clemson campus model (free)" correctly.
+- **Unit (frontend):** the dashboard composes correct card states from mocked `/api/me/*` responses — ChatGPT and Telegram in connected vs not-connected; hero prominent when codex unconnected and collapsed when connected; model-status chip shows "Your ChatGPT" vs "Clemson campus model (free)" correctly; the Google card renders disabled ("Available soon") and is not interactive.
 - **Unit (tab gating):** `MEMBER_TABS === ['home', 'simple']`; a member session lands on `home`; owners/TAs unaffected.
 - **Reuse:** the connect endpoints (provider-auth, telegram pair-code, google auth) already have tests — A2 does not re-test them, only the new composition.
 - **Live:** a member logs in → lands on the setup dashboard → connects ChatGPT (or skips) → sends a message on the Chat tab → agent responds (on their ChatGPT if connected, else Clemson).
@@ -79,6 +79,7 @@ Member-facing strings use **department vocabulary** — "campus model," "your Ch
 - A3 file-centric chat redesign.
 - A1 model benchmark + local/DGX research and selection (A2 uses `qwen3.6-35b-a3b` as a reasonable Clemson default pending A1).
 - The `class_*` / `student-*` → department identifier renames (slice D) — only user-visible copy changes here.
+- **Live Google Docs/Sheets connect** — the card is a disabled "Available soon" placeholder in A2; wiring the Phase-14 Google OAuth is deferred until the one-time GCP Console step is done.
 
 ## Open items to confirm during planning
 
