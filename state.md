@@ -184,19 +184,23 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (96 commits ahead)
+- **Last tag:** `classroom-2026-07` (98 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-A  docs/superpowers/plans/2026-07-11-dept-onboarding-a2.md
+## main...origin/main [ahead 5]
+ M docs/superpowers/plans/2026-07-11-dept-onboarding-a2.md
+M  src/channels/playground/public/tabs/member-home.js
+M  src/channels/playground/public/tabs/member-home.test.ts
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+34d6516e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
+94a2c9cd docs(plan): A2 member onboarding/setup implementation plan
 8b26e360 docs(spec): A2 — members get persona + skills tabs (reused as-is)
 d985b9bf docs(spec): A2 — Google card is a disabled "Available soon" placeholder
 8fe71363 docs(spec): A2 member onboarding/setup design (dept server)
@@ -210,10 +214,8 @@ ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 36049d9c fix(proxy): backstop recorder failure must never fail a request (I1)
 484e4cd8 fix(security): stop leaking owner ChatGPT tokens into non-owner pi containers (C1)
 98982fff docs(state): Plan 4 complete — entity-model creds + recorded dept backstop; class-controls gone
-1105f8fa docs(provider-auth): live verification — backstop recorded, own-creds key matches, endpoints gated
-9e6b161c refactor: remove class-controls policy — dept server has no per-class provider gating
 ```
 
 ### Last refresh
 
-2026-07-11T10:28:11Z
+2026-07-11T10:41:55Z
