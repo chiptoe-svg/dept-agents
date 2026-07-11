@@ -184,12 +184,12 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (94 commits ahead)
+- **Last tag:** `classroom-2026-07` (95 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
+## main...origin/main [ahead 2]
 M  docs/superpowers/specs/2026-07-11-dept-onboarding-setup-design.md
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
@@ -197,6 +197,7 @@ M  docs/superpowers/specs/2026-07-11-dept-onboarding-setup-design.md
 ### Recent commits (last 15)
 
 ```
+d985b9bf docs(spec): A2 — Google card is a disabled "Available soon" placeholder
 8fe71363 docs(spec): A2 member onboarding/setup design (dept server)
 aa836b10 fix(security): bind webhook server to loopback only (off campus LAN)
 b8c0bed1 docs(state): bind-hardening decision-log entry — proxy/relay off campus LAN
@@ -211,9 +212,8 @@ ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 1105f8fa docs(provider-auth): live verification — backstop recorded, own-creds key matches, endpoints gated
 9e6b161c refactor: remove class-controls policy — dept server has no per-class provider gating
 7b6f8e1f fix(playground): drop dead provider-auth start/exchange mounts, fix vacuous status test
-55b0e7a5 feat(provider-auth): mount session-gated status route, close /provider-auth path
 ```
 
 ### Last refresh
 
-2026-07-11T10:20:18Z
+2026-07-11T10:21:55Z

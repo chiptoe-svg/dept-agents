@@ -33,7 +33,13 @@ Give a department member a first-run landing that (1) actively guides them to co
 
 Today: `src/channels/playground/public/app.js` sets `MEMBER_TABS = ['simple']`; members land on `simple`. Owners/TAs get the full `TABS` set.
 
-After A2: **`MEMBER_TABS = ['home', 'simple']`**, members **land on `home`** (the new setup dashboard). The `simple` tab remains the member's chat (labeled "Chat" in the member nav) until A3 replaces it. Owner/TA tab set is unchanged. The new member `home` is a **distinct surface** from the existing owner `home.js` (which stays owner-only); implement it as its own component (e.g. `src/channels/playground/public/tabs/member-home.js`) rather than overloading `home.js`.
+After A2: **`MEMBER_TABS = ['home', 'simple', 'persona', 'skills']`**, members **land on `home`** (the new setup dashboard). Owner/TA tab set is unchanged.
+
+- **`home`** — the new member setup dashboard (below). A **distinct surface** from the existing owner `home.js` (which stays owner-only); implement as its own component (e.g. `src/channels/playground/public/tabs/member-home.js`), not by overloading `home.js`.
+- **`simple`** — the member's chat (labeled "Chat" in the member nav) until A3 replaces it.
+- **`persona`, `skills`** — the member edits their agent's persona and skills. **These existing tab components are reused as-is:** both already resolve their target folder from `window.__pg.agent.folder` (the member's *own* agent, set from `GET /api/me/agent`), exactly like the simple tab, and every `/api/drafts/<folder>/*` write is gated by `requireGroupAccess` (a member can only touch their own folder). So member persona/skills editing needs **only** the tab-list change — no per-tab rework.
+
+**Transient overlap (accept for A2):** the `simple`/Chat tab already embeds some persona/name/skills editing inline. With dedicated `persona` and `skills` tabs there are briefly two places to edit; A3's chat redesign drops the embedded editing. Not worth reconciling in A2.
 
 ## The dashboard (components, top to bottom)
 
@@ -70,7 +76,8 @@ Member-facing strings use **department vocabulary** — "campus model," "your Ch
 ## Testing
 
 - **Unit (frontend):** the dashboard composes correct card states from mocked `/api/me/*` responses — ChatGPT and Telegram in connected vs not-connected; hero prominent when codex unconnected and collapsed when connected; model-status chip shows "Your ChatGPT" vs "Clemson campus model (free)" correctly; the Google card renders disabled ("Available soon") and is not interactive.
-- **Unit (tab gating):** `MEMBER_TABS === ['home', 'simple']`; a member session lands on `home`; owners/TAs unaffected.
+- **Unit (tab gating):** `MEMBER_TABS === ['home', 'simple', 'persona', 'skills']`; a member session lands on `home`; owners/TAs unaffected.
+- **Member persona/skills scoping:** a member on the `persona`/`skills` tab targets only their own `window.__pg.agent.folder`; a cross-folder write is refused by `requireGroupAccess` (already enforced server-side — assert the tabs issue no owner-folder request).
 - **Reuse:** the connect endpoints (provider-auth, telegram pair-code, google auth) already have tests — A2 does not re-test them, only the new composition.
 - **Live:** a member logs in → lands on the setup dashboard → connects ChatGPT (or skips) → sends a message on the Chat tab → agent responds (on their ChatGPT if connected, else Clemson).
 
