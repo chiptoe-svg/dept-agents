@@ -13,16 +13,21 @@
  *                         doesn't.)
  *
  *   - openai-codex      → Reads /workspace/.pi-auth/auth.json (mounted per-session
- *                         from a per-student copy when the agent group maps to a
- *                         classroom roster row and the student has connected
- *                         their ChatGPT subscription; otherwise from the owner's
- *                         ~/.codex/auth.json class pool). Pi adapts chatgpt-mode
- *                         tokens via adaptForeignAuth, refreshes via
- *                         getOAuthApiKey. Mount is rw because pi rewrites the
- *                         file on token refresh — and we reconcile refreshed
- *                         tokens back into per-student storage on the next spawn.
- *                         This is the agent-path counterpart to the credential-
- *                         proxy resolver for proxy-routed providers.
+ *                         from the RESOLVED USER's own codex OAuth — the group's
+ *                         member per the entity model, agent_group_members —
+ *                         when they have connected their ChatGPT subscription.
+ *                         The owner's personal ~/.codex/auth.json is provisioned
+ *                         ONLY into the owner's own group; every other group
+ *                         gets NO auth.json when its user has no codex OAuth
+ *                         (this lane talks to chatgpt.com directly, bypassing
+ *                         the credential proxy, so there is no legitimate
+ *                         department backstop — an auth error is correct).
+ *                         Pi adapts chatgpt-mode tokens via adaptForeignAuth,
+ *                         refreshes via getOAuthApiKey. Mount is rw because pi
+ *                         rewrites the file on token refresh — and we reconcile
+ *                         refreshed tokens back into per-user storage on the
+ *                         next spawn. This is the agent-path counterpart to the
+ *                         credential-proxy resolver for proxy-routed providers.
  *
  *   - other providers   → Direct env var (DEEPSEEK_API_KEY, GROQ_API_KEY, ...)
  *                         pulled from the host .env if set. Pi calls those
@@ -33,15 +38,16 @@
  * unmatched hosts; classroom's credential-proxy is path-prefix based and
  * passes unmatched hosts straight through).
  *
- * Always copy codex auth.json when present + always inject pi-specific
- * env-passthroughs. Pi reads the one matching its active model_provider at
- * runtime — unused paths are harmless.
+ * Codex auth.json is provisioned per the rules above; pi-specific
+ * env-passthroughs are always injected. Pi reads the one matching its active
+ * model_provider at runtime — unused paths are harmless.
  */
 import fs from 'fs';
 import path from 'path';
 
 import { extractRefreshedFromAuthJson, userCredsToCodexAuthJson } from '../codex-auth-json.js';
-import { lookupRosterByAgentGroupId } from '../db/classroom-roster.js';
+import { isOwner } from '../modules/permissions/db/user-roles.js';
+import { userIdForAgentGroup } from '../provisioning/agent-group-user.js';
 import { readEnvFile } from '../env.js';
 import { addOAuth, loadUserProviderCreds } from '../user-provider-auth.js';
 import { registerProviderContainerConfig } from './provider-container-registry.js';
@@ -61,49 +67,55 @@ const DIRECT_API_ENV_VARS = [
 /**
  * Resolve the auth.json source for this session's pi-auth dir.
  *
- *   1. Roster-lookup the agent group. If it maps to a classroom student
- *      and that student has connected their OpenAI ChatGPT subscription
- *      (`codex` providerId, active=oauth), use their tokens.
+ *   1. Resolve the group's user via the entity model —
+ *      userIdForAgentGroup(agentGroupId), i.e. agent_group_members — NOT
+ *      the classroom roster.
  *   2. Reconcile any refreshed tokens left in the existing auth.json from
  *      a prior container spawn — pi rewrites the file on refresh, but a
- *      fresh per-student write would otherwise discard those.
- *   3. Otherwise (no roster, no student creds, or active=apiKey — codex
- *      backend talks to chatgpt.com and won't accept an API key), fall
- *      back to the owner's `~/.codex/auth.json` class pool.
+ *      fresh per-user write would otherwise discard those.
+ *   3. If the resolved user has a usable codex OAuth (`codex` providerId,
+ *      active=oauth), write THEIR auth.json — their ChatGPT turns bill to
+ *      them.
+ *   4. Otherwise, the owner's personal `~/.codex/auth.json` is copied ONLY
+ *      when the resolved user IS the owner (their own group). For any other
+ *      group — no member, no codex OAuth, or active=apiKey (chatgpt.com is
+ *      not an API-key endpoint) — write NOTHING and remove any stale file.
+ *      The openai-codex lane bypasses the credential proxy, so there is no
+ *      legitimate department backstop here; pi failing with an auth error
+ *      is the correct outcome. NEVER copy the owner's tokens into a
+ *      non-owner container.
  *
  * Pi writes its refresh writeback to the SAME auth.json file we provision.
  * On the NEXT spawn, extractRefreshedFromAuthJson() reads that writeback
- * and we addOAuth() the freshest tokens to the student's storage before
+ * and we addOAuth() the freshest tokens to the user's storage before
  * overwriting. So the refresh round-trip survives container exits as long
  * as a follow-up spawn happens before the refresh token expires (~30 days).
  */
 function provisionPiAuth(piAuthDir: string, agentGroupId: string, hostHome: string | undefined): void {
   const targetFile = path.join(piAuthDir, 'auth.json');
 
-  // Test seam / safety: roster lookup hits the central DB. Tolerate the
-  // unlikely case where the DB isn't initialized (e.g., very early boot)
-  // by treating it as "no roster".
-  let rosterEntry: { user_id: string; agent_group_id: string | null } | null = null;
+  // Test seam / safety: the entity-model lookup hits the central DB.
+  // Tolerate the unlikely case where the DB isn't initialized (e.g., very
+  // early boot) by treating it as "no resolved user".
+  let userId: string | null = null;
   try {
-    rosterEntry = lookupRosterByAgentGroupId(agentGroupId);
+    userId = userIdForAgentGroup(agentGroupId);
   } catch {
-    rosterEntry = null;
+    userId = null;
   }
 
-  if (rosterEntry) {
-    // No per-class provider policy on the department server — connect is
-    // optional. A user's own codex OAuth is used when present; otherwise
-    // we fall through to the owner's auth.json backstop below.
+  if (userId) {
+    // Connect is optional — a user's own codex OAuth is used when present.
 
     // Reconcile any post-refresh tokens pi left behind on the prior spawn,
-    // BEFORE we overwrite the file with the current per-student creds.
+    // BEFORE we overwrite or remove the file.
     if (fs.existsSync(targetFile)) {
       try {
         const raw = JSON.parse(fs.readFileSync(targetFile, 'utf-8')) as unknown;
         const refreshed = extractRefreshedFromAuthJson(raw);
-        const stored = loadUserProviderCreds(rosterEntry.user_id, 'codex');
+        const stored = loadUserProviderCreds(userId, 'codex');
         if (refreshed && stored?.oauth && refreshed.refreshToken !== stored.oauth.refreshToken) {
-          addOAuth(rosterEntry.user_id, 'codex', {
+          addOAuth(userId, 'codex', {
             accessToken: refreshed.accessToken,
             refreshToken: refreshed.refreshToken,
             expiresAt: refreshed.expiresAt,
@@ -115,17 +127,37 @@ function provisionPiAuth(piAuthDir: string, agentGroupId: string, hostHome: stri
       }
     }
 
-    const studentCreds = loadUserProviderCreds(rosterEntry.user_id, 'codex');
-    const studentAuth = userCredsToCodexAuthJson(studentCreds);
-    if (studentAuth) {
-      fs.writeFileSync(targetFile, JSON.stringify(studentAuth, null, 2), { mode: 0o600 });
+    const userCreds = loadUserProviderCreds(userId, 'codex');
+    const userAuth = userCredsToCodexAuthJson(userCreds);
+    if (userAuth) {
+      fs.writeFileSync(targetFile, JSON.stringify(userAuth, null, 2), { mode: 0o600 });
       return;
     }
-    // User has no codex OAuth — fall through to the owner auth.json backstop.
+    // No usable codex OAuth — owner-only branch below decides what remains.
   }
 
-  // Class pool: owner's ~/.codex/auth.json. Same behaviour as pre-Phase-X.7
-  // agent-path codex auth.
+  // The owner's personal ~/.codex/auth.json may be provisioned ONLY into the
+  // owner's own group. Determine ownership via the permissions layer.
+  let resolvedUserIsOwner = false;
+  if (userId) {
+    try {
+      resolvedUserIsOwner = isOwner(userId);
+    } catch {
+      resolvedUserIsOwner = false;
+    }
+  }
+
+  if (!resolvedUserIsOwner) {
+    // Write NOTHING — and scrub any auth.json a previous (pre-fix) spawn may
+    // have left in this session dir, so stale owner tokens don't stay mounted.
+    try {
+      fs.rmSync(targetFile, { force: true });
+    } catch {
+      // Best effort — an unremovable stale file must not block the spawn.
+    }
+    return;
+  }
+
   if (hostHome) {
     const hostAuth = path.join(hostHome, '.codex', 'auth.json');
     if (fs.existsSync(hostAuth)) {

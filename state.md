@@ -182,18 +182,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (83 commits ahead)
+- **Last tag:** `classroom-2026-07` (84 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 7]
-M  state.md
+## main...origin/main
+A  src/providers/pi-provision.test.ts
+M  src/providers/pi.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+98982fff docs(state): Plan 4 complete — entity-model creds + recorded dept backstop; class-controls gone
 1105f8fa docs(provider-auth): live verification — backstop recorded, own-creds key matches, endpoints gated
 9e6b161c refactor: remove class-controls policy — dept server has no per-class provider gating
 7b6f8e1f fix(playground): drop dead provider-auth start/exchange mounts, fix vacuous status test
@@ -208,9 +210,8 @@ beac5bb2 docs(env): document playground auth flags — PUBLIC_PLAYGROUND_URL, by
 5cf8ca94 fix(class-tokens): kill live playground sessions when tokens are revoked
 554bf42d fix(class-tokens): resolve issue/rotate/revoke via --user-id or metadata email
 a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login live; pilot unblocked
-76e7875b docs(auth): bypass retired — operator+canary login and anonymous-refused verified live
 ```
 
 ### Last refresh
 
-2026-07-10T23:43:51Z
+2026-07-11T00:02:21Z
