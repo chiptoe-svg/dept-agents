@@ -118,7 +118,9 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
-**2026-07-11 — The credential proxy and GWS relay bind loopback + the bridge gateway, never `0.0.0.0` (bind-hardening plan).** Both credential-bearing local services (`:3001` substitutes Anthropic/OpenAI keys+OAuth; `:3007` substitutes Google OAuth) were bound to `0.0.0.0`, i.e. reachable from the Clemson campus LAN with only their own app-auth in front. A new helper `src/net-bind.ts` `listenLoopbackAndGateway` binds one handler to `127.0.0.1` (immediately) + the container bridge gateway `192.168.65.1` (retry until `bridge100` exists) and **never binds a wildcard** — `loopbackHost` is restricted to the loopback family `{127.0.0.1, ::1}` (anything else, wildcard or LAN, is coerced to `127.0.0.1` with a warn), and the resolved gateway is wildcard-guarded via `isWildcardAddress`. `.env` `CREDENTIAL_PROXY_HOST` is now `127.0.0.1` (the code adds the gateway). *Why:* the macOS app firewall is off and is per-binary (can't separate the public playground node-port from the credential node-port), so binding narrowly is the right lever, not the firewall. Handler logic is byte-identical (verified `git diff -w`); the loopback-trust path is unchanged (host direct-chat still arrives on `127.0.0.1` → trusted; containers arrive on `192.168.65.1` → token-gated). Live-verified: campus IP refused on both ports, a real owner turn still replied through the gateway credential path. **Corollaries:** the webhook `:3003` is deliberately left on `0.0.0.0` (may need inbound platform webhooks — revisit separately); bind-address ≠ interface filtering, so the container per-token gate (not the bind) remains the real credential boundary — never weaken it. `/convert-to-apple-container` writes `CREDENTIAL_PROXY_HOST`; a stale non-loopback value there is now coerced+warned rather than silently binding wide.
+**2026-07-11 — Members get a Home onboarding dashboard; new members default to the free Clemson model; connecting ChatGPT switches them onto it (A2).** Department members now land on a new member-only **Home** setup dashboard (`tabs/member-home.js`) instead of dropping into chat, with member tabs `['home','simple','persona','skills']` (persona/skills reused as-is — they already scope to the member's own agent via `window.__pg.agent.folder` + `requireGroupAccess`). The dashboard has an OAuth **"Connect your ChatGPT"** hero (reuses Plan 4 `cred-dialog`, OAuth-only), a Telegram card (existing pair-code flow), a disabled Google "Available soon" placeholder, and a model-status chip. **Provider tiering, made real:** a newly-provisioned member defaults to the free on-campus Clemson model `qwen3.6-35b-a3b-fp8` (`provision-user.ts`; the served id has the `-fp8` suffix — the bare `qwen3.6-35b-a3b` does not exist), so the agent works with zero setup at zero marginal cost (live-proven: a member turn replied on `provider=clemson`). **Connecting ChatGPT actually switches the agent to it** — on OAuth success the member's active model is set to `openai-codex`/`gpt-5.4` (routes to their own account per Plan 4), and the chip reads the *actual* `model_provider` (`/api/me/agent` now exposes `agent.modelProvider`), not merely "is codex connected". *Corollaries:* the gating change is a client-side tab filter only — every `/api/drafts/*` write stays server-gated by `requireGroupAccess`, so a member can never reach another agent (whole-branch-reviewed). Existing members were **not** backfilled — the stale `user_01` group was deleted, `owner_01` kept as-is. Deferred: A1 (model benchmark + local/DGX), A3 (file-centric chat), live Google OAuth (needs the GCP step), and the `class_*`→dept renames (slice D — includes the still-visible "NanoClaw Classroom" banner and `@CUInstructorBot`).
+
+**2026-07-11 — The credential proxy and GWS relay bind loopback + the bridge gateway, never `0.0.0.0` (bind-hardening plan).** Both credential-bearing local services (`:3001` substitutes Anthropic/OpenAI keys+OAuth; `:3007` substitutes Google OAuth) were bound to `0.0.0.0`, i.e. reachable from the Clemson campus LAN with only their own app-auth in front. A new helper `src/net-bind.ts` `listenLoopbackAndGateway` binds one handler to `127.0.0.1` (immediately) + the container bridge gateway `192.168.65.1` (retry until `bridge100` exists) and **never binds a wildcard** — `loopbackHost` is restricted to the loopback family `{127.0.0.1, ::1}` (anything else, wildcard or LAN, is coerced to `127.0.0.1` with a warn), and the resolved gateway is wildcard-guarded via `isWildcardAddress`. `.env` `CREDENTIAL_PROXY_HOST` is now `127.0.0.1` (the code adds the gateway). *Why:* the macOS app firewall is off and is per-binary (can't separate the public playground node-port from the credential node-port), so binding narrowly is the right lever, not the firewall. Handler logic is byte-identical (verified `git diff -w`); the loopback-trust path is unchanged (host direct-chat still arrives on `127.0.0.1` → trusted; containers arrive on `192.168.65.1` → token-gated). Live-verified: campus IP refused on both ports, a real owner turn still replied through the gateway credential path. **Corollaries:** the webhook `:3003` (Chat SDK inbound-webhook receiver) was subsequently bound to `127.0.0.1`-only too — it's only ever reached by Caddy on the host (push channels arrive over HTTPS → Caddy → loopback), and Telegram here polls so its route takes no external traffic; Discord (gateway/outbound WS) and Slack Socket Mode also need no inbound exposure, so all NanoClaw listeners are now off-campus. Bind-address ≠ interface filtering, so the container per-token gate (not the bind) remains the real credential boundary — never weaken it. `/convert-to-apple-container` writes `CREDENTIAL_PROXY_HOST`; a stale non-loopback value there is now coerced+warned rather than silently binding wide.
 
 **2026-07-10 — Credentials resolve by the entity model; the department key is an optional, recorded backstop (Plan 4).** `resolveUserCreds` keyed off the empty `classroom_roster` (so everyone silently ran on the `.env` key) and enforced a `class-controls` per-class policy. It now resolves the user from `agent_group_members` (`userIdForAgentGroup`) and returns the user's own creds when connected, else `null` → the department `.env` backstop, recorded in `backstop_usage`. **Connect is optional** — there is no `forbidden`/`connect_required` hard block on a flat department server, so `class-controls` was deleted. *Corollaries:* the auth provider id the proxy passes is `codex` (not the catalog name `openai-codex`) — creds must be stored under that key; the backstop recorder runs on the per-request hot path, so it is debounced **per group** (not per group+provider — a group's traffic mixes provider routes) and `try/catch`-wrapped (a DB write throw there must not kill the host); Codex OAuth uses OpenAI's own CLI client, so there is no OAuth-app to register. **The `openai-codex`/ChatGPT lane does not go through the credential proxy** — the container talks to chatgpt.com directly using a `~/.pi-auth/auth.json` provisioned host-side by `provisionPiAuth`, which resolves the group's user via `userIdForAgentGroup` and writes only *that user's own* Codex OAuth (the owner's personal `auth.json` is copied solely into the owner's own group). There is no department backstop on this direct lane (chatgpt.com cannot accept the `.env` API key); the department-key OpenAI backstop lives on the proxy's `/openai-platform` route. Never provision another user's `auth.json` into a container.
 
@@ -184,21 +186,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (103 commits ahead)
+- **Last tag:** `classroom-2026-07` (104 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 10]
-M  src/channels/playground/api/me.test.ts
-M  src/channels/playground/api/me.ts
-M  src/channels/playground/public/tabs/member-home.js
-M  src/channels/playground/public/tabs/member-home.test.ts
+## main...origin/main [ahead 11]
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
 277f66d0 docs(review): live verification — A2 member onboarding
 62e11fd9 docs(plan): add the proxy-bind-hardening plan (was uncommitted)
 b71c9c72 docs(a2): correct Clemson default model id to qwen3.6-35b-a3b-fp8
@@ -213,9 +213,8 @@ aa836b10 fix(security): bind webhook server to loopback only (off campus LAN)
 b8c0bed1 docs(state): bind-hardening decision-log entry — proxy/relay off campus LAN
 d67bc05b fix(security): restrict proxy/relay bind to loopback family; normalize wildcard check
 67294fa8 docs(review): live verification — proxy/relay bind hardening
-abc7edab fix(security): bind credential proxy + GWS relay to loopback+gateway, not 0.0.0.0
 ```
 
 ### Last refresh
 
-2026-07-11T11:36:01Z
+2026-07-11T11:42:05Z
