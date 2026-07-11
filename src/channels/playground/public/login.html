@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in — Agent Playground</title>
+  <title>Sign in — GC Agents</title>
   <link rel="icon" type="image/png" href="/favicon.png">
   <style>
     /* Self-contained — style.css is auth-walled, can't be loaded pre-auth.
@@ -52,10 +52,11 @@
       justify-content: center;
       margin-bottom: 32px;
     }
-    .login-brand img {
-      height: 160px;
-      width: auto;
-      max-width: 100%;
+    .login-wordmark {
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      color: #2a2545;
     }
     h1 {
       margin: 0 0 10px;
@@ -157,7 +158,7 @@
 </head>
 <body class="login-page">
   <main class="login-card">
-    <div class="login-brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom"></div>
+    <div class="login-brand"><span class="login-wordmark">GC Agents</span></div>
     <h1>Sign in</h1>
     <p class="subtitle">Use your bookmarked link, or recover it below.</p>
     <div class="footer-help">

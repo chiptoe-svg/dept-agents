@@ -75,12 +75,21 @@ html, body {
   object-fit: contain;
 }
 
-/* Wide-logo variant — for the NanoClaw Classroom wordmark image where
- * brand text is part of the image itself. */
+/* Wide-logo variant — for a wordmark image where the brand text is part of
+ * the image itself. Retained for installs that still use an image logo. */
 .brand img.brand-logo {
   width: auto;
   height: 36px;
   max-width: 220px;
+}
+
+/* Text wordmark — the department brand rendered as styled text (no image). */
+.brand-wordmark {
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.01em;
+  color: inherit;
+  white-space: nowrap;
 }
 
 #agent-info {

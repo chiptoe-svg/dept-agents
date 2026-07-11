@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Choose your seat — Agent Playground</title>
+  <title>Choose your seat — GC Agents</title>
   <link rel="icon" type="image/png" href="/favicon.png">
   <style>
     :root {
@@ -47,7 +47,7 @@
       justify-content: center;
       margin-bottom: 32px;
     }
-    .brand img { height: 120px; width: auto; max-width: 100%; }
+    .brand-wordmark { font-size: 40px; font-weight: 800; letter-spacing: 0.01em; color: var(--brand-navy); }
     h1 {
       margin: 0 0 6px;
       color: var(--brand-navy);
@@ -111,7 +111,7 @@
 </head>
 <body>
   <main class="card">
-    <div class="brand"><img src="/classroom-nano.png" alt="NanoClaw Classroom"></div>
+    <div class="brand"><span class="brand-wordmark">GC Agents</span></div>
     <h1>Choose your seat</h1>
     <p class="subtitle">Select your role for this session.</p>
     <form id="seat-form" autocomplete="off">
