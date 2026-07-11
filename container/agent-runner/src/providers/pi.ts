@@ -32,7 +32,20 @@
  *        whose for-await wrapper was unreachable).
  *      - Error emission deduplicated to one site — personal fired both an
  *        inner-loop push and an outer-catch push for the same failure.
+ *
+ *   4. Ported from personal (harness reconciliation, Plan 2 Task 8):
+ *      - Session rotation (`piRotationReason` / `maybeRotateContinuation`):
+ *        drop oversized/stale transcripts instead of cold-resuming into a
+ *        heartbeat-timeout crash loop. The poll-loop hook already existed
+ *        here; only the implementation was missing.
+ *      - Mid-turn steering (`routeMidTurnMessage`, `steeringMode: 'all'`):
+ *        messages arriving during an active turn are injected at the next
+ *        tool-call boundary (agent can re-plan) instead of only queueing
+ *        as after-turn follow-ups. Falls back to followUp on error so a
+ *        message is never lost.
  */
+import { statSync } from 'node:fs';
+
 import {
   AgentHarness,
   AgentHarnessError,
@@ -83,6 +96,16 @@ const AUTO_COMPACT_THRESHOLD = 0.70;
 
 const DEFAULT_MODEL_PROVIDER = 'anthropic';
 const DEFAULT_SESSIONS_ROOT = '/workspace/pi-sessions';
+
+// A resumed Pi transcript larger than MAX_RESUME_BYTES, or whose session is
+// older than MAX_RESUME_AGE_MS, is dropped for a fresh session instead of being
+// cold-resumed. Reloading a multi-MB .jsonl (base64 image blocks accumulate
+// over weeks) blows past the host's idle heartbeat ceiling, so the first turn
+// never finishes and the container is killed and respawned forever. Defaults
+// sit well below the ~2 MB that reproduced the crash loop and well above a
+// healthy session (tens–hundreds of KB). Env-overridable for tuning.
+const MAX_RESUME_BYTES = Number(process.env.PI_MAX_RESUME_BYTES) || 1_048_576;
+const MAX_RESUME_AGE_MS = (Number(process.env.PI_MAX_RESUME_AGE_DAYS) || 14) * 86_400_000;
 
 /**
  * The Claude Code OAuth scope (issued by claude.com OAuth, used in
@@ -211,6 +234,24 @@ function parseContinuation(raw: string | undefined): JsonlSessionMetadata | unde
   return parsed;
 }
 
+/**
+ * Decide whether a Pi continuation should be rotated (dropped for a fresh
+ * session) rather than resumed. Pure — the IO (parse + stat) lives in the
+ * PiProvider method below; this is the testable policy.
+ */
+export function piRotationReason(sizeBytes: number, createdAt: string | undefined, nowMs: number): string | null {
+  if (sizeBytes > MAX_RESUME_BYTES) {
+    return `transcript ${(sizeBytes / 1_048_576).toFixed(1)} MB exceeds ${(MAX_RESUME_BYTES / 1_048_576).toFixed(1)} MB resume cap`;
+  }
+  if (createdAt) {
+    const ageMs = nowMs - Date.parse(createdAt);
+    if (Number.isFinite(ageMs) && ageMs > MAX_RESUME_AGE_MS) {
+      return `session ${Math.round(ageMs / 86_400_000)}d old exceeds ${Math.round(MAX_RESUME_AGE_MS / 86_400_000)}d resume cap`;
+    }
+  }
+  return null;
+}
+
 export function formatContextUsageMessage(usage: { used: number; total: number }): string {
   const percent = usage.total > 0 ? Math.round((usage.used / usage.total) * 100) : 0;
   return `Context: ${usage.used.toLocaleString()} / ${usage.total.toLocaleString()} tokens (${percent}%)`;
@@ -230,6 +271,39 @@ export function composePiSystemPrompt(promptAddendum: string | undefined, skills
     lazySkills.length > 0 ? formatSkillsForSystemPrompt(lazySkills) : undefined,
   ].filter((piece): piece is string => Boolean(piece?.trim()));
   return pieces.length > 0 ? pieces.join('\n\n---\n\n') : undefined;
+}
+
+/** Minimal surface of the Pi harness this module needs for mid-turn routing. */
+interface SteerableHarness {
+  steer(text: string): Promise<void>;
+  followUp(text: string): Promise<void>;
+}
+
+/**
+ * Route a message that arrived while a turn is active. When `steer` is true,
+ * inject it into the steering queue (the agent reads it at the next tool-call
+ * boundary and can re-plan); otherwise queue it as a follow-up for after the
+ * turn. Best-effort: if steering throws, fall back to followUp so the message
+ * is never lost.
+ */
+export function routeMidTurnMessage(
+  harness: SteerableHarness,
+  message: string,
+  steer: boolean,
+): Promise<void> {
+  const attempt = steer
+    ? harness.steer(message).catch((err) => {
+        console.error(
+          `[pi] steer failed, falling back to followUp: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return harness.followUp(message);
+      })
+    : harness.followUp(message);
+  return attempt.catch((err) => {
+    console.error(
+      `[pi] mid-turn message delivery failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
 }
 
 /**
@@ -301,6 +375,31 @@ export class PiProvider implements AgentProvider {
     // mismatch so the poll-loop drops the continuation and retries
     // with a fresh session.
     return /session.*not found|invalid continuation|ENOENT|not[_ -]?found|duplicate item found/i.test(msg);
+  }
+
+  /**
+   * Drop a continuation whose on-disk transcript is too large or too old to
+   * cold-resume within the host's idle ceiling. Without this a long-lived hub
+   * reloads an ever-growing .jsonl, hangs the first turn, and gets killed before
+   * it can reply — repeating forever. Returns a reason to rotate, or null to resume.
+   * The poll-loop calls this before resuming (poll-loop.ts) and clears the
+   * continuation when a reason is returned; the old .jsonl stays on disk.
+   */
+  maybeRotateContinuation(continuation: string, _cwd: string): string | null {
+    let meta: JsonlSessionMetadata | undefined;
+    try {
+      meta = parseContinuation(continuation);
+    } catch {
+      return null; // unparseable — the normal stale-session path handles it
+    }
+    if (!meta) return null;
+    let sizeBytes: number;
+    try {
+      sizeBytes = statSync(meta.path).size;
+    } catch {
+      return null; // missing transcript — isSessionInvalid/ENOENT handles it downstream
+    }
+    return piRotationReason(sizeBytes, (meta as { createdAt?: string }).createdAt, Date.now());
   }
 
   query(input: QueryInput): AgentQuery {
@@ -392,6 +491,7 @@ export class PiProvider implements AgentProvider {
           env,
           session,
           model,
+          steeringMode: 'all',
           ...(resolvePiThinkingLevel({
             modelProvider,
             effort: options.effort,
@@ -583,7 +683,7 @@ export class PiProvider implements AgentProvider {
       push(message: string) {
         if (aborted) return;
         if (activeHarness && activeTurn) {
-          void activeHarness.followUp(message);
+          void routeMidTurnMessage(activeHarness, message, options.midTurnSteering ?? true);
           return;
         }
         queuedPrompts.push(message);

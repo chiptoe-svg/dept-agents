@@ -2,6 +2,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+
+// corpus.ts resolves folder names under GROUPS_DIR — mock it to the
+// os.tmpdir() parent of tmpFolder so `folder` stays a bare basename
+// (matching real usage) while the resolved on-disk path is unchanged
+// (tmpFolder === GROUPS_DIR/folderName).
+let mockGroupsDir: string;
+vi.mock('../config.js', () => ({
+  get GROUPS_DIR() {
+    return mockGroupsDir;
+  },
+}));
+
 import {
   handleListCorpora,
   handleCreateCorpus,
@@ -20,9 +32,12 @@ vi.mock('./stages/embed.js', () => ({
 }));
 
 let tmpFolder: string;
+let folderName: string;
 
 beforeEach(() => {
   tmpFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'api-handlers-test-'));
+  mockGroupsDir = path.dirname(tmpFolder);
+  folderName = path.basename(tmpFolder);
 });
 
 afterEach(() => {
@@ -32,7 +47,7 @@ afterEach(() => {
 
 describe('handleListCorpora', () => {
   it('returns empty list initially', async () => {
-    const r = await handleListCorpora(tmpFolder);
+    const r = await handleListCorpora(folderName);
     expect(r.status).toBe(200);
     expect((r.body as { corpora: unknown[] }).corpora).toEqual([]);
   });
@@ -40,7 +55,7 @@ describe('handleListCorpora', () => {
 
 describe('handleCreateCorpus', () => {
   it('creates corpus and returns meta', async () => {
-    const r = await handleCreateCorpus(tmpFolder, { name: 'my corpus', sourceType: 'text' });
+    const r = await handleCreateCorpus(folderName, { name: 'my corpus', sourceType: 'text' });
     expect(r.status).toBe(201);
     const body = r.body as { id: string; name: string };
     expect(body.name).toBe('my corpus');
@@ -48,81 +63,81 @@ describe('handleCreateCorpus', () => {
   });
 
   it('returns 400 if name missing', async () => {
-    const r = await handleCreateCorpus(tmpFolder, {} as { name: string; sourceType: 'text' });
+    const r = await handleCreateCorpus(folderName, {} as { name: string; sourceType: 'text' });
     expect(r.status).toBe(400);
   });
 });
 
 describe('handleDeleteCorpus', () => {
   it('deletes existing corpus', async () => {
-    const createRes = await handleCreateCorpus(tmpFolder, { name: 'del', sourceType: 'text' });
+    const createRes = await handleCreateCorpus(folderName, { name: 'del', sourceType: 'text' });
     const { id } = createRes.body as { id: string };
-    const r = await handleDeleteCorpus(tmpFolder, id);
+    const r = await handleDeleteCorpus(folderName, id);
     expect(r.status).toBe(204);
   });
 
   it('returns 404 for unknown id', async () => {
-    const r = await handleDeleteCorpus(tmpFolder, 'noexist');
+    const r = await handleDeleteCorpus(folderName, 'noexist');
     expect(r.status).toBe(404);
   });
 });
 
 describe('handleGetCorpus', () => {
   it('returns meta for existing corpus', async () => {
-    const createRes = await handleCreateCorpus(tmpFolder, { name: 'get', sourceType: 'text' });
+    const createRes = await handleCreateCorpus(folderName, { name: 'get', sourceType: 'text' });
     const { id } = createRes.body as { id: string };
-    const r = await handleGetCorpus(tmpFolder, id);
+    const r = await handleGetCorpus(folderName, id);
     expect(r.status).toBe(200);
     expect((r.body as { name: string }).name).toBe('get');
   });
 
   it('returns 404 for unknown id', async () => {
-    const r = await handleGetCorpus(tmpFolder, 'nope');
+    const r = await handleGetCorpus(folderName, 'nope');
     expect(r.status).toBe(404);
   });
 });
 
 describe('handleUploadSource', () => {
   it('saves file to raw/ dir', async () => {
-    const createRes = await handleCreateCorpus(tmpFolder, { name: 'ul', sourceType: 'text' });
+    const createRes = await handleCreateCorpus(folderName, { name: 'ul', sourceType: 'text' });
     const { id } = createRes.body as { id: string };
-    const r = await handleUploadSource(tmpFolder, id, 'hello.txt', Buffer.from('hello world'));
+    const r = await handleUploadSource(folderName, id, 'hello.txt', Buffer.from('hello world'));
     expect(r.status).toBe(200);
   });
 
   it('returns 404 for unknown corpus', async () => {
-    const r = await handleUploadSource(tmpFolder, 'nope', 'f.txt', Buffer.from('x'));
+    const r = await handleUploadSource(folderName, 'nope', 'f.txt', Buffer.from('x'));
     expect(r.status).toBe(404);
   });
 });
 
 describe('handleIngest', () => {
   it('returns 202 and starts pipeline', async () => {
-    const createRes = await handleCreateCorpus(tmpFolder, { name: 'ing', sourceType: 'text' });
+    const createRes = await handleCreateCorpus(folderName, { name: 'ing', sourceType: 'text' });
     const { id } = createRes.body as { id: string };
     fs.writeFileSync(path.join(tmpFolder, 'knowledge', 'corpora', id, 'raw', 'test.txt'), 'The quick brown fox.');
-    const r = await handleIngest(tmpFolder, id);
+    const r = await handleIngest(folderName, id);
     expect(r.status).toBe(202);
   });
 
   it('returns 404 for unknown corpus', async () => {
-    const r = await handleIngest(tmpFolder, 'nope');
+    const r = await handleIngest(folderName, 'nope');
     expect(r.status).toBe(404);
   });
 });
 
 describe('handleInspect', () => {
   it('returns chunks and meta after ingest', async () => {
-    const createRes = await handleCreateCorpus(tmpFolder, { name: 'ins', sourceType: 'text' });
+    const createRes = await handleCreateCorpus(folderName, { name: 'ins', sourceType: 'text' });
     const { id } = createRes.body as { id: string };
     fs.writeFileSync(
       path.join(tmpFolder, 'knowledge', 'corpora', id, 'raw', 'ins.txt'),
       'One sentence. Two sentences. Three sentences.',
     );
     const { runTextPipeline } = await import('./pipeline.js');
-    await runTextPipeline(tmpFolder, id);
+    await runTextPipeline(folderName, id);
 
-    const r = await handleInspect(tmpFolder, id);
+    const r = await handleInspect(folderName, id);
     expect(r.status).toBe(200);
     const body = r.body as { chunks: unknown[]; meta: { status: string } };
     expect(body.chunks.length).toBeGreaterThan(0);
@@ -132,42 +147,42 @@ describe('handleInspect', () => {
 
 describe('handleQuery', () => {
   it('returns ranked results', async () => {
-    const createRes = await handleCreateCorpus(tmpFolder, { name: 'q', sourceType: 'text' });
+    const createRes = await handleCreateCorpus(folderName, { name: 'q', sourceType: 'text' });
     const { id } = createRes.body as { id: string };
     fs.writeFileSync(
       path.join(tmpFolder, 'knowledge', 'corpora', id, 'raw', 'q.txt'),
       'The quick brown fox. A lazy dog. The fox jumps over the dog.',
     );
     const { runTextPipeline } = await import('./pipeline.js');
-    await runTextPipeline(tmpFolder, id);
+    await runTextPipeline(folderName, id);
 
-    const r = await handleQuery(tmpFolder, id, 'fox', 5);
+    const r = await handleQuery(folderName, id, 'fox', 5);
     expect(r.status).toBe(200);
     const body = r.body as { results: Array<{ score: number }> };
     expect(body.results.length).toBeGreaterThan(0);
   });
 
   it('returns 404 for unknown corpus', async () => {
-    const r = await handleQuery(tmpFolder, 'nope', 'fox', 5);
+    const r = await handleQuery(folderName, 'nope', 'fox', 5);
     expect(r.status).toBe(404);
   });
 });
 
 describe('handleCreateCorpus — storeStrategy', () => {
   it('defaults storeStrategy to bm25', async () => {
-    const result = await handleCreateCorpus(tmpFolder, { name: 'test' });
+    const result = await handleCreateCorpus(folderName, { name: 'test' });
     expect(result.status).toBe(201);
     expect((result.body as CorpusMeta).storeStrategy).toBe('bm25');
   });
 
   it('accepts storeStrategy dense', async () => {
-    const result = await handleCreateCorpus(tmpFolder, { name: 'dense-test', storeStrategy: 'dense' });
+    const result = await handleCreateCorpus(folderName, { name: 'dense-test', storeStrategy: 'dense' });
     expect(result.status).toBe(201);
     expect((result.body as CorpusMeta).storeStrategy).toBe('dense');
   });
 
   it('accepts storeStrategy hybrid', async () => {
-    const result = await handleCreateCorpus(tmpFolder, { name: 'hybrid-test', storeStrategy: 'hybrid' });
+    const result = await handleCreateCorpus(folderName, { name: 'hybrid-test', storeStrategy: 'hybrid' });
     expect(result.status).toBe(201);
     expect((result.body as CorpusMeta).storeStrategy).toBe('hybrid');
   });
@@ -176,11 +191,11 @@ describe('handleCreateCorpus — storeStrategy', () => {
 describe('handleQuery — dense strategy', () => {
   it('calls embedChunks for query and returns results array', async () => {
     const { embedChunks } = await import('./stages/embed.js');
-    const createResult = await handleCreateCorpus(tmpFolder, { name: 'd', storeStrategy: 'dense' });
+    const createResult = await handleCreateCorpus(folderName, { name: 'd', storeStrategy: 'dense' });
     const meta = createResult.body as CorpusMeta;
-    updateStatus(tmpFolder, meta.id, 'ready');
+    updateStatus(folderName, meta.id, 'ready');
 
-    const result = await handleQuery(tmpFolder, meta.id, 'hello', 5);
+    const result = await handleQuery(folderName, meta.id, 'hello', 5);
     expect(result.status).toBe(200);
     expect(embedChunks).toHaveBeenCalled();
     expect((result.body as { results: unknown[] }).results).toBeInstanceOf(Array);

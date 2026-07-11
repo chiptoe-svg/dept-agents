@@ -1,13 +1,8 @@
 /**
- * Shared check: does the instructor (install owner) have a usable
- * credential for an auth-registry spec id? Used by:
- *
- *   - `models-tab-state.classPoolReady` so deriveProviderState's
- *     class-pool branch greys out when the credential is missing.
- *   - `class-controls.providedReady` so the Class Controls form
- *     disables the "Provided" checkbox for groups whose creds aren't
- *     connected — instructor sees "connect first" instead of toggling
- *     a policy that 502s every student request.
+ * Shared check: does the install owner have a usable credential for an
+ * auth-registry spec id? Used by `models-tab-state.classPoolReady` so
+ * deriveProviderState's pooled-credential branch greys out when the
+ * credential is missing.
  *
  * Sibling fallback (codex ↔ openai-platform) mirrors the resolver's
  * SIBLING_API_KEY_SPECS map so the answer matches what

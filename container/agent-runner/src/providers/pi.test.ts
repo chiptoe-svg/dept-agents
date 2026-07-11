@@ -5,9 +5,33 @@ import {
   composePiSystemPrompt,
   formatContextUsageMessage,
   getPiReplyErrorMessage,
+  piRotationReason,
+  routeMidTurnMessage,
   withDeadline,
 } from './pi.js';
 import type { ProviderOptions } from './types.js';
+
+describe('piRotationReason', () => {
+  const now = Date.parse('2026-07-09T00:00:00Z');
+
+  it('rotates a transcript over the size cap (the crash-loop trigger)', () => {
+    expect(piRotationReason(3 * 1_048_576, undefined, now)).toMatch(/MB exceeds .* MB resume cap/);
+  });
+
+  it('keeps a healthy, recent transcript', () => {
+    const recent = new Date(now - 2 * 86_400_000).toISOString();
+    expect(piRotationReason(200 * 1024, recent, now)).toBeNull();
+  });
+
+  it('rotates a stale session by age even when small', () => {
+    const old = new Date(now - 30 * 86_400_000).toISOString();
+    expect(piRotationReason(50 * 1024, old, now)).toMatch(/d old exceeds .*d resume cap/);
+  });
+
+  it('ignores an unparseable createdAt', () => {
+    expect(piRotationReason(50 * 1024, 'not-a-date', now)).toBeNull();
+  });
+});
 
 describe('getPiReplyErrorMessage', () => {
   it('returns the terminal error message for Pi replies that ended in error', () => {
@@ -105,5 +129,69 @@ describe('withDeadline', () => {
     const { value, timedOut } = await withDeadline(50, slow, -1);
     expect(value).toBe(-1);
     expect(timedOut).toBe(true);
+  });
+});
+
+describe('routeMidTurnMessage', () => {
+  function fakeHarness() {
+    const calls: string[] = [];
+    return {
+      calls,
+      steer: async (t: string) => {
+        calls.push(`steer:${t}`);
+      },
+      followUp: async (t: string) => {
+        calls.push(`followUp:${t}`);
+      },
+    };
+  }
+
+  it('steers when steering is enabled', async () => {
+    const h = fakeHarness();
+    await routeMidTurnMessage(h, 'redirect now', true);
+    expect(h.calls).toEqual(['steer:redirect now']);
+  });
+
+  it('follows up (after-turn) when steering is disabled', async () => {
+    const h = fakeHarness();
+    await routeMidTurnMessage(h, 'later', false);
+    expect(h.calls).toEqual(['followUp:later']);
+  });
+
+  it('falls back to followUp when steer() rejects (never lossy)', async () => {
+    const calls: string[] = [];
+    const h = {
+      calls,
+      steer: async () => {
+        throw new Error('harness busy');
+      },
+      followUp: async (t: string) => {
+        calls.push(`followUp:${t}`);
+      },
+    };
+    await routeMidTurnMessage(h, 'redirect', true);
+    expect(calls).toEqual(['followUp:redirect']);
+  });
+
+  it('does not reject when followUp throws (steering disabled)', async () => {
+    const h = {
+      steer: async () => {},
+      followUp: async () => {
+        throw new Error('followUp down');
+      },
+    };
+    await expect(routeMidTurnMessage(h, 'x', false)).resolves.toBeUndefined();
+  });
+
+  it('does not reject when both steer and the fallback followUp throw', async () => {
+    const h = {
+      steer: async () => {
+        throw new Error('steer down');
+      },
+      followUp: async () => {
+        throw new Error('followUp down too');
+      },
+    };
+    await expect(routeMidTurnMessage(h, 'x', true)).resolves.toBeUndefined();
   });
 });

@@ -121,7 +121,6 @@ import {
   handlePutModels,
   handleToggleDefaultModel,
 } from './api/models.js';
-import { handleGetClassControls, handlePutClassControls, DEFAULT_CLASS_ID } from './api/class-controls.js';
 import { handleGetModelsTabState } from './api/models-tab-state.js';
 import {
   handleGetDefaultParticipant,
@@ -152,7 +151,8 @@ import {
   handleSimpleRestart,
   handleSimpleReset,
 } from './api/simple-config.js';
-import { pushToAll, registerSseClient } from './sse.js';
+import { handleGetProviderStatus } from './api/provider-auth.js';
+import { registerSseClient } from './sse.js';
 
 export async function route(
   req: http.IncomingMessage,
@@ -416,15 +416,14 @@ export async function route(
     return send(res, r.status, r.body);
   }
 
-  // GET /api/me/models-tab-state — per-student greying state for every
-  // registered provider (class policy + personal creds + reachability).
+  // GET /api/me/models-tab-state — per-user greying state for every
+  // registered provider (personal creds + reachability).
   if (method === 'GET' && url.pathname === '/api/me/models-tab-state') {
     const agentGroupId = url.searchParams.get('agentGroupId') ?? '';
     const refreshSpec = url.searchParams.get('refresh') || undefined;
     const r = await handleGetModelsTabState({
       userId: session.userId ?? '',
       agentGroupId,
-      classId: DEFAULT_CLASS_ID,
       refreshSpec,
     });
     return send(res, r.status, r.body);
@@ -464,6 +463,15 @@ export async function route(
   if (method === 'POST' && url.pathname === '/api/me/telegram/pair-code') {
     const { handleIssuePairCode } = await import('./api/telegram-pair.js');
     const r = handleIssuePairCode(session);
+    return send(res, r.status, r.body);
+  }
+
+  // GET /provider-auth/:provider/status — connection status for the
+  // calling user's own account only (userId from session, never the path).
+  const providerAuthStatusMatch = url.pathname.match(/^\/provider-auth\/([^/]+)\/status$/);
+  if (method === 'GET' && providerAuthStatusMatch) {
+    if (!session.userId) return send(res, 401, { error: 'auth required' });
+    const r = handleGetProviderStatus(providerAuthStatusMatch[1]!, { userId: session.userId });
     return send(res, r.status, r.body);
   }
 
@@ -782,23 +790,6 @@ export async function route(
     }
     const body = await readJsonBody(req);
     const r = handleToggleDefaultModel(body);
-    return send(res, r.status, r.body);
-  }
-
-  // GET /api/class-controls — read instructor's tab/provider/auth gates.
-  // Open to anyone signed in — students need it to know what UI to render.
-  if (method === 'GET' && url.pathname === '/api/class-controls') {
-    const r = handleGetClassControls();
-    return send(res, r.status, r.body);
-  }
-  // PUT /api/class-controls — owner-only, mutates config/class-controls.json.
-  if (method === 'PUT' && url.pathname === '/api/class-controls') {
-    if (!session.userId || !isOwner(session.userId)) {
-      return send(res, 403, { error: 'owner role required' });
-    }
-    const body = await readJsonBody(req);
-    const r = handlePutClassControls(body);
-    if (r.status === 200) pushToAll('class-controls-changed', r.body);
     return send(res, r.status, r.body);
   }
 
@@ -1177,6 +1168,12 @@ export async function route(
     if (deniedIngest) return send(res, 403, { error: 'Forbidden' });
     const decision = checkDraftMutation(folder, 'file_put', session.userId);
     if (!decision.allow) return send(res, 403, { error: decision.reason || 'Forbidden' });
+    // Ingest embeds every chunk of the corpus (dense/hybrid strategies) —
+    // unbounded spend without this gate. requireGroupAccess above already
+    // proved the group exists.
+    const ingestGroup = getAgentGroupByFolder(folder)!;
+    const ingestBudget = assertWithinBudget(folder, ingestGroup.id);
+    if (!ingestBudget.ok) return send(res, 429, { error: ingestBudget.reason });
     const r = await handleIngest(folder, id);
     return send(res, r.status, r.body);
   }
@@ -1201,6 +1198,16 @@ export async function route(
     const folder = knowledgeQueryMatch[1]!;
     const id = knowledgeQueryMatch[2]!;
     if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
+    // Dense/hybrid queries embed the query text — unbounded spend without
+    // this gate. canReadDraft (unlike requireGroupAccess) falls through
+    // open when the folder has no agent_groups row, so only gate when a
+    // group actually exists; a query against a nonexistent group 404s
+    // inside handleQuery before it would ever embed anything.
+    const queryGroup = getAgentGroupByFolder(folder);
+    if (queryGroup) {
+      const queryBudget = assertWithinBudget(folder, queryGroup.id);
+      if (!queryBudget.ok) return send(res, 429, { error: queryBudget.reason });
+    }
     const body = await readJsonBody(req);
     const { query = '', k = 5 } = body as { query?: string; k?: number };
     const r = await handleQuery(folder, id, query, k);
@@ -1271,6 +1278,12 @@ export async function route(
     if (!canReadDraft(folder, session.userId)) return send(res, 403, { error: 'Forbidden' });
     const denied = requireGroupAccess(folder, session.userId);
     if (denied) return send(res, 403, { error: 'Forbidden' });
+    // A benchmark run embeds the query for every query in the benchmark
+    // (dense/hybrid corpora) — unbounded spend without this gate.
+    // requireGroupAccess above already proved the group exists.
+    const runGroup = getAgentGroupByFolder(folder)!;
+    const runBudget = assertWithinBudget(folder, runGroup.id);
+    if (!runBudget.ok) return send(res, 429, { error: runBudget.reason });
     const body = await readJsonBody(req);
     const k = typeof body.k === 'number' ? body.k : 5;
     const r = await handleRunBenchmark(folder, id, k);

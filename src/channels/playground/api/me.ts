@@ -4,7 +4,9 @@ import {
   setAgentGroupMetadataKey,
 } from '../../../db/agent-groups.js';
 import { lookupRosterByUserId } from '../../../db/classroom-roster.js';
+import { getContainerConfig } from '../../../db/container-configs.js';
 import { isGlobalAdmin, isOwner } from '../../../modules/permissions/db/user-roles.js';
+import { getUser } from '../../../modules/permissions/db/users.js';
 import { clearStudentCredentials, hasStudentCredentials } from '../../../student-google-auth.js';
 import { revokeSession, revokeSessionsForUser } from '../auth-store.js';
 import type { PlaygroundSession } from '../auth-store.js';
@@ -17,8 +19,12 @@ export interface ApiResult<T> {
 }
 
 export interface MyAgentResponse {
-  user: { id: string | null; role: 'owner' | 'admin' | 'ta' | 'member'; seatLabel?: string };
-  agent: { id: string; name: string; folder: string };
+  user: { id: string | null; role: 'owner' | 'admin' | 'ta' | 'member'; seatLabel?: string; displayName?: string };
+  agent: { id: string; name: string; folder: string; modelProvider: string | null };
+}
+
+function getModelProvider(agentGroupId: string): string | null {
+  return getContainerConfig(agentGroupId)?.model_provider ?? null;
 }
 
 function resolveRole(userId: string | null): 'owner' | 'admin' | 'member' {
@@ -26,6 +32,11 @@ function resolveRole(userId: string | null): 'owner' | 'admin' | 'member' {
   if (isOwner(userId)) return 'owner';
   if (isGlobalAdmin(userId)) return 'admin';
   return 'member';
+}
+
+function displayNameFor(userId: string | null): string | undefined {
+  if (!userId) return undefined;
+  return getUser(userId)?.display_name ?? undefined;
 }
 
 export function handleGetMyAgent(session: PlaygroundSession, seatFolder?: string | null): ApiResult<MyAgentResponse> {
@@ -45,7 +56,7 @@ export function handleGetMyAgent(session: PlaygroundSession, seatFolder?: string
               seatLabel: seat.label,
             },
             // Use the seat label as the agent name so real people's names don't appear.
-            agent: { id: group.id, name: seat.label, folder: group.folder },
+            agent: { id: group.id, name: seat.label, folder: group.folder, modelProvider: getModelProvider(group.id) },
           },
         };
       }
@@ -58,8 +69,8 @@ export function handleGetMyAgent(session: PlaygroundSession, seatFolder?: string
     return {
       status: 200,
       body: {
-        user: { id: session.userId, role: 'owner' },
-        agent: { id: group.id, name: group.name, folder: group.folder },
+        user: { id: session.userId, role: 'owner', displayName: displayNameFor(session.userId) },
+        agent: { id: group.id, name: group.name, folder: group.folder, modelProvider: getModelProvider(group.id) },
       },
     };
   }
@@ -69,8 +80,13 @@ export function handleGetMyAgent(session: PlaygroundSession, seatFolder?: string
     return {
       status: 200,
       body: {
-        user: { id: session.userId, role: 'owner', seatLabel: session.seatLabel },
-        agent: { id: group.id, name: group.name, folder: group.folder },
+        user: {
+          id: session.userId,
+          role: 'owner',
+          seatLabel: session.seatLabel,
+          displayName: displayNameFor(session.userId),
+        },
+        agent: { id: group.id, name: group.name, folder: group.folder, modelProvider: getModelProvider(group.id) },
       },
     };
   }
@@ -79,8 +95,8 @@ export function handleGetMyAgent(session: PlaygroundSession, seatFolder?: string
   return {
     status: 200,
     body: {
-      user: { id: session.userId, role: resolveRole(session.userId) },
-      agent: { id: agent.id, name: agent.name, folder: agent.folder },
+      user: { id: session.userId, role: resolveRole(session.userId), displayName: displayNameFor(session.userId) },
+      agent: { id: agent.id, name: agent.name, folder: agent.folder, modelProvider: getModelProvider(agent.id) },
     },
   };
 }

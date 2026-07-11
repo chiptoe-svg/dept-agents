@@ -116,21 +116,14 @@ function loadModelDropdowns(el, folder) {
       const groupOfModelProvider = (mp) =>
         PROVIDER_GROUPS.find((g) => (g.memberModelProviders || []).includes(mp));
 
-      // Filter visible-in-tab by class-controls (owner sees everything;
-      // students see only what the instructor authorised) AND by
-      // server-side group-keyed providerAuth (post-C-5).
-      const ac = window.__pg && window.__pg.activeClass;
-      const isOwner = window.__pg && window.__pg.user && window.__pg.user.role === 'owner';
-      const providerAllowed = isOwner || !ac
-        ? null
-        : (specId) => !!(ac.providers && ac.providers[specId] && ac.providers[specId].allow);
+      // Filter visible-in-tab by server-side group-keyed providerAuth
+      // (post-C-5). No per-class allow gate — every provider is allowed
+      // on the department server; auth/reachability still gates.
       const providerAuth = data.providerAuth || {};
 
       const groupVisible = PROVIDER_GROUPS.filter((g) => {
         // Auth gate: providerAuth post-C-5 is keyed by group id.
         if (providerAuth[g.id] === false) return false;
-        // Class-controls allow gate: pass if ANY member spec is allowed.
-        if (providerAllowed && !g.specIds.some(providerAllowed)) return false;
         // Group must have at least one visible (allow-listed) model.
         return visible.some((m) => (g.memberModelProviders || []).includes(m.modelProvider));
       });

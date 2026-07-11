@@ -71,12 +71,44 @@ export async function dispatch(req: RequestFrame, ctx: CallerContext): Promise<R
   }
 }
 
+/**
+ * Commands whose results carry a bearer login URL/token (`loginUrl` from
+ * `users provision`, `url` from `class-tokens issue|rotate`). The URL *is*
+ * the credential — relaying it through `notify` would write it into the
+ * requesting agent's chat context and session DB, undercutting the approval
+ * gate. Host callers (`./bin/ncl`, caller:'host') are unaffected: dispatch()
+ * returns the raw result to host stdout, which is where the operator reads
+ * it.
+ */
+const BEARER_RESULT_COMMANDS = new Set(['users-provision', 'class-tokens-issue', 'class-tokens-rotate']);
+const BEARER_RESULT_KEYS = ['loginUrl', 'url', 'token'];
+const BEARER_REDACTION =
+  '[redacted — bearer login URL is not relayed to agent chat; the approver can retrieve it on the host via ./bin/ncl]';
+
+/**
+ * Strip bearer login URLs/tokens from a command result before it is relayed
+ * into an agent-facing message. Returns the data unchanged for commands that
+ * don't mint credentials. Exported for tests.
+ */
+export function redactBearerResult(command: string, data: unknown): unknown {
+  if (!BEARER_RESULT_COMMANDS.has(command)) return data;
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return data;
+  const out: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+  for (const key of BEARER_RESULT_KEYS) {
+    if (key in out) out[key] = BEARER_REDACTION;
+  }
+  return out;
+}
+
 registerApprovalHandler('cli_command', async ({ session, payload, userId, notify }) => {
   const frame = payload.frame as RequestFrame;
   const response = await dispatch(frame, { caller: 'host' });
 
   if (response.ok) {
-    const data = typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2);
+    // Agent-facing relay only — redact any bearer login URL the command
+    // minted. The host-caller path never goes through this handler.
+    const redacted = redactBearerResult(frame.command, response.data);
+    const data = typeof redacted === 'string' ? redacted : JSON.stringify(redacted, null, 2);
     notify(`Your \`ncl ${frame.command}\` request was approved and executed.\n\n${data}`);
   } else {
     notify(`Your \`ncl ${frame.command}\` request was approved but failed: ${response.error.message}`);

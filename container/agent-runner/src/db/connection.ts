@@ -79,6 +79,37 @@ export function withReadonlyRetry<T>(fn: () => T): T {
 }
 
 /**
+ * Run an inbound-DB read, retrying on the same transient readonly error
+ * `withReadonlyRetry` guards for outbound writes (most commonly seen here as
+ * `SQLITE_READONLY_ROLLBACK`): the host's DELETE-journal commits leave a hot
+ * rollback journal file next to `inbound.db` for a brief moment, and
+ * virtiofs does not propagate SQLite's advisory locks from host to guest, so
+ * a read-only opener can occasionally see that hot journal and refuse to
+ * proceed (it can't roll the journal back itself). Without a retry this
+ * surfaces as noisy, non-fatal poll-loop errors that mask any real failure
+ * underneath.
+ *
+ * Unlike `withReadonlyRetry`, this does not touch the cached `_outbound`
+ * singleton — `openInboundDb()` opens a fresh connection on every call (no
+ * cached handle to invalidate outside test mode), so the thunk passed here
+ * should call `openInboundDb()` itself; simply re-running it on retry is
+ * enough to pick up the settled mount.
+ */
+export function withInboundReadonlyRetry<T>(fn: () => T): T {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < READONLY_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return fn();
+    } catch (err) {
+      if (!isReadonlyError(err)) throw err;
+      lastErr = err;
+      if (attempt < READONLY_RETRY_ATTEMPTS - 1) Bun.sleepSync(READONLY_RETRY_DELAY_MS);
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Avoid all cached db reads; open inbound.db read-only with mmap and page cache disabled.
  *
  * Use this (not getInboundDb) for readers that need to see host-written rows

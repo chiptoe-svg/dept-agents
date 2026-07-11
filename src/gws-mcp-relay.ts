@@ -22,10 +22,11 @@
  *   - The token-derived group id must resolve to an existing agent group.
  *     401 if the agent group ID is unknown.
  *
- * Despite the module-level "loopback only" framing in older comments, this
- * process binds to PROXY_BIND_HOST (often 0.0.0.0 on multi-host setups),
- * so the token check above is the actual security boundary, not the bind
- * address.
+ * This process dual-binds via `listenLoopbackAndGateway`: loopback
+ * (127.0.0.1) plus the resolved container bridge gateway, and never a
+ * wildcard — `net-bind.ts` refuses 0.0.0.0/:: outright. The per-call token
+ * check above is still the primary auth boundary; the bind restriction is
+ * defense in depth so the relay is never reachable from the campus LAN.
  *
  * The container-side stub reaches us via `host.docker.internal:GWS_MCP_RELAY_PORT`
  * (same gateway pattern as the credential proxy).
@@ -37,13 +38,14 @@
  * fallback; a group with no personal Google credentials gets a clear
  * "connect your Google account" error, never another group's data.
  */
-import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
+import { IncomingMessage, ServerResponse } from 'http';
 
 import { GWS_MCP_RELAY_PORT } from './config.js';
 import { resolveContainerToken } from './container-identity.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { dispatchTool, listToolNames } from './gws-mcp-server.js';
 import { log } from './log.js';
+import { listenLoopbackAndGateway, DualBindHandle } from './net-bind.js';
 
 const AGENT_TOKEN_HEADER = 'x-nanoclaw-agent-token';
 
@@ -121,34 +123,28 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   return send(res, 404, { ok: false, error: `No route: ${method} ${url.pathname}` });
 }
 
-let server: Server | null = null;
+let handle: DualBindHandle | null = null;
 
-export function startGwsMcpRelay(host = '127.0.0.1'): Promise<Server> {
-  if (server) return Promise.resolve(server);
-  return new Promise((resolve, reject) => {
-    const s = createServer((req, res) => {
-      void handleRequest(req, res).catch((err) => {
-        log.error('GWS MCP relay request error', { err: String(err) });
-        if (!res.headersSent) {
-          send(res, 500, { ok: false, error: String(err) });
-        }
-      });
+export async function startGwsMcpRelay(host = '127.0.0.1'): Promise<DualBindHandle> {
+  if (handle) return handle;
+  const requestHandler = (req: IncomingMessage, res: ServerResponse) => {
+    void handleRequest(req, res).catch((err) => {
+      log.error('GWS MCP relay request error', { err: String(err) });
+      if (!res.headersSent) {
+        send(res, 500, { ok: false, error: String(err) });
+      }
     });
-    s.on('error', (err) => {
-      log.error('GWS MCP relay server error', { err: String(err) });
-      reject(err);
-    });
-    s.listen(GWS_MCP_RELAY_PORT, host, () => {
-      server = s;
-      log.info('GWS MCP relay started', { host, port: GWS_MCP_RELAY_PORT });
-      resolve(s);
-    });
+  };
+  handle = await listenLoopbackAndGateway(requestHandler, GWS_MCP_RELAY_PORT, {
+    loopbackHost: host,
+    label: 'GWS MCP relay',
   });
+  return handle;
 }
 
 export async function stopGwsMcpRelay(): Promise<void> {
-  if (!server) return;
-  await new Promise<void>((resolve) => server!.close(() => resolve()));
-  server = null;
+  if (!handle) return;
+  handle.close();
+  handle = null;
   log.info('GWS MCP relay stopped');
 }

@@ -1,41 +1,28 @@
 /**
- * Classroom-side per-student credential resolver. Installed as the
- * trunk userCredsHook by the classroom skill at startup.
+ * Per-user credential resolver, installed as the trunk userCredsHook at
+ * startup. Decides whose credentials each LLM request spends.
  *
- * Resolution priority (per request):
- *   1. classroom_roster lookup: agentGroupId → (userId, classId)
- *      If no row → null (solo-install path; trunk falls back to .env)
- *   2. loadUserProviderCreds(userId, providerId)
- *      If present: branch on creds.active. Refresh OAuth if expiry near.
- *   3. Class Controls policy for classId.providers[providerId]:
- *      provideDefault=true  → owner's per-user creds (the "class pool" =
- *                             the same per-user store students use, just
- *                             keyed by the install owner's userId)
- *      provideDefault=false, allowByo=true → connect_required sentinel
- *      allow=false → forbidden sentinel
- *
- * In v1, classId is hardcoded to DEFAULT_CLASS_ID — single-class
- * support is the only shape /add-classroom-controls writes. The
- * `classId` carried through the seams is the seam for multi-class.
+ * Resolution (per request):
+ *   1. userIdForAgentGroup(agentGroupId) — the group's member per the
+ *      entity model (agent_group_members). No member → backstop.
+ *   2. loadUserProviderCreds(userId, providerId) — the user's own creds.
+ *      If present: branch on creds.active; refresh OAuth if expiry near.
+ *      If the requested provider's bucket is empty, a sibling spec's API
+ *      key may satisfy it (see SIBLING_API_KEY_SPECS).
+ *   3. Otherwise null → the credential proxy attaches the department
+ *      .env credential (the backstop). Connecting your own account is
+ *      OPTIONAL — there is no per-class policy and no forbidden /
+ *      connect_required sentinel. Backstop use is recorded via the
+ *      recordBackstop hook so the operator can see who runs on the
+ *      department account.
  */
 import { request as httpsRequest } from 'https';
 
 import type { ResolvedCreds } from './credential-proxy.js';
+import { log } from './log.js';
 import { loadUserProviderCreds, addOAuth } from './user-provider-auth.js';
-import { DEFAULT_CLASS_ID, readClassControls } from './channels/playground/api/class-controls.js';
-import { lookupRosterByAgentGroupId } from './db/classroom-roster.js';
+import { userIdForAgentGroup } from './provisioning/agent-group-user.js';
 import { getProviderSpec } from './providers/auth-registry.js';
-import { getOwnerUserId } from './modules/permissions/db/user-roles.js';
-
-// Test seam: roster lookup is injectable for unit tests.
-let rosterLookup: (gid: string) => { userId: string; classId: string } | null = (gid) => {
-  const row = lookupRosterByAgentGroupId(gid);
-  return row ? { userId: row.user_id, classId: DEFAULT_CLASS_ID } : null;
-};
-
-export function setRosterLookupForTests(fn: (gid: string) => { userId: string; classId: string } | null): void {
-  rosterLookup = fn;
-}
 
 // Test seam: oauth refresher is injectable.
 // Default: real implementation that calls spec.oauth.tokenUrl with refreshGrantBody.
@@ -90,117 +77,77 @@ export function setOAuthRefresherForTests(
   oauthRefresher = fn;
 }
 
-// Test seam: owner-userId lookup is injectable so unit tests don't need
-// to stand up the central DB just to exercise the class-pool path.
-let ownerLookup: () => string | null = () => getOwnerUserId();
+// Recorder hook — Task 2 installs the real one; defaults to no-op so this
+// module has no hard dependency on the backstop store.
+let recordBackstop: (agentGroupId: string, providerId: string) => void = () => {};
 
-export function setOwnerLookupForTests(fn: () => string | null): void {
-  ownerLookup = fn;
+export function setBackstopRecorder(fn: (agentGroupId: string, providerId: string) => void): void {
+  recordBackstop = fn;
 }
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 // API keys are interchangeable across siblings inside a single user-facing
 // provider group: an OpenAI `sk-…` key works for both the codex (/openai/)
-// and openai-platform (/openai-platform/) proxy routes. When the instructor
-// pastes via the canonical-spec cred dialog (codex), the owner's openai-
-// platform bucket stays empty — students whose model entry routes through
-// /openai-platform/ would 502 without this fallback. OAuth tokens are
-// NOT cross-spec — they're issued for one specific provider.
+// and openai-platform (/openai-platform/) proxy routes. When the user
+// pastes via the canonical-spec cred dialog (codex), their openai-platform
+// bucket stays empty — a model entry routing through /openai-platform/
+// would 502 without this fallback. OAuth tokens are NOT cross-spec —
+// they're issued for one specific provider.
 const SIBLING_API_KEY_SPECS: Record<string, string[]> = {
   codex: ['openai-platform'],
   'openai-platform': ['codex'],
 };
 
-// Class-pool credentials reader. Per Phase C-1: the class pool *is* the
-// owner's per-user credential store — same shape as student creds, looked
-// up via the same loadUserProviderCreds helper. When the owner has
-// nothing connected for a provider this returns null and the proxy 502s
-// with "instructor hasn't connected …" (caller's responsibility — see
-// credential-proxy serializeResolvedCredsError).
-//
-// Sync overrides still work: the await in resolveUserCreds accepts
-// both Promise<ResolvedCreds> and ResolvedCreds. Test injections that
-// returned the resolved value directly continue to compile.
-let classPoolCreds: (classId: string, providerId: string) => Promise<ResolvedCreds> | ResolvedCreds = async (
-  _classId,
-  providerId,
-) => {
-  const ownerId = ownerLookup();
-  if (!ownerId) return null;
-  let creds = loadUserProviderCreds(ownerId, providerId);
-  // Sibling fallback: try a paired spec when the requested one is empty
-  // (OpenAI's two routes share API keys; see SIBLING_API_KEY_SPECS).
-  if (!creds || (!creds.apiKey && !creds.oauth)) {
-    for (const sib of SIBLING_API_KEY_SPECS[providerId] ?? []) {
-      const sibCreds = loadUserProviderCreds(ownerId, sib);
-      if (sibCreds?.apiKey?.value) {
-        return { kind: 'apiKey', value: sibCreds.apiKey.value };
+export async function resolveUserCreds(agentGroupId: string, providerId: string): Promise<ResolvedCreds> {
+  const userId = userIdForAgentGroup(agentGroupId);
+  if (userId) {
+    const creds = loadUserProviderCreds(userId, providerId);
+    // Sibling fallback: try a paired spec's API key when the requested one
+    // is empty (OpenAI's two routes share API keys; see SIBLING_API_KEY_SPECS).
+    if (!creds || (!creds.apiKey && !creds.oauth)) {
+      for (const sib of SIBLING_API_KEY_SPECS[providerId] ?? []) {
+        const sibCreds = loadUserProviderCreds(userId, sib);
+        if (sibCreds?.apiKey?.value) {
+          return { kind: 'apiKey', value: sibCreds.apiKey.value };
+        }
+      }
+    }
+    if (creds) {
+      if (creds.active === 'apiKey' && creds.apiKey) {
+        return { kind: 'apiKey', value: creds.apiKey.value };
+      }
+      if (creds.active === 'oauth' && creds.oauth) {
+        const needsRefresh = creds.oauth.expiresAt - Date.now() < REFRESH_BUFFER_MS;
+        if (needsRefresh) {
+          const refreshed = await oauthRefresher(creds.oauth.refreshToken, providerId);
+          if (refreshed) {
+            addOAuth(userId, providerId, { ...refreshed, account: creds.oauth.account });
+            return { kind: 'oauth', accessToken: refreshed.accessToken };
+          }
+          // refresh failed → fall through to the department backstop
+        } else {
+          return { kind: 'oauth', accessToken: creds.oauth.accessToken };
+        }
       }
     }
   }
-  if (!creds) return null;
-  if (creds.active === 'apiKey' && creds.apiKey) {
-    return { kind: 'apiKey', value: creds.apiKey.value };
-  }
-  if (creds.active === 'oauth' && creds.oauth) {
-    const needsRefresh = creds.oauth.expiresAt - Date.now() < REFRESH_BUFFER_MS;
-    if (needsRefresh) {
-      const refreshed = await oauthRefresher(creds.oauth.refreshToken, providerId);
-      if (!refreshed) return null;
-      addOAuth(ownerId, providerId, { ...refreshed, account: creds.oauth.account });
-      return { kind: 'oauth', accessToken: refreshed.accessToken };
-    }
-    return { kind: 'oauth', accessToken: creds.oauth.accessToken };
+  // No usable per-user credential → the credential proxy attaches the
+  // department .env credential (the backstop). Record it so the operator can
+  // see who is running on the department account. Connect is OPTIONAL: there is
+  // no per-class policy and no forbidden/connect_required branch here.
+  //
+  // Best-effort: the recorder does a central-DB write that can throw
+  // (SQLITE_BUSY, db closed during shutdown). This runs on the proxy's
+  // request path — a recorder failure must never fail the request.
+  try {
+    recordBackstop(agentGroupId, providerId);
+  } catch (err) {
+    log.warn('Backstop recorder failed (ignored)', {
+      agentGroupId,
+      providerId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
   return null;
-};
-
-export function setClassPoolCredsForTests(
-  fn: (classId: string, providerId: string) => Promise<ResolvedCreds> | ResolvedCreds,
-): void {
-  classPoolCreds = fn;
-}
-
-export async function resolveUserCreds(agentGroupId: string, providerId: string): Promise<ResolvedCreds> {
-  const ident = rosterLookup(agentGroupId);
-  if (!ident) return null;
-
-  const creds = loadUserProviderCreds(ident.userId, providerId);
-  if (creds) {
-    if (creds.active === 'apiKey' && creds.apiKey) {
-      return { kind: 'apiKey', value: creds.apiKey.value };
-    }
-    if (creds.active === 'oauth' && creds.oauth) {
-      const needsRefresh = creds.oauth.expiresAt - Date.now() < REFRESH_BUFFER_MS;
-      if (needsRefresh) {
-        const refreshed = await oauthRefresher(creds.oauth.refreshToken, providerId);
-        if (refreshed) {
-          addOAuth(ident.userId, providerId, { ...refreshed, account: creds.oauth.account });
-          return { kind: 'oauth', accessToken: refreshed.accessToken };
-        }
-      } else {
-        return { kind: 'oauth', accessToken: creds.oauth.accessToken };
-      }
-    }
-  }
-
-  const controls = readClassControls();
-  const policy = controls.classes[ident.classId]?.providers[providerId];
-  // No policy entry = provider was never configured by the instructor.
-  // Treat as Mode A: return null so the trunk credential proxy falls through
-  // to the host .env chain (instructor's credentials).
-  if (!policy) return null;
-  if (policy.allow === false) {
-    return { kind: 'forbidden', provider: providerId };
-  }
-  if (policy.provideDefault) {
-    return await classPoolCreds(ident.classId, providerId);
-  }
-  return {
-    kind: 'connect_required',
-    provider: providerId,
-    message: `Connect your ${providerId} account to use this model.`,
-    connect_url: `/provider-auth/${providerId}/start`,
-  };
 }
