@@ -182,19 +182,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (84 commits ahead)
+- **Last tag:** `classroom-2026-07` (85 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  src/providers/pi-provision.test.ts
-M  src/providers/pi.ts
+## main...origin/main [ahead 1]
+M  src/user-provider-resolver.test.ts
+M  src/user-provider-resolver.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+484e4cd8 fix(security): stop leaking owner ChatGPT tokens into non-owner pi containers (C1)
 98982fff docs(state): Plan 4 complete — entity-model creds + recorded dept backstop; class-controls gone
 1105f8fa docs(provider-auth): live verification — backstop recorded, own-creds key matches, endpoints gated
 9e6b161c refactor: remove class-controls policy — dept server has no per-class provider gating
@@ -209,9 +210,8 @@ beac5bb2 docs(env): document playground auth flags — PUBLIC_PLAYGROUND_URL, by
 495b64a0 fix(cli): redact bearer login URLs from agent-facing approval relay
 5cf8ca94 fix(class-tokens): kill live playground sessions when tokens are revoked
 554bf42d fix(class-tokens): resolve issue/rotate/revoke via --user-id or metadata email
-a3611cab docs(state): Plan 3 complete — auth bypass retired, per-user login live; pilot unblocked
 ```
 
 ### Last refresh
 
-2026-07-11T00:02:21Z
+2026-07-11T00:03:41Z

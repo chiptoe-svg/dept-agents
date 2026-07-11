@@ -19,6 +19,7 @@
 import { request as httpsRequest } from 'https';
 
 import type { ResolvedCreds } from './credential-proxy.js';
+import { log } from './log.js';
 import { loadUserProviderCreds, addOAuth } from './user-provider-auth.js';
 import { userIdForAgentGroup } from './provisioning/agent-group-user.js';
 import { getProviderSpec } from './providers/auth-registry.js';
@@ -135,6 +136,18 @@ export async function resolveUserCreds(agentGroupId: string, providerId: string)
   // department .env credential (the backstop). Record it so the operator can
   // see who is running on the department account. Connect is OPTIONAL: there is
   // no per-class policy and no forbidden/connect_required branch here.
-  recordBackstop(agentGroupId, providerId);
+  //
+  // Best-effort: the recorder does a central-DB write that can throw
+  // (SQLITE_BUSY, db closed during shutdown). This runs on the proxy's
+  // request path — a recorder failure must never fail the request.
+  try {
+    recordBackstop(agentGroupId, providerId);
+  } catch (err) {
+    log.warn('Backstop recorder failed (ignored)', {
+      agentGroupId,
+      providerId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   return null;
 }

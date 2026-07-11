@@ -176,6 +176,15 @@ describe('user-provider-resolver: backstop recorder hook', () => {
     expect(calls).toEqual([['g_empty', 'codex']]);
   });
 
+  it('still returns null (backstop) when the recorder throws — recorder failure never propagates', async () => {
+    const { resolveUserCreds, setBackstopRecorder } = await import('./user-provider-resolver.js');
+    setBackstopRecorder(() => {
+      throw new Error('SQLITE_BUSY: database is locked');
+    });
+    const r = await resolveUserCreds('g1', 'claude');
+    expect(r).toBeNull();
+  });
+
   it('does NOT record a backstop when the member’s own creds are used', async () => {
     const { addApiKey } = await import('./user-provider-auth.js');
     const { resolveUserCreds, setBackstopRecorder } = await import('./user-provider-resolver.js');
