@@ -44,7 +44,7 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { createServer, Server } from 'http';
+import { IncomingMessage, ServerResponse } from 'http';
 import { request as httpsRequest } from 'https';
 import { request as httpRequest, RequestOptions } from 'http';
 
@@ -52,6 +52,7 @@ import { readEnvFile } from './env.js';
 import { getGoogleAccessTokenForAgentGroup } from './gws-token.js';
 import { log } from './log.js';
 import { assertGroupWithinBudget } from './modules/budgets/enforce.js';
+import { listenLoopbackAndGateway, DualBindHandle } from './net-bind.js';
 import { openStore, type PayloadStore } from './proxy-payload-log/store.js';
 import { resolveContainerToken, type ContainerIdentity } from './container-identity.js';
 
@@ -478,7 +479,11 @@ async function getOAuthToken(envToken?: string): Promise<string | null> {
   return cachedOAuthToken ?? oauth.accessToken ?? null;
 }
 
-export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLogBaseDir?: string): Promise<Server> {
+export async function startCredentialProxy(
+  port: number,
+  host = '127.0.0.1',
+  payloadLogBaseDir?: string,
+): Promise<DualBindHandle> {
   const secrets = readEnvFile([
     'ANTHROPIC_API_KEY',
     'CLAUDE_CODE_OAUTH_TOKEN',
@@ -515,421 +520,425 @@ export function startCredentialProxy(port: number, host = '127.0.0.1', payloadLo
     ? { baseDir: payloadLogBaseDir, stores: new Map() }
     : null;
 
-  return new Promise((resolve, reject) => {
-    const server = createServer((req, res) => {
-      const chunks: Buffer[] = [];
-      req.on('data', (c) => chunks.push(c));
-      req.on('end', async () => {
-        const body = Buffer.concat(chunks);
+  const requestHandler = (req: IncomingMessage, res: ServerResponse): void => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', async () => {
+      const body = Buffer.concat(chunks);
 
-        // Route by path prefix — every provider is reached by an explicit prefix:
-        //   /anthropic/*        → Anthropic API (strip prefix, inject x-api-key or OAuth Bearer)
-        //   /openai/*           → OpenAI API via ChatGPT/Codex OAuth (strip prefix, inject Authorization)
-        //   /openai-platform/*  → OpenAI API via direct Platform API key (strip prefix, inject Authorization)
-        //   /omlx/*             → Local OpenAI-compatible server (strip prefix, inject Bearer OMLX_API_KEY)
-        //   /clemson/*          → Clemson RCD-hosted LLM endpoint (strip prefix, inject CAMPUS_LLM_API_KEY)
-        //   /googleapis/*       → Google APIs (strip prefix, inject OAuth Bearer) — gated off by empty allowlist in Task 3
-        // Unrecognized or bare paths (e.g. /v1/messages without a prefix) fail closed with 403.
-        const rawUrl = req.url || '/';
-        const resolved = resolveProxyRoute(rawUrl);
-        if (!resolved) {
-          log.warn('credential-proxy: egress blocked (unrecognized route)', {
-            rawUrl,
-            src: req.socket.remoteAddress,
-          });
-          res.writeHead(403, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'endpoint not allowed by nanoclaw egress policy' }));
-          return;
-        }
-        const { route, upstreamPath } = resolved;
-        const isOpenAIPlatform = route === 'openai-platform';
-        const isOpenAI = route === 'openai';
-        const isOmlx = route === 'omlx';
-        const isClemson = route === 'clemson';
-        const isGoogle = route === 'googleapis';
-        const isAnthropic = route === 'anthropic';
+      // Route by path prefix — every provider is reached by an explicit prefix:
+      //   /anthropic/*        → Anthropic API (strip prefix, inject x-api-key or OAuth Bearer)
+      //   /openai/*           → OpenAI API via ChatGPT/Codex OAuth (strip prefix, inject Authorization)
+      //   /openai-platform/*  → OpenAI API via direct Platform API key (strip prefix, inject Authorization)
+      //   /omlx/*             → Local OpenAI-compatible server (strip prefix, inject Bearer OMLX_API_KEY)
+      //   /clemson/*          → Clemson RCD-hosted LLM endpoint (strip prefix, inject CAMPUS_LLM_API_KEY)
+      //   /googleapis/*       → Google APIs (strip prefix, inject OAuth Bearer) — gated off by empty allowlist in Task 3
+      // Unrecognized or bare paths (e.g. /v1/messages without a prefix) fail closed with 403.
+      const rawUrl = req.url || '/';
+      const resolved = resolveProxyRoute(rawUrl);
+      if (!resolved) {
+        log.warn('credential-proxy: egress blocked (unrecognized route)', {
+          rawUrl,
+          src: req.socket.remoteAddress,
+        });
+        res.writeHead(403, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'endpoint not allowed by nanoclaw egress policy' }));
+        return;
+      }
+      const { route, upstreamPath } = resolved;
+      const isOpenAIPlatform = route === 'openai-platform';
+      const isOpenAI = route === 'openai';
+      const isOmlx = route === 'omlx';
+      const isClemson = route === 'clemson';
+      const isGoogle = route === 'googleapis';
+      const isAnthropic = route === 'anthropic';
 
-        // Per-call attribution. The agent group is derived from the
-        // per-container token, never from a caller-supplied group header:
-        // any container can set a header, so trusting it let one user's
-        // agent spend another user's credentials.
-        //
-        // Loopback callers are host-internal (e.g. direct-chat) and get the
-        // department .env credential, as before. Everything else — every
-        // container, and anything on the LAN — must present a valid token.
-        const identity = resolveProxyIdentity(req.headers);
-        const loopback = isLoopbackSource(req.socket.remoteAddress);
+      // Per-call attribution. The agent group is derived from the
+      // per-container token, never from a caller-supplied group header:
+      // any container can set a header, so trusting it let one user's
+      // agent spend another user's credentials.
+      //
+      // Loopback callers are host-internal (e.g. direct-chat) and get the
+      // department .env credential, as before. Everything else — every
+      // container, and anything on the LAN — must present a valid token.
+      const identity = resolveProxyIdentity(req.headers);
+      const loopback = isLoopbackSource(req.socket.remoteAddress);
 
-        if (!identity && !loopback) {
-          log.warn('credential-proxy: rejected unauthenticated non-loopback request', {
-            src: req.socket.remoteAddress,
-            hasToken: !!req.headers[AGENT_TOKEN_HEADER],
-          });
-          res.writeHead(401, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'container token required' }));
-          return;
-        }
+      if (!identity && !loopback) {
+        log.warn('credential-proxy: rejected unauthenticated non-loopback request', {
+          src: req.socket.remoteAddress,
+          hasToken: !!req.headers[AGENT_TOKEN_HEADER],
+        });
+        res.writeHead(401, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'container token required' }));
+        return;
+      }
 
-        const agentGroupId = identity?.agentGroupId ?? null;
+      const agentGroupId = identity?.agentGroupId ?? null;
 
-        const upstreamUrl = isGoogle
-          ? googleUpstream
-          : isOpenAI || isOpenAIPlatform
-            ? openaiUpstream
-            : isOmlx
-              ? omlxUpstream
-              : isClemson
-                ? clemsonUpstream
-                : anthropicUpstream; // route === 'anthropic'
-        const isHttps = upstreamUrl.protocol === 'https:';
-        const makeRequest = requestFor(isHttps);
+      const upstreamUrl = isGoogle
+        ? googleUpstream
+        : isOpenAI || isOpenAIPlatform
+          ? openaiUpstream
+          : isOmlx
+            ? omlxUpstream
+            : isClemson
+              ? clemsonUpstream
+              : anthropicUpstream; // route === 'anthropic'
+      const isHttps = upstreamUrl.protocol === 'https:';
+      const makeRequest = requestFor(isHttps);
 
-        // `|| 'GET'` is a safe fallback: no allowlist entry uses GET, so a
-        // missing method fails closed.
-        if (!isEgressAllowed(route, req.method || 'GET', upstreamPath)) {
-          log.warn('credential-proxy: egress blocked (path not allowed)', {
-            route,
-            method: req.method,
-            upstreamPath: upstreamPath.split('?')[0],
-            src: req.socket.remoteAddress,
-          });
-          res.writeHead(403, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'endpoint not allowed by nanoclaw egress policy' }));
-          return;
-        }
+      // `|| 'GET'` is a safe fallback: no allowlist entry uses GET, so a
+      // missing method fails closed.
+      if (!isEgressAllowed(route, req.method || 'GET', upstreamPath)) {
+        log.warn('credential-proxy: egress blocked (path not allowed)', {
+          route,
+          method: req.method,
+          upstreamPath: upstreamPath.split('?')[0],
+          src: req.socket.remoteAddress,
+        });
+        res.writeHead(403, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'endpoint not allowed by nanoclaw egress policy' }));
+        return;
+      }
 
-        // ── payload-log: capture request body ────────────────────────────────
-        const sessionId = identity?.sessionId ?? 'unattributed';
+      // ── payload-log: capture request body ────────────────────────────────
+      const sessionId = identity?.sessionId ?? 'unattributed';
 
-        let payloadSeq: number | null = null;
-        if (payloadLogCtx && agentGroupId) {
-          const store = getStore(payloadLogCtx, agentGroupId, sessionId);
-          if (store) {
-            try {
-              payloadSeq = store.write({
-                ts: Date.now(),
-                upstreamRoute: route,
-                upstreamPath,
-                body,
-              });
-            } catch (err) {
-              log.error('proxy-payload-log: write failed', { agentGroupId, sessionId, err });
-            }
-          }
-        }
-        // ── payload-log end ───────────────────────────────────────────────────
-
-        const headers: Record<string, string | number | string[] | undefined> = {
-          ...(req.headers as Record<string, string>),
-          host: upstreamUrl.host,
-          'content-length': body.length,
-        };
-
-        // Strip hop-by-hop headers that must not be forwarded by proxies
-        delete headers['connection'];
-        delete headers['keep-alive'];
-        delete headers['transfer-encoding'];
-        // Don't leak the attribution header upstream — it's a NanoClaw-internal hint.
-        delete headers[AGENT_GROUP_HEADER];
-        // Don't leak the session-id header upstream — it's a NanoClaw-internal hint.
-        delete headers[SESSION_ID_HEADER];
-        // Don't leak the capability token upstream — it's a live credential.
-        delete headers[AGENT_TOKEN_HEADER];
-
-        // Enforce the spend cap at the one chokepoint every LLM call crosses.
-        // Loopback callers (agentGroupId === null) are NOT checked here —
-        // direct-chat already runs its own budget check before dispatching
-        // (Plan 1.5 Task 8); double-blocking them would break the playground's
-        // model chat. Runs before any credential is resolved/attached, so an
-        // over-budget group never even gets a credential.
-        //
-        // `omlx` is EXEMPT: it's a local model server, so blocking it protects
-        // zero dollars while removing the user's fallback exactly when a paid
-        // provider is blocked — that would turn a money cap into a total
-        // kill-switch. `anthropic` / `openai` / `clemson` stay gated —
-        // `clemson` is a campus-hosted endpoint whose billing terms are
-        // unknown to us, so it fails closed like any paid route.
-        if (agentGroupId && !isOmlx) {
-          let budget: ReturnType<typeof assertGroupWithinBudget>;
+      let payloadSeq: number | null = null;
+      if (payloadLogCtx && agentGroupId) {
+        const store = getStore(payloadLogCtx, agentGroupId, sessionId);
+        if (store) {
           try {
-            budget = assertGroupWithinBudget(agentGroupId);
-          } catch (err) {
-            // A throw here (e.g. from getAgentGroup or the usage scan) must
-            // not leave the request hanging — end it and fail closed.
-            log.error('credential-proxy: budget check threw — failing closed', { agentGroupId, err });
-            res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
-            res.end(JSON.stringify({ error: 'Budget check failed; refusing upstream call.' }));
-            return;
-          }
-          if (!budget.ok) {
-            log.warn('credential-proxy: budget exceeded, refusing upstream call', { agentGroupId });
-            // Retry-After: the cap resets monthly, so tell SDK backoff not to
-            // retry within this turn — a blown budget will not clear itself.
-            res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
-            res.end(JSON.stringify({ error: budget.reason }));
-            return;
-          }
-        }
-
-        // ── per-user-provider-auth:proxy-invocation START ──────────────────────
-        let studentCredsApplied = false;
-        if (agentGroupId && (isOpenAI || isOpenAIPlatform || isAnthropic)) {
-          // NOTE: 'codex'/'openai-platform'/'claude' here are AUTH provider IDs
-          // (matching what codex-spec.ts / openai-platform-spec.ts / claude-spec.ts
-          // register in auth-registry.ts), NOT the agent harness provider
-          // (agent_groups.agent_provider, now always 'pi').
-          // These two namespaces share strings but are independent — do not merge.
-          const providerId = isOpenAI ? 'codex' : isOpenAIPlatform ? 'openai-platform' : 'claude';
-          const resolved = await userCredsHook(agentGroupId, providerId);
-          if (resolved) {
-            if (resolved.kind === 'connect_required' || resolved.kind === 'forbidden') {
-              const err = serializeResolvedCredsError(resolved);
-              res.writeHead(err.status, { 'content-type': 'application/json' });
-              res.end(JSON.stringify(err.body));
-              return;
-            }
-            delete headers['authorization'];
-            delete headers['x-api-key'];
-            if (resolved.kind === 'apiKey') {
-              if (isOpenAI) headers['authorization'] = `Bearer ${resolved.value}`;
-              else headers['x-api-key'] = resolved.value;
-            } else {
-              headers['authorization'] = `Bearer ${resolved.accessToken}`;
-            }
-            studentCredsApplied = true;
-          }
-        }
-        // ── per-user-provider-auth:proxy-invocation END ────────────────────────
-
-        // NOTE: unreachable since 2026-06-10 — `/googleapis` has an empty egress
-        // allowlist (isEgressAllowed) and 403s above. Kept for a future
-        // per-student GWS-through-proxy design, which must add its own controls.
-        if (isGoogle) {
-          // Google APIs: refresh access token if needed, inject as Bearer.
-          // Returns 502 with an actionable message if no creds configured.
-          // Per-student token preferred when the agent group has one;
-          // instructor / class-default token otherwise.
-          const resolved = await getGoogleAccessTokenForAgentGroup(agentGroupId);
-          if (!resolved) {
-            res.writeHead(502, { 'content-type': 'application/json' });
-            res.end(
-              JSON.stringify({
-                error: {
-                  message:
-                    'Google OAuth not configured. Authorize via /add-gmail-tool / /add-gcal-tool (or any flow that writes ~/.config/gws/credentials.json).',
-                  type: 'proxy_misconfiguration',
-                },
-              }),
-            );
-            return;
-          }
-          delete headers['authorization'];
-          delete headers['x-goog-api-key'];
-          headers['authorization'] = `Bearer ${resolved.token}`;
-        } else if (isOpenAI && !studentCredsApplied) {
-          // OpenAI (ChatGPT/Codex OAuth) mode: replace any placeholder Authorization
-          // with the real key. If OPENAI_API_KEY isn't set on the host, 502 with
-          // a clear message so the container-side error is actionable.
-          if (!secrets.OPENAI_API_KEY) {
-            res.writeHead(502, { 'content-type': 'application/json' });
-            res.end(
-              JSON.stringify({
-                error: {
-                  message: 'OPENAI_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
-                  type: 'proxy_misconfiguration',
-                },
-              }),
-            );
-            return;
-          }
-          delete headers['authorization'];
-          delete headers['x-api-key'];
-          headers['authorization'] = `Bearer ${secrets.OPENAI_API_KEY}`;
-        } else if (isOpenAIPlatform && !studentCredsApplied) {
-          // OpenAI Platform direct-API mode: inject OPENAI_PLATFORM_API_KEY.
-          // Distinct from the /openai/ (Codex/ChatGPT OAuth) route — different
-          // key shape and separate cred lookup so they don't conflict.
-          if (!secrets.OPENAI_PLATFORM_API_KEY) {
-            res.writeHead(502, { 'content-type': 'application/json' });
-            res.end(
-              JSON.stringify({
-                error: {
-                  message: 'OPENAI_PLATFORM_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
-                  type: 'proxy_misconfiguration',
-                },
-              }),
-            );
-            return;
-          }
-          delete headers['authorization'];
-          delete headers['x-api-key'];
-          headers['authorization'] = `Bearer ${secrets.OPENAI_PLATFORM_API_KEY}`;
-          log.info('Credential proxy: injected OPENAI_PLATFORM_API_KEY', { agentGroupId });
-        } else if (isOmlx) {
-          // Local OpenAI-compatible server. Container sends OPENAI_API_KEY=placeholder
-          // or OMLX_API_KEY=placeholder; we replace with OMLX_API_KEY here. Defaults
-          // to literal "godfrey" if unset, which keeps the auth-substitution path
-          // always exercised even on installs that haven't configured a real key.
-          delete headers['authorization'];
-          delete headers['x-api-key'];
-          headers['authorization'] = `Bearer ${secrets.OMLX_API_KEY || resolveOmlxKey()}`;
-        } else if (isClemson) {
-          // Clemson RCD-hosted LLM endpoint (OpenAI-compatible). Institution-paid,
-          // class-pool only — no per-student creds. Returns 502 if CAMPUS_LLM_API_KEY
-          // is not set on the host, so misconfiguration is visible rather than silent.
-          if (!secrets.CAMPUS_LLM_API_KEY) {
-            res.writeHead(502, { 'content-type': 'application/json' });
-            res.end(
-              JSON.stringify({
-                error: {
-                  message: 'CAMPUS_LLM_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
-                  type: 'proxy_misconfiguration',
-                },
-              }),
-            );
-            return;
-          }
-          delete headers['authorization'];
-          delete headers['x-api-key'];
-          headers['authorization'] = `Bearer ${secrets.CAMPUS_LLM_API_KEY}`;
-        } else if (authMode === 'api-key' && !studentCredsApplied) {
-          // Anthropic API key mode: inject x-api-key on every request
-          delete headers['x-api-key'];
-          headers['x-api-key'] = secrets.ANTHROPIC_API_KEY;
-        } else if (!studentCredsApplied) {
-          // Anthropic OAuth mode: replace placeholder Bearer token with
-          // the real one when the container sends an Authorization header.
-          // Two distinct use patterns end up here:
-          //   1. Claude Code SDK — exchanges OAuth for an API key first
-          //      (Authorization header on the exchange call), then uses
-          //      the resulting API key via x-api-key on subsequent calls.
-          //   2. Direct OAuth (pi-ai with the sk-ant-oat- prefix) — uses
-          //      the OAuth token as a Bearer on every call. Anthropic
-          //      requires the `anthropic-beta: oauth-2025-04-20` header
-          //      for these; without it the API returns "Invalid bearer
-          //      token" regardless of token validity. The Claude SDK
-          //      already adds this header itself, so unconditionally
-          //      forcing it here is a no-op for SDK callers.
-          if (headers['authorization']) {
-            delete headers['authorization'];
-            const token = await getOAuthToken(envOAuthToken);
-            if (token) {
-              headers['authorization'] = `Bearer ${token}`;
-              const existingBeta = headers['anthropic-beta'];
-              const oauthBeta = 'oauth-2025-04-20';
-              if (typeof existingBeta === 'string' && existingBeta.length > 0) {
-                if (
-                  !existingBeta
-                    .split(',')
-                    .map((s) => s.trim())
-                    .includes(oauthBeta)
-                ) {
-                  headers['anthropic-beta'] = `${existingBeta},${oauthBeta}`;
-                }
-              } else if (Array.isArray(existingBeta)) {
-                if (!existingBeta.includes(oauthBeta)) {
-                  headers['anthropic-beta'] = [...existingBeta, oauthBeta];
-                }
-              } else {
-                headers['anthropic-beta'] = oauthBeta;
-              }
-            }
-          }
-        }
-
-        const upstream = makeRequest(
-          {
-            hostname: upstreamUrl.hostname,
-            port: upstreamUrl.port || (isHttps ? 443 : 80),
-            path: upstreamPath,
-            method: req.method,
-            headers,
-          } as RequestOptions,
-          (upRes) => {
-            res.writeHead(upRes.statusCode!, upRes.headers);
-            upRes.pipe(res);
-            // Patch the payload row with the response status once the upstream
-            // response has fully arrived. Failures NEVER affect the response.
-            upRes.on('end', () => {
-              if (payloadSeq != null && payloadLogCtx && agentGroupId) {
-                const store = getStore(payloadLogCtx, agentGroupId, sessionId);
-                if (store) {
-                  try {
-                    store.patch(payloadSeq, { responseStatus: upRes.statusCode ?? 0 });
-                  } catch (err) {
-                    log.error('proxy-payload-log: patch failed', { payloadSeq, err });
-                  }
-                }
-              }
+            payloadSeq = store.write({
+              ts: Date.now(),
+              upstreamRoute: route,
+              upstreamPath,
+              body,
             });
-          },
-        );
-
-        upstream.on('error', (err) => {
-          log.error('Credential proxy upstream error', {
-            err,
-            url: req.url,
-            route: isGoogle
-              ? 'google'
-              : isOpenAIPlatform
-                ? 'openai-platform'
-                : isOpenAI
-                  ? 'openai'
-                  : isOmlx
-                    ? 'omlx'
-                    : isClemson
-                      ? 'clemson'
-                      : 'anthropic',
-          });
-          if (!res.headersSent) {
-            res.writeHead(502);
-            res.end('Bad Gateway');
+          } catch (err) {
+            log.error('proxy-payload-log: write failed', { agentGroupId, sessionId, err });
           }
-        });
+        }
+      }
+      // ── payload-log end ───────────────────────────────────────────────────
 
-        // Bound a stalled upstream (TCP half-open, rate-limit queueing) so the
-        // container's turn doesn't hang for minutes. 120s covers slow frontier
-        // completions while still failing fast on a dead connection.
-        upstream.setTimeout(120_000, () => {
-          log.warn('Credential proxy upstream timeout — destroying request', { url: req.url });
-          upstream.destroy(new Error('upstream timeout'));
-        });
+      const headers: Record<string, string | number | string[] | undefined> = {
+        ...(req.headers as Record<string, string>),
+        host: upstreamUrl.host,
+        'content-length': body.length,
+      };
 
-        // If the container is killed mid-turn its socket closes; tear down the
-        // upstream so we stop consuming API quota and don't leak sockets.
-        res.on('close', () => {
-          if (!upstream.destroyed) upstream.destroy();
-        });
+      // Strip hop-by-hop headers that must not be forwarded by proxies
+      delete headers['connection'];
+      delete headers['keep-alive'];
+      delete headers['transfer-encoding'];
+      // Don't leak the attribution header upstream — it's a NanoClaw-internal hint.
+      delete headers[AGENT_GROUP_HEADER];
+      // Don't leak the session-id header upstream — it's a NanoClaw-internal hint.
+      delete headers[SESSION_ID_HEADER];
+      // Don't leak the capability token upstream — it's a live credential.
+      delete headers[AGENT_TOKEN_HEADER];
 
-        upstream.write(body);
-        upstream.end();
-      });
-    });
+      // Enforce the spend cap at the one chokepoint every LLM call crosses.
+      // Loopback callers (agentGroupId === null) are NOT checked here —
+      // direct-chat already runs its own budget check before dispatching
+      // (Plan 1.5 Task 8); double-blocking them would break the playground's
+      // model chat. Runs before any credential is resolved/attached, so an
+      // over-budget group never even gets a credential.
+      //
+      // `omlx` is EXEMPT: it's a local model server, so blocking it protects
+      // zero dollars while removing the user's fallback exactly when a paid
+      // provider is blocked — that would turn a money cap into a total
+      // kill-switch. `anthropic` / `openai` / `clemson` stay gated —
+      // `clemson` is a campus-hosted endpoint whose billing terms are
+      // unknown to us, so it fails closed like any paid route.
+      if (agentGroupId && !isOmlx) {
+        let budget: ReturnType<typeof assertGroupWithinBudget>;
+        try {
+          budget = assertGroupWithinBudget(agentGroupId);
+        } catch (err) {
+          // A throw here (e.g. from getAgentGroup or the usage scan) must
+          // not leave the request hanging — end it and fail closed.
+          log.error('credential-proxy: budget check threw — failing closed', { agentGroupId, err });
+          res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
+          res.end(JSON.stringify({ error: 'Budget check failed; refusing upstream call.' }));
+          return;
+        }
+        if (!budget.ok) {
+          log.warn('credential-proxy: budget exceeded, refusing upstream call', { agentGroupId });
+          // Retry-After: the cap resets monthly, so tell SDK backoff not to
+          // retry within this turn — a blown budget will not clear itself.
+          res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600' });
+          res.end(JSON.stringify({ error: budget.reason }));
+          return;
+        }
+      }
 
-    server.listen(port, host, () => {
-      log.info('Credential proxy started', { port, host, authMode });
-      resolve(server);
-    });
+      // ── per-user-provider-auth:proxy-invocation START ──────────────────────
+      let studentCredsApplied = false;
+      if (agentGroupId && (isOpenAI || isOpenAIPlatform || isAnthropic)) {
+        // NOTE: 'codex'/'openai-platform'/'claude' here are AUTH provider IDs
+        // (matching what codex-spec.ts / openai-platform-spec.ts / claude-spec.ts
+        // register in auth-registry.ts), NOT the agent harness provider
+        // (agent_groups.agent_provider, now always 'pi').
+        // These two namespaces share strings but are independent — do not merge.
+        const providerId = isOpenAI ? 'codex' : isOpenAIPlatform ? 'openai-platform' : 'claude';
+        const resolved = await userCredsHook(agentGroupId, providerId);
+        if (resolved) {
+          if (resolved.kind === 'connect_required' || resolved.kind === 'forbidden') {
+            const err = serializeResolvedCredsError(resolved);
+            res.writeHead(err.status, { 'content-type': 'application/json' });
+            res.end(JSON.stringify(err.body));
+            return;
+          }
+          delete headers['authorization'];
+          delete headers['x-api-key'];
+          if (resolved.kind === 'apiKey') {
+            if (isOpenAI) headers['authorization'] = `Bearer ${resolved.value}`;
+            else headers['x-api-key'] = resolved.value;
+          } else {
+            headers['authorization'] = `Bearer ${resolved.accessToken}`;
+          }
+          studentCredsApplied = true;
+        }
+      }
+      // ── per-user-provider-auth:proxy-invocation END ────────────────────────
 
-    server.on('close', () => {
-      if (payloadLogCtx) {
-        // Close all open stores on server shutdown. In-flight responses whose
-        // upstreamRes.on('end', ...) listener fires after this will hit a closed-db
-        // error, which is caught by the patch try/catch — best-effort shutdown.
-        for (const store of payloadLogCtx.stores.values()) {
-          if (store) {
-            try {
-              store.close();
-            } catch {
-              // best-effort close
+      // NOTE: unreachable since 2026-06-10 — `/googleapis` has an empty egress
+      // allowlist (isEgressAllowed) and 403s above. Kept for a future
+      // per-student GWS-through-proxy design, which must add its own controls.
+      if (isGoogle) {
+        // Google APIs: refresh access token if needed, inject as Bearer.
+        // Returns 502 with an actionable message if no creds configured.
+        // Per-student token preferred when the agent group has one;
+        // instructor / class-default token otherwise.
+        const resolved = await getGoogleAccessTokenForAgentGroup(agentGroupId);
+        if (!resolved) {
+          res.writeHead(502, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message:
+                  'Google OAuth not configured. Authorize via /add-gmail-tool / /add-gcal-tool (or any flow that writes ~/.config/gws/credentials.json).',
+                type: 'proxy_misconfiguration',
+              },
+            }),
+          );
+          return;
+        }
+        delete headers['authorization'];
+        delete headers['x-goog-api-key'];
+        headers['authorization'] = `Bearer ${resolved.token}`;
+      } else if (isOpenAI && !studentCredsApplied) {
+        // OpenAI (ChatGPT/Codex OAuth) mode: replace any placeholder Authorization
+        // with the real key. If OPENAI_API_KEY isn't set on the host, 502 with
+        // a clear message so the container-side error is actionable.
+        if (!secrets.OPENAI_API_KEY) {
+          res.writeHead(502, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message: 'OPENAI_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
+                type: 'proxy_misconfiguration',
+              },
+            }),
+          );
+          return;
+        }
+        delete headers['authorization'];
+        delete headers['x-api-key'];
+        headers['authorization'] = `Bearer ${secrets.OPENAI_API_KEY}`;
+      } else if (isOpenAIPlatform && !studentCredsApplied) {
+        // OpenAI Platform direct-API mode: inject OPENAI_PLATFORM_API_KEY.
+        // Distinct from the /openai/ (Codex/ChatGPT OAuth) route — different
+        // key shape and separate cred lookup so they don't conflict.
+        if (!secrets.OPENAI_PLATFORM_API_KEY) {
+          res.writeHead(502, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message: 'OPENAI_PLATFORM_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
+                type: 'proxy_misconfiguration',
+              },
+            }),
+          );
+          return;
+        }
+        delete headers['authorization'];
+        delete headers['x-api-key'];
+        headers['authorization'] = `Bearer ${secrets.OPENAI_PLATFORM_API_KEY}`;
+        log.info('Credential proxy: injected OPENAI_PLATFORM_API_KEY', { agentGroupId });
+      } else if (isOmlx) {
+        // Local OpenAI-compatible server. Container sends OPENAI_API_KEY=placeholder
+        // or OMLX_API_KEY=placeholder; we replace with OMLX_API_KEY here. Defaults
+        // to literal "godfrey" if unset, which keeps the auth-substitution path
+        // always exercised even on installs that haven't configured a real key.
+        delete headers['authorization'];
+        delete headers['x-api-key'];
+        headers['authorization'] = `Bearer ${secrets.OMLX_API_KEY || resolveOmlxKey()}`;
+      } else if (isClemson) {
+        // Clemson RCD-hosted LLM endpoint (OpenAI-compatible). Institution-paid,
+        // class-pool only — no per-student creds. Returns 502 if CAMPUS_LLM_API_KEY
+        // is not set on the host, so misconfiguration is visible rather than silent.
+        if (!secrets.CAMPUS_LLM_API_KEY) {
+          res.writeHead(502, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message: 'CAMPUS_LLM_API_KEY is not set on the host. Add it to .env and restart nanoclaw.',
+                type: 'proxy_misconfiguration',
+              },
+            }),
+          );
+          return;
+        }
+        delete headers['authorization'];
+        delete headers['x-api-key'];
+        headers['authorization'] = `Bearer ${secrets.CAMPUS_LLM_API_KEY}`;
+      } else if (authMode === 'api-key' && !studentCredsApplied) {
+        // Anthropic API key mode: inject x-api-key on every request
+        delete headers['x-api-key'];
+        headers['x-api-key'] = secrets.ANTHROPIC_API_KEY;
+      } else if (!studentCredsApplied) {
+        // Anthropic OAuth mode: replace placeholder Bearer token with
+        // the real one when the container sends an Authorization header.
+        // Two distinct use patterns end up here:
+        //   1. Claude Code SDK — exchanges OAuth for an API key first
+        //      (Authorization header on the exchange call), then uses
+        //      the resulting API key via x-api-key on subsequent calls.
+        //   2. Direct OAuth (pi-ai with the sk-ant-oat- prefix) — uses
+        //      the OAuth token as a Bearer on every call. Anthropic
+        //      requires the `anthropic-beta: oauth-2025-04-20` header
+        //      for these; without it the API returns "Invalid bearer
+        //      token" regardless of token validity. The Claude SDK
+        //      already adds this header itself, so unconditionally
+        //      forcing it here is a no-op for SDK callers.
+        if (headers['authorization']) {
+          delete headers['authorization'];
+          const token = await getOAuthToken(envOAuthToken);
+          if (token) {
+            headers['authorization'] = `Bearer ${token}`;
+            const existingBeta = headers['anthropic-beta'];
+            const oauthBeta = 'oauth-2025-04-20';
+            if (typeof existingBeta === 'string' && existingBeta.length > 0) {
+              if (
+                !existingBeta
+                  .split(',')
+                  .map((s) => s.trim())
+                  .includes(oauthBeta)
+              ) {
+                headers['anthropic-beta'] = `${existingBeta},${oauthBeta}`;
+              }
+            } else if (Array.isArray(existingBeta)) {
+              if (!existingBeta.includes(oauthBeta)) {
+                headers['anthropic-beta'] = [...existingBeta, oauthBeta];
+              }
+            } else {
+              headers['anthropic-beta'] = oauthBeta;
             }
           }
         }
       }
-    });
 
-    server.on('error', reject);
+      const upstream = makeRequest(
+        {
+          hostname: upstreamUrl.hostname,
+          port: upstreamUrl.port || (isHttps ? 443 : 80),
+          path: upstreamPath,
+          method: req.method,
+          headers,
+        } as RequestOptions,
+        (upRes) => {
+          res.writeHead(upRes.statusCode!, upRes.headers);
+          upRes.pipe(res);
+          // Patch the payload row with the response status once the upstream
+          // response has fully arrived. Failures NEVER affect the response.
+          upRes.on('end', () => {
+            if (payloadSeq != null && payloadLogCtx && agentGroupId) {
+              const store = getStore(payloadLogCtx, agentGroupId, sessionId);
+              if (store) {
+                try {
+                  store.patch(payloadSeq, { responseStatus: upRes.statusCode ?? 0 });
+                } catch (err) {
+                  log.error('proxy-payload-log: patch failed', { payloadSeq, err });
+                }
+              }
+            }
+          });
+        },
+      );
+
+      upstream.on('error', (err) => {
+        log.error('Credential proxy upstream error', {
+          err,
+          url: req.url,
+          route: isGoogle
+            ? 'google'
+            : isOpenAIPlatform
+              ? 'openai-platform'
+              : isOpenAI
+                ? 'openai'
+                : isOmlx
+                  ? 'omlx'
+                  : isClemson
+                    ? 'clemson'
+                    : 'anthropic',
+        });
+        if (!res.headersSent) {
+          res.writeHead(502);
+          res.end('Bad Gateway');
+        }
+      });
+
+      // Bound a stalled upstream (TCP half-open, rate-limit queueing) so the
+      // container's turn doesn't hang for minutes. 120s covers slow frontier
+      // completions while still failing fast on a dead connection.
+      upstream.setTimeout(120_000, () => {
+        log.warn('Credential proxy upstream timeout — destroying request', { url: req.url });
+        upstream.destroy(new Error('upstream timeout'));
+      });
+
+      // If the container is killed mid-turn its socket closes; tear down the
+      // upstream so we stop consuming API quota and don't leak sockets.
+      res.on('close', () => {
+        if (!upstream.destroyed) upstream.destroy();
+      });
+
+      upstream.write(body);
+      upstream.end();
+    });
+  };
+
+  const handle = await listenLoopbackAndGateway(requestHandler, port, {
+    loopbackHost: host,
+    label: 'Credential proxy',
   });
+
+  // The payload-log store cleanup used to run on the single server's 'close'
+  // event; attach it to every bound server (in practice just the loopback
+  // one in tests, loopback + gateway in production) so shutdown still
+  // flushes stores regardless of which server fires close first.
+  if (payloadLogCtx) {
+    const closeStores = () => {
+      // Close all open stores on server shutdown. In-flight responses whose
+      // upstreamRes.on('end', ...) listener fires after this will hit a closed-db
+      // error, which is caught by the patch try/catch — best-effort shutdown.
+      for (const store of payloadLogCtx.stores.values()) {
+        if (store) {
+          try {
+            store.close();
+          } catch {
+            // best-effort close
+          }
+        }
+      }
+    };
+    for (const s of handle.servers) s.on('close', closeStores);
+  }
+
+  log.info('Credential proxy started', { port, host, authMode });
+  return handle;
 }
 
 /** Detect which auth mode the host is configured for. */

@@ -188,15 +188,18 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ```
 ## main...origin/main [ahead 1]
-M  src/net-bind.test.ts
-M  src/net-bind.ts
+M  src/credential-proxy.test.ts
+M  src/credential-proxy.ts
+M  src/gws-mcp-relay.authz.test.ts
+M  src/gws-mcp-relay.test.ts
+M  src/gws-mcp-relay.ts
 ?? docs/superpowers/plans/2026-07-11-proxy-bind-hardening.md
 ```
 
 ### Recent commits (last 15)
 
 ```
-50a0563e feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
+ab22ec1c feat(net): loopback+gateway dual-bind helper (no wildcard exposure)
 5e0c8280 docs(state): Plan 4 final review — close codex-lane owner-token leak (C1)
 36049d9c fix(proxy): backstop recorder failure must never fail a request (I1)
 484e4cd8 fix(security): stop leaking owner ChatGPT tokens into non-owner pi containers (C1)
@@ -215,4 +218,4 @@ beac5bb2 docs(env): document playground auth flags — PUBLIC_PLAYGROUND_URL, by
 
 ### Last refresh
 
-2026-07-11T07:50:33Z
+2026-07-11T07:59:41Z
