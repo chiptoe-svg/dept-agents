@@ -118,6 +118,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+**2026-07-12 — Member top nav collapsed to Setup + MyAgent; Persona/Skills tucked under Setup > Advanced.** The member top bar is now just two tabs — **Setup** (the renamed Home dashboard) and **MyAgent** (the renamed A3 chat). Achieved by splitting nav-visible from reachable: `MEMBER_NAV_TABS = ['home','chat']` drives the top-bar buttons while `allowedTabs`/`MEMBER_TABS` still includes `persona`/`skills` so `showTab` permits them — they're opened from an **"Advanced"** `<details>` on the Setup dashboard ("Edit persona"/"Edit skills" click the reachable-but-hidden tab buttons, opening the existing full editors). Tab **ids** unchanged (`home`/`chat`/`persona`/`skills`); owners/TAs keep the full nav. The redundant "Go to MyAgent" button was removed (the nav tab handles it). Live-verified. Minor cosmetic: opening Persona/Skills leaves no top-nav tab highlighted (navigation works, Setup returns).
+
 **2026-07-12 — Members get a file-capable chat (A3); attachment writes are symlink-safe, with one tracked TOCTOU residual.** The member `simple` tab is replaced by a new lean **`chat`** tab (`tabs/member-chat.js`, role-mounted like `home`): inline conversation, SSE streaming, first-class **file attach/receive**, a read-only "Running on: …" model indicator (no picker), XSS-safe (`textContent`-only). Member tabs are now `['home','chat','persona','skills']`. Attach accepts a **typical-files allowlist** (docs/sheets/slides/images/data, 29 extensions, 25 MB; executables rejected default-deny), saving to `groups/<folder>/attachments/<safeName>` with a `[File: …]` marker the agent reads; **no document conversion** (PDFs via `pdf-reader`/`pdftotext`, images inline, Office files land raw — docling text + the picture-description/DGX-vision workflow are a future phase as installable skills). Live-proven: a member attached a CSV → the agent read it on `provider=clemson`; a produced file downloaded via the outbox route. **Security:** the whole-branch review caught that attachment writes followed symlinks — and since `groups/<folder>` is mounted RW into the member's own agent container, that was a member→host arbitrary-write. Closed via a shared `saveMemberAttachment` (realpath-containment guard against a symlinked `attachments/` dir + `O_NOFOLLOW` against a symlinked final component + forced `.pdf` on the pdf branch to kill the mimeType-spoof), with a real symlink-write regression test. **Tracked residual (accepted for the small trusted pilot, close before all ~15):** an intermediate-directory-symlink **TOCTOU** race survives — `O_NOFOLLOW` guards only the final component, and it's pre-existing/systemic (any host write into the RW-mounted group dir, incl. the image branch). The robust close is to **stage attachments in a host-only dir mounted READ-ONLY into the container** so the agent can't mutate the path.
 
 **2026-07-12 — Slice D scoped to vocabulary only; the `classroom_roster` drop was deliberately deferred (it is NOT vestigial).** The playground wordmark was rebranded to **"GC Agents"** (text wordmark, `classroom-nano.png` dropped from HTML) and all member-visible **"instructor"** rendered strings were changed to admin/department wording (login-PIN error, owner Home Drive/Telegram copy, models-tab `ask admin` label, Google-auth error HTML in both `api/google-auth.ts` and `google-oauth.ts`). **The `classroom_roster` table drop was investigated and dropped from scope:** the table is 0 rows but is NOT dead — it backs (a) the superseded-but-wired Google-OAuth *login* path (`google-oauth.ts`, routes `/oauth/google/start`+`/callback`) and (b) the Phase-14 Google *Drive/Sheets* connect (`api/google-auth.ts` + `me.ts` use `lookupRosterByUserId` to map a user → their agent group + email when stamping connected Google creds). Dropping it would force rewriting the Drive-connect path — a feature we want to keep but which is currently disabled (A2 "Available soon" card, pending the GCP step). **Do NOT naively drop `classroom_roster`;** its roster→entity-model rewire (`agent_group_members` + `agent_groups.metadata` already carry the user→group→email mapping) belongs *with* the future Google-connect buildout. Still-deferred `class`-vocabulary (e.g. "class-shared Drive", "your class agent") and the internal `class_*`/`student-*`/`ta` identifier renames were left untouched (churn with no functional gain; the live-data `class_login_tokens`/`class_telegram_pair_codes` tables carry active rows). The Telegram bot stays `@CUInstructorBot` — a bot's Telegram @username is fixed at creation (needs a new bot via BotFather to change).
@@ -190,18 +192,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (125 commits ahead)
+- **Last tag:** `classroom-2026-07` (126 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 5]
-M  src/channels/playground/public/app.js
+## main...origin/main [ahead 6]
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+d093f6c9 chore(playground): drop unused tab-gating imports in app.js (final-review minor)
 afbd038f docs(review): live verification — member Setup restructure
 5c52a5e5 docs(plan): note Go-to-MyAgent button removed (redundant with nav tab)
 a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
@@ -216,9 +219,8 @@ fdf6ff55 feat(playground): lean member chat component (inline, file attach/recei
 0eb968aa feat(playground): accept typical work files as chat attachments (allowlist, [File:] marker)
 7dea36af docs(plan): A3 file-centric member chat implementation plan
 27a7d1bf docs(spec): A3 — keep phase 1 simple; defer document conversion to skills
-e44e271b docs(spec): A3 — typical-files allowlist (block executables) + slides workaround
 ```
 
 ### Last refresh
 
-2026-07-12T14:49:00Z
+2026-07-12T14:49:32Z
