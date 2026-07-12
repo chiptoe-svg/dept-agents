@@ -190,18 +190,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (124 commits ahead)
+- **Last tag:** `classroom-2026-07` (125 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
-A  docs/superpowers/reviews/2026-07-12-setup-restructure-verification.md
+## main...origin/main [ahead 5]
+M  src/channels/playground/public/app.js
 ```
 
 ### Recent commits (last 15)
 
 ```
+afbd038f docs(review): live verification — member Setup restructure
 5c52a5e5 docs(plan): note Go-to-MyAgent button removed (redundant with nav tab)
 a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 8cb552fc feat(playground): member top nav = Setup + MyAgent; persona/skills reachable but off the bar
@@ -216,9 +217,8 @@ fdf6ff55 feat(playground): lean member chat component (inline, file attach/recei
 7dea36af docs(plan): A3 file-centric member chat implementation plan
 27a7d1bf docs(spec): A3 — keep phase 1 simple; defer document conversion to skills
 e44e271b docs(spec): A3 — typical-files allowlist (block executables) + slides workaround
-de74e3f0 docs(spec): A3 file-centric member chat design
 ```
 
 ### Last refresh
 
-2026-07-12T14:44:45Z
+2026-07-12T14:49:00Z

@@ -12,7 +12,7 @@ import { mountBenchmarks } from './tabs/benchmarks.js';
 import { mountStatus } from './tabs/status.js';
 import { initDraftBanner } from './draft-banner.js';
 import { mountMemberHome } from './tabs/member-home.js';
-import { TABS, MEMBER_TABS, hasFullAccess, tabsForRole, MEMBER_NAV_TABS, navTabsForRole } from './tab-gating.js';
+import { TABS, hasFullAccess, tabsForRole, navTabsForRole } from './tab-gating.js';
 
 const mounters = {
   home: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountHome(tabEl) : mountMemberHome(tabEl)),
