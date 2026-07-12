@@ -45,6 +45,83 @@ import { getPlatformPrefix, getSetupConfig, playgroundOutboxDir } from './adapte
 import { isSafeAttachmentName } from '../../attachment-safety.js';
 import { isAllowedAttachment } from './attachment-allowlist.js';
 
+// Symlink-safe save for member-named chat attachments — the `application/pdf`
+// and allowlisted-"other file" branches of the POST /messages handler below,
+// both of which let the calling member choose the saved filename. Everything
+// else (image/* attachments) writes under a server-generated name and never
+// calls this.
+//
+// Threat model: `groups/<folder>` is mounted read-write into that group's own
+// agent container, and the member controls their agent. A member can have
+// their agent create `attachments/evil.csv` as a symlink to any host path (or
+// replace `attachments/` itself with a symlink to a directory outside the
+// group), then upload a same-named attachment through chat — this runs in the
+// **host** service process, so an unguarded write is an arbitrary host-file
+// write. This helper closes both angles:
+//   - directory-symlink guard: realpath the group folder and the attachments
+//     dir and require the latter to be exactly `<group realpath>/attachments`
+//   - file-symlink guard: open with O_NOFOLLOW so a symlinked final path
+//     component fails atomically (ELOOP) instead of being followed — no
+//     lstat-then-write TOCTOU window
+//
+// It also enforces the type gate so the `application/pdf` mimeType assertion
+// can't be used to smuggle an arbitrary filename/extension past the
+// allowlist: PDF saves are forced to end in `.pdf`; non-PDF saves must pass
+// `isAllowedAttachment`.
+function saveMemberAttachment(
+  draftFolder: string,
+  attachDir: string,
+  providedName: string,
+  fallbackName: string,
+  buffer: Buffer,
+  kind: 'pdf' | 'file',
+): { ok: true; safeName: string } | { ok: false; error: string } {
+  if (kind === 'file' && !isAllowedAttachment(providedName)) {
+    return { ok: false, error: `blocked file type (${providedName})` };
+  }
+
+  let safeName = providedName.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
+  // Reject anything that still isn't a safe single-segment name (e.g. empty
+  // after stripping, or dotfile-shaped) — fall back to a known-safe generated
+  // name rather than writing an attacker-influenced path.
+  if (!isSafeAttachmentName(safeName)) safeName = fallbackName;
+  // The mimeType asserted PDF — force the extension so a spoofed mimeType
+  // can't smuggle an off-allowlist extension (e.g. "evil.sh") past this gate.
+  if (kind === 'pdf' && !/\.pdf$/i.test(safeName)) safeName = `${safeName}.pdf`;
+
+  let groupRoot: string;
+  let attachDirReal: string;
+  try {
+    groupRoot = fs.realpathSync(path.join(GROUPS_DIR, draftFolder));
+    attachDirReal = fs.realpathSync(attachDir);
+  } catch (err) {
+    return { ok: false, error: `save failed — ${(err as Error).message}` };
+  }
+  if (attachDirReal !== path.join(groupRoot, 'attachments')) {
+    return { ok: false, error: 'save failed — attachments directory is not safe' };
+  }
+
+  const savePath = path.join(attachDir, safeName);
+  try {
+    const fd = fs.openSync(
+      savePath,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW,
+      0o644,
+    );
+    try {
+      fs.writeSync(fd, buffer);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (err) {
+    // Symlinked final component throws ELOOP here — do NOT fall back to a
+    // symlink-following write; report it as a save failure.
+    return { ok: false, error: `save failed — ${(err as Error).message}` };
+  }
+
+  return { ok: true, safeName };
+}
+
 // Minimal content-type lookup for agent-produced files. The chat tab renders
 // these as `<a download>` links so the browser only needs the type as a hint.
 function contentTypeFor(filename: string): string {
@@ -304,46 +381,52 @@ export async function route(
         }
       } else if (f.mimeType === 'application/pdf') {
         const fallbackName = `playground_${messageId}_${i}.pdf`;
-        let safeName = (f.name || fallbackName).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
-        // Reject anything that still isn't a safe single-segment name (e.g.
-        // empty after stripping, or dotfile-shaped) — fall back to a known-safe
-        // generated name rather than writing an attacker-influenced path.
-        if (!isSafeAttachmentName(safeName)) safeName = fallbackName;
-        const savePath = path.join(attachDir, safeName);
-        try {
-          fs.writeFileSync(savePath, buffer);
-          pdfMarkers.push(`[PDF: attachments/${safeName}]`);
-        } catch (err) {
-          fileErrors.push(`file[${i}]: PDF save failed — ${(err as Error).message}`);
+        const result = saveMemberAttachment(
+          draftFolder,
+          attachDir,
+          f.name || fallbackName,
+          fallbackName,
+          buffer,
+          'pdf',
+        );
+        if (result.ok) {
+          pdfMarkers.push(`[PDF: attachments/${result.safeName}]`);
+        } else {
+          fileErrors.push(`file[${i}]: ${result.error}`);
         }
       } else {
         // Any other allowlisted file type: save to attachments/ and reference
         // it by a text marker the agent reads from /workspace/agent/attachments/.
         // Off-allowlist (executables etc.) is rejected — default-deny.
         const providedName = f.name || `playground_${messageId}_${i}`;
-        if (!isAllowedAttachment(providedName)) {
-          fileErrors.push(`file[${i}]: blocked file type (${providedName})`);
-          continue;
-        }
         const fallbackName = `playground_${messageId}_${i}`;
-        let safeName = providedName.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
-        if (!isSafeAttachmentName(safeName)) safeName = fallbackName;
-        const savePath = path.join(attachDir, safeName);
-        try {
-          fs.writeFileSync(savePath, buffer);
-          fileMarkers.push(`[File: attachments/${safeName}]`);
-        } catch (err) {
-          fileErrors.push(`file[${i}]: save failed — ${(err as Error).message}`);
+        const result = saveMemberAttachment(draftFolder, attachDir, providedName, fallbackName, buffer, 'file');
+        if (result.ok) {
+          fileMarkers.push(`[File: attachments/${result.safeName}]`);
+        } else {
+          fileErrors.push(`file[${i}]: ${result.error}`);
         }
       }
     }
 
     if (fileErrors.length > 0) log.warn('Playground attachment(s) had errors', { draftFolder, fileErrors });
 
-    // Compose the chat-sdk-style content. Order: PDF markers prepended to
-    // text so the agent sees them in context; images carried separately as
-    // content.images[] which the formatter extracts into imagePaths.
+    // Compose the chat-sdk-style content. Order: PDF markers and file markers
+    // prepended to text so the agent sees them in context; images carried
+    // separately as content.images[] which the formatter extracts into
+    // imagePaths.
     const composedText = [...pdfMarkers, ...fileMarkers, text].filter(Boolean).join('\n');
+
+    // Every attachment may have been rejected (blocked type, symlink guard,
+    // save failure) leaving nothing to say — don't wake a container to reply
+    // to an empty message.
+    if (!composedText && images.length === 0) {
+      return send(res, 400, {
+        error: 'text or files required',
+        attachmentErrors: fileErrors.length > 0 ? fileErrors : undefined,
+      });
+    }
+
     const contentObj: Record<string, unknown> = {
       text: composedText,
       sender: 'You',

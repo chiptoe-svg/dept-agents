@@ -188,18 +188,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (116 commits ahead)
+- **Last tag:** `classroom-2026-07` (117 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 7]
-A  docs/superpowers/reviews/2026-07-12-a3-verification.md
+## main...origin/main [ahead 8]
+M  src/channels/playground/api-routes.attach.test.ts
+M  src/channels/playground/api-routes.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+d5e16f34 docs(review): live verification — A3 file-centric member chat
 631bcb1e feat(playground): members get the lean chat tab, drop the simple tab
 fdf6ff55 feat(playground): lean member chat component (inline, file attach/receive)
 0eb968aa feat(playground): accept typical work files as chat attachments (allowlist, [File:] marker)
@@ -214,9 +216,8 @@ c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 24c69a63 docs(state): A2 member onboarding shipped; correct :3003 bind note
 37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
 277f66d0 docs(review): live verification — A2 member onboarding
-62e11fd9 docs(plan): add the proxy-bind-hardening plan (was uncommitted)
 ```
 
 ### Last refresh
 
-2026-07-12T13:35:11Z
+2026-07-12T13:48:12Z

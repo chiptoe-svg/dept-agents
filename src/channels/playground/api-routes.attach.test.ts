@@ -197,4 +197,63 @@ describe('POST /api/drafts/:folder/messages — attachment allowlist', () => {
     // just confirm no [File: …]-marker file exists).
     expect(fs.existsSync(attachDir) ? fs.readdirSync(attachDir) : []).not.toContain('photo.png');
   });
+
+  it('a symlinked attachment name refuses to write — the outside target is untouched (Critical regression)', async () => {
+    fs.mkdirSync(attachDir, { recursive: true });
+
+    // A target outside the group entirely, simulating a host file a
+    // compromised agent might try to overwrite (e.g. a dotfile or config).
+    const outsideTarget = path.join(TMP, 'outside-target.txt');
+    const sentinel = 'do-not-overwrite-me';
+    fs.writeFileSync(outsideTarget, sentinel);
+
+    // Member-controlled: the agent (via the group's own read-write mount)
+    // creates a symlink named like the attachment it's about to receive.
+    fs.symlinkSync(outsideTarget, path.join(attachDir, 'evil.csv'));
+
+    const base64 = Buffer.from('attacker,controlled,bytes').toString('base64');
+    const { status, body } = await postMessage({
+      text: '',
+      files: [{ name: 'evil.csv', mimeType: 'text/csv', base64 }],
+    });
+
+    // The outside file must survive completely unchanged.
+    expect(fs.readFileSync(outsideTarget, 'utf8')).toBe(sentinel);
+
+    // Either nothing was written at the symlink path, or the attachment was
+    // reported as an error — never both silently written AND successful.
+    const symlinkStat = fs.lstatSync(path.join(attachDir, 'evil.csv'));
+    expect(symlinkStat.isSymbolicLink()).toBe(true); // untouched, still a symlink
+    expect(body.attachmentErrors).toBeDefined();
+
+    // Empty text + the only attachment rejected → no message forwarded.
+    expect(status).toBe(400);
+    expect(onInboundEvent).not.toHaveBeenCalled();
+  });
+
+  it('an application/pdf mimeType cannot smuggle a non-.pdf name past the allowlist (spoof closed)', async () => {
+    const base64 = Buffer.from('#!/bin/sh\necho pwned\n').toString('base64');
+    const { status, body } = await postMessage({
+      text: 'here',
+      files: [{ name: 'evil.sh', mimeType: 'application/pdf', base64 }],
+    });
+
+    expect(status).toBe(200);
+    const saved = fs.existsSync(attachDir) ? fs.readdirSync(attachDir) : [];
+    expect(saved.some((n) => n.endsWith('.sh'))).toBe(false);
+    expect(body.attachmentErrors).toBeUndefined();
+  });
+
+  it('a legit report.pdf still saves and emits a [PDF: …] marker (no regression)', async () => {
+    const base64 = Buffer.from('%PDF-1.4 fake pdf bytes').toString('base64');
+    const { status, body } = await postMessage({
+      text: 'the report',
+      files: [{ name: 'report.pdf', mimeType: 'application/pdf', base64 }],
+    });
+
+    expect(status).toBe(200);
+    expect(body.attachmentErrors).toBeUndefined();
+    expect(fs.readdirSync(attachDir)).toContain('report.pdf');
+    expect(composedText()).toContain('[PDF: attachments/report.pdf]');
+  });
 });
