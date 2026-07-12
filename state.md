@@ -186,21 +186,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (105 commits ahead)
+- **Last tag:** `classroom-2026-07` (106 commits ahead)
 
 ### Working tree
 
 ```
 ## main...origin/main
-M  src/channels/playground/public/index.html
-M  src/channels/playground/public/login.html
-M  src/channels/playground/public/seat-picker.html
-M  src/channels/playground/public/style.css
+A  docs/superpowers/plans/2026-07-12-slice-d-scoped.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+941e8b77 feat(playground): rebrand wordmark "NanoClaw Classroom" -> "GC Agents"
 24c69a63 docs(state): A2 member onboarding shipped; correct :3003 bind note
 37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
 277f66d0 docs(review): live verification — A2 member onboarding
@@ -215,9 +213,8 @@ d985b9bf docs(spec): A2 — Google card is a disabled "Available soon" placehold
 8fe71363 docs(spec): A2 member onboarding/setup design (dept server)
 aa836b10 fix(security): bind webhook server to loopback only (off campus LAN)
 b8c0bed1 docs(state): bind-hardening decision-log entry — proxy/relay off campus LAN
-d67bc05b fix(security): restrict proxy/relay bind to loopback family; normalize wildcard check
 ```
 
 ### Last refresh
 
-2026-07-11T13:06:46Z
+2026-07-12T07:31:34Z
