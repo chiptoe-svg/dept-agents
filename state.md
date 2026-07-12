@@ -186,18 +186,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (106 commits ahead)
+- **Last tag:** `classroom-2026-07` (108 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main
-A  docs/superpowers/plans/2026-07-12-slice-d-scoped.md
+## main...origin/main [ahead 2]
+M  src/channels/playground/api/models-tab-state.test.ts
+M  src/channels/playground/google-oauth.ts
+M  src/channels/playground/server.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+7413bc7f chore(copy): department vocabulary — user-visible 'instructor' -> admin/department
+c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 941e8b77 feat(playground): rebrand wordmark "NanoClaw Classroom" -> "GC Agents"
 24c69a63 docs(state): A2 member onboarding shipped; correct :3003 bind note
 37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
@@ -211,10 +215,8 @@ b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Ho
 8b26e360 docs(spec): A2 — members get persona + skills tabs (reused as-is)
 d985b9bf docs(spec): A2 — Google card is a disabled "Available soon" placeholder
 8fe71363 docs(spec): A2 member onboarding/setup design (dept server)
-aa836b10 fix(security): bind webhook server to loopback only (off campus LAN)
-b8c0bed1 docs(state): bind-hardening decision-log entry — proxy/relay off campus LAN
 ```
 
 ### Last refresh
 
-2026-07-12T07:31:34Z
+2026-07-12T11:35:14Z

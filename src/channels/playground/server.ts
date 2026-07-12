@@ -312,7 +312,7 @@ async function handleLostLinkRecover(req: http.IncomingMessage, res: http.Server
   if (!hasLostLinkRecoverer()) {
     send(res, 200, {
       ok: true,
-      message: 'Self-serve recovery is not enabled here. Please contact your instructor for a fresh login link.',
+      message: 'Self-serve recovery is not enabled here. Please contact your admin for a fresh login link.',
     });
     return;
   }

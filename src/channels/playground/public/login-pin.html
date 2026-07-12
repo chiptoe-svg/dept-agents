@@ -65,7 +65,7 @@
             body: JSON.stringify({ token }),
           });
           if (!r.ok) {
-            errorEl.textContent = 'Could not start sign-in. Ask your instructor for a fresh link.';
+            errorEl.textContent = 'Could not start sign-in. Ask your admin for a fresh link.';
             submitBtn.disabled = true;
             return;
           }

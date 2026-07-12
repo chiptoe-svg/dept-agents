@@ -87,7 +87,7 @@ export function deriveProviderState(input: {
     return { state: 'GREYED', source: null, actionLabel: action };
   }
 
-  return { state: 'GREYED', source: null, actionLabel: 'ask instructor' };
+  return { state: 'GREYED', source: null, actionLabel: 'ask admin' };
 }
 
 // ---------------------------------------------------------------------------
