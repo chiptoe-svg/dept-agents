@@ -192,18 +192,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (135 commits ahead)
+- **Last tag:** `classroom-2026-07` (136 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 8]
-A  docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md
+## main...origin/main [ahead 9]
+M  scripts/bench.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+e7a04ffd docs(bench): A1 MCP-reliability report + default recommendation
 2539610f fix(bench): neutral bench persona (remove Socratic-tutor confound)
 8436f95c feat(bench): configurable timeout + durable results + --report-only recovery
 26caaf74 feat(bench): valid + fair MCP-reliability suite (isolation fix, scoring, report)
@@ -218,9 +219,8 @@ afbd038f docs(review): live verification — member Setup restructure
 5c52a5e5 docs(plan): note Go-to-MyAgent button removed (redundant with nav tab)
 a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 8cb552fc feat(playground): member top nav = Setup + MyAgent; persona/skills reachable but off the bar
-347169d2 docs(plan): member Setup restructure — Setup + MyAgent nav, persona/skills under Advanced
 ```
 
 ### Last refresh
 
-2026-07-12T23:31:43Z
+2026-07-12T23:40:08Z

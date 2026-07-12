@@ -92,7 +92,7 @@ const MCP_TASKS: McpTask[] = JSON.parse(fs.readFileSync(MCP_PROMPTS_PATH, 'utf8'
 // We rewrite URLs in prompts at send time so the containers can actually fetch them.
 function rewriteFixtureUrls(text: string): string {
   const localBase = `http://127.0.0.1:${FIXTURE_PORT}/`;
-  const gatewayBase = `http://${CONTAINER_HOST_GATEWAY}:${FIXTURE_PORT}/`;
+  const gatewayBase = `http://${CONTAINER_HOST_GATEWAY()}:${FIXTURE_PORT}/`;
   return text.split(localBase).join(gatewayBase);
 }
 
@@ -272,7 +272,7 @@ async function obtainSessionCookie(): Promise<string> {
 // -- Bench agent group provisioning ----------------------------------------
 
 function benchFolder(systemKey: string, sourceFolder: string): string {
-  // bench_<system>_<source>   e.g. bench_claude-sonnet_dm-with-chiptonkin
+  // bench_<system>_<source>   e.g. bench_clemson-qwen36_owner_01
   return `bench_${systemKey}_${sourceFolder}`;
 }
 
@@ -756,9 +756,11 @@ async function resolveOutboundPath(folder: string): Promise<string | undefined> 
   const { getActiveSessions } = await import('../src/db/sessions.js');
   const ag = getAgentGroupByFolder(folder);
   if (!ag) return undefined;
-  const sessions = getActiveSessions().filter((s) => s.agent_group_id === ag.id);
+  const sessions = getActiveSessions()
+    .filter((s) => s.agent_group_id === ag.id)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   if (sessions.length === 0) return undefined;
-  const sess = sessions[sessions.length - 1]!;
+  const sess = sessions[0]!; // most-recent active session for this bench group
   const outboundPath = path.join(PROJECT_ROOT, 'data', 'v2-sessions', ag.id, sess.id, 'outbound.db');
   return fs.existsSync(outboundPath) ? outboundPath : undefined;
 }
@@ -766,12 +768,17 @@ async function resolveOutboundPath(folder: string): Promise<string | undefined> 
 async function getMaxSeq(outboundPath: string | undefined): Promise<number> {
   if (!outboundPath) return 0;
   const { default: Database } = await import('better-sqlite3');
-  const db = new Database(outboundPath, { readonly: true });
+  let db: import('better-sqlite3').Database | undefined;
   try {
+    db = new Database(outboundPath, { readonly: true });
     const row = db.prepare('SELECT MAX(seq) AS maxSeq FROM messages_out').get() as { maxSeq: number | null };
     return row.maxSeq ?? 0;
+  } catch {
+    // DB missing/uninitialized before the first turn — treat as no prior rows
+    // rather than aborting the whole run (this runs outside the per-task try).
+    return 0;
   } finally {
-    db.close();
+    db?.close();
   }
 }
 
@@ -1097,7 +1104,15 @@ async function main(): Promise<void> {
 
   // Report-only: render from the durable JSONL without running any turns.
   if (reportOnly) {
-    const reportPath = renderMcpReport(loadMcpResults());
+    const loaded = loadMcpResults();
+    if (loaded.length === 0) {
+      console.error(
+        `No results in ${BENCH_RESULTS_PATH} — refusing to overwrite the report with empty tables. ` +
+          `Run the suite first (drop --report-only).`,
+      );
+      process.exit(1);
+    }
+    const reportPath = renderMcpReport(loaded);
     console.log(`Report written from ${BENCH_RESULTS_PATH}: ${reportPath}`);
     return;
   }
@@ -1138,9 +1153,9 @@ async function main(): Promise<void> {
   }
 
   // 2. Start fixture server
-  console.log(`Starting fixture server on 0.0.0.0:${FIXTURE_PORT} (gateway: ${CONTAINER_HOST_GATEWAY})…`);
+  console.log(`Starting fixture server on 0.0.0.0:${FIXTURE_PORT} (gateway: ${CONTAINER_HOST_GATEWAY()})…`);
   await startFixtureServer();
-  console.log(`  Fixture server ready — containers will reach it at http://${CONTAINER_HOST_GATEWAY}:${FIXTURE_PORT}/`);
+  console.log(`  Fixture server ready — containers will reach it at http://${CONTAINER_HOST_GATEWAY()}:${FIXTURE_PORT}/`);
 
   let grandTotal = 0;
   let grandPassed = 0;
