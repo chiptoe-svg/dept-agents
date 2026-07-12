@@ -43,6 +43,7 @@ import { canReadDraft } from './draft-read-gate.js';
 import { requireGroupAccess } from './require-group-access.js';
 import { getPlatformPrefix, getSetupConfig, playgroundOutboxDir } from './adapter.js';
 import { isSafeAttachmentName } from '../../attachment-safety.js';
+import { isAllowedAttachment } from './attachment-allowlist.js';
 
 // Minimal content-type lookup for agent-produced files. The chat tab renders
 // these as `<a download>` links so the browser only needs the type as a hint.
@@ -233,11 +234,14 @@ export async function route(
   // target agent_group.
   //
   // Optional `files: [{ name, mimeType, base64 }]` lets the playground UI
-  // send image and PDF attachments. Images run through processImage()
-  // (resize to 1024px / JPEG quality 80) and land in content.images[]
-  // alongside the text. PDFs save to groups/<folder>/attachments/ and
-  // are referenced as `[PDF: attachments/<name>.pdf]` text markers, same
-  // convention as Telegram. Total decoded size capped at 25 MB.
+  // send image and other typical work-file attachments. Images run through
+  // processImage() (resize to 1024px / JPEG quality 80) and land in
+  // content.images[] alongside the text. application/pdf and any other
+  // allowlisted file type (see attachment-allowlist.ts — docs, spreadsheets,
+  // slides, data files; executables are rejected) save to
+  // groups/<folder>/attachments/ and are referenced as `[PDF: attachments/<name>]`
+  // / `[File: attachments/<name>]` text markers, same convention as Telegram.
+  // Total decoded size capped at 25 MB.
   const messagesMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/messages$/);
   if (method === 'POST' && messagesMatch) {
     const draftFolder = messagesMatch[1]!;
@@ -271,6 +275,7 @@ export async function route(
     let totalBytes = 0;
     const images: Array<{ base64: string; mimeType: string; containerPath: string }> = [];
     const pdfMarkers: string[] = [];
+    const fileMarkers: string[] = [];
     const fileErrors: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
@@ -312,7 +317,24 @@ export async function route(
           fileErrors.push(`file[${i}]: PDF save failed — ${(err as Error).message}`);
         }
       } else {
-        fileErrors.push(`file[${i}]: unsupported mimeType ${f.mimeType} (only image/* and application/pdf accepted)`);
+        // Any other allowlisted file type: save to attachments/ and reference
+        // it by a text marker the agent reads from /workspace/agent/attachments/.
+        // Off-allowlist (executables etc.) is rejected — default-deny.
+        const providedName = f.name || `playground_${messageId}_${i}`;
+        if (!isAllowedAttachment(providedName)) {
+          fileErrors.push(`file[${i}]: blocked file type (${providedName})`);
+          continue;
+        }
+        const fallbackName = `playground_${messageId}_${i}`;
+        let safeName = providedName.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
+        if (!isSafeAttachmentName(safeName)) safeName = fallbackName;
+        const savePath = path.join(attachDir, safeName);
+        try {
+          fs.writeFileSync(savePath, buffer);
+          fileMarkers.push(`[File: attachments/${safeName}]`);
+        } catch (err) {
+          fileErrors.push(`file[${i}]: save failed — ${(err as Error).message}`);
+        }
       }
     }
 
@@ -321,7 +343,7 @@ export async function route(
     // Compose the chat-sdk-style content. Order: PDF markers prepended to
     // text so the agent sees them in context; images carried separately as
     // content.images[] which the formatter extracts into imagePaths.
-    const composedText = [...pdfMarkers, text].filter(Boolean).join('\n');
+    const composedText = [...pdfMarkers, ...fileMarkers, text].filter(Boolean).join('\n');
     const contentObj: Record<string, unknown> = {
       text: composedText,
       sender: 'You',
