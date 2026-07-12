@@ -11,7 +11,7 @@
     "id": "section-details",
     "kind": "single",
     "prompt": "Where and when does GC 1010 section 001 meet in Fall 2026?",
-    "expectedTool": "section-details",
+    "expectedTool": "get-clemson-section-details|search-clemson-classes",
     "gate": "mcp",
     "expected": null
   },
@@ -26,8 +26,8 @@
   {
     "id": "curriculum",
     "kind": "single",
-    "prompt": "What are the prerequisites for GC 2020, and what topics does the course cover?",
-    "expectedTool": "gc-wiki",
+    "prompt": "What courses are required for the Graphic Communications (GC) major?",
+    "expectedTool": "gc-wiki|program-plan|search_curriculum",
     "gate": "mcp",
     "expected": null
   },

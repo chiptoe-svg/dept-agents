@@ -35,6 +35,7 @@
  * pre-turn max seq, and score tool use / grounding / exact-match. No DB persistence yet
  * (the markdown report renderer is a follow-up task) — just a console summary.
  */
+import { execSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';
@@ -46,7 +47,7 @@ import { computeCost, insertEvent, insertRun } from './bench-db.js';
 import { judgeOutput } from './bench-judge.js';
 import { runGate } from './bench-gates.js';
 import { readTurnOutbound, toolInvoked, answerGrounded, matchesExpected } from './bench-mcp-score.js';
-import { CONTAINER_HOST_GATEWAY } from '../src/container-runtime.js';
+import { CONTAINER_HOST_GATEWAY, CONTAINER_RUNTIME_BIN, stopContainer } from '../src/container-runtime.js';
 
 // -- Resolve project root from __dirname (scripts/) -------------------------
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -212,6 +213,13 @@ function httpPost(
 
 // -- Auth -------------------------------------------------------------------
 async function obtainSessionCookie(): Promise<string> {
+  // Prefer a caller-supplied legitimate session cookie (e.g. an owner
+  // login-token redeemed to a cookie). This avoids enabling the
+  // BENCH_MODE owner-session bypass on a network-reachable host.
+  const supplied = process.env.NC_BENCH_COOKIE;
+  if (supplied && supplied.trim()) {
+    return supplied.trim().startsWith('nc_playground=') ? supplied.trim() : `nc_playground=${supplied.trim()}`;
+  }
   const resp = await httpGet(`${PLAYGROUND_BASE}/api/bench/session`);
   if (resp.status !== 200) {
     throw new Error(
@@ -373,6 +381,33 @@ async function createBenchGroupViaDb(
   ensureDraftWiring(folder);
 }
 
+/**
+ * Stop every running container for a bench group, by name pattern, via the
+ * runtime CLI (`container`/`docker`). Process-independent — works from this
+ * separate bench process where the host's in-memory container Map is empty.
+ * The container name is `nanoclaw-v2-<folder>-<timestamp>` (container-runner.ts).
+ */
+function stopContainersForFolder(folder: string): void {
+  const prefix = `nanoclaw-v2-${folder}-`;
+  let names: string[] = [];
+  try {
+    const out = execSync(`${CONTAINER_RUNTIME_BIN} ls`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    names = out
+      .split('\n')
+      .map((line: string) => line.trim().split(/\s+/)[0] ?? '')
+      .filter((name: string) => name.startsWith(prefix));
+  } catch {
+    return; // runtime unavailable — best effort
+  }
+  for (const name of names) {
+    try {
+      stopContainer(name);
+    } catch {
+      /* already stopped / race */
+    }
+  }
+}
+
 async function clearContinuation(
   systemKey: string,
   sourceFolder: string,
@@ -386,20 +421,20 @@ async function clearContinuation(
   const ag = getAgentGroupByFolder(folder);
   if (!ag) return;
 
-  // Find active sessions for this agent group.
+  // Kill any running container for this group so the next spawn starts a
+  // fresh agent session. isContainerRunning/killContainer track containers in
+  // an in-memory Map owned by the HOST process; this bench script is a
+  // separate process, so that path is a no-op here. Stop the container
+  // process-independently via the runtime CLI, matching the host's naming
+  // (`nanoclaw-v2-<folder>-<timestamp>`). Without this the old container keeps
+  // polling and answers the next task from its in-memory continuation — the
+  // task-isolation leak that invalidates tool-invoked scoring.
+  stopContainersForFolder(folder);
+
+  // Find active sessions for this agent group (to clear the DB continuation slot).
   const sessions = getActiveSessions().filter((s) => s.agent_group_id === ag.id);
-  const { isContainerRunning, killContainer } = await import('../src/container-runner.js');
 
   for (const sess of sessions) {
-    // Kill any running container so the next spawn picks up fresh container.json.
-    if (isContainerRunning(sess.id)) {
-      try {
-        killContainer(sess.id, 'bench: fresh thread requested');
-      } catch {
-        // best-effort — container may have just exited
-      }
-    }
-
     const outboundPath = path.join(PROJECT_ROOT, 'data', 'v2-sessions', ag.id, sess.id, 'outbound.db');
     if (!fs.existsSync(outboundPath)) continue;
     // Open outbound.db and delete continuation:* rows.
@@ -751,7 +786,16 @@ async function runBenchMcp(
         answerPass = answerGrounded(outboundTurn);
       } else {
         toolPass = true; // no tool expected for general tasks
-        answerPass = task.expected != null ? matchesExpected(reply, task.expected) : false;
+        if (task.expected == null) {
+          answerPass = false;
+        } else if (task.gate === 'json') {
+          // Format task: compare whitespace-insensitively so a correct answer
+          // like `{"answer": 42}` matches the expected `{"answer":42}`.
+          const strip = (s: string) => s.replace(/\s+/g, '');
+          answerPass = strip(reply).includes(strip(task.expected));
+        } else {
+          answerPass = matchesExpected(reply, task.expected);
+        }
       }
     } catch (err) {
       errored = true;
@@ -913,6 +957,82 @@ async function runBench(
 
 // -- Entry point ------------------------------------------------------------
 
+/** Render the MCP-reliability results to a markdown report file. */
+function renderMcpReport(mcpResults: McpResult[], systemKeys: string[]): string {
+  const REPORT_PATH = path.join(
+    PROJECT_ROOT,
+    'docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md',
+  );
+  const isMcp = (taskId: string): boolean => MCP_TASKS.find((t) => t.id === taskId)?.expectedTool != null;
+  const median = (xs: number[]): number | null => {
+    const s = xs.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+    if (!s.length) return null;
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid]! : Math.round((s[mid - 1]! + s[mid]!) / 2);
+  };
+  const labels = systemKeys.map((k) => SYSTEMS[k]!.label);
+  const cell = (r: McpResult): string => {
+    if (r.errored) return 'ERR';
+    if (isMcp(r.task)) return `${r.toolPass ? 'tool✓' : 'tool✗'} ${r.answerPass ? 'ans✓' : 'ans✗'}`;
+    return r.answerPass ? '✓' : '✗';
+  };
+
+  let md = `# A1 — Model Benchmark: MCP Tool-Use Reliability\n\n`;
+  md += `**Date:** 2026-07-12. Real pi agent turns driven through the live department server against a scratch bench group re-pointed at each candidate free model. Headline metric: does the model invoke a relevant MCP tool AND ground its answer in that tool's result (vs. hallucinating). Each task runs in an isolated fresh agent session (container stopped between tasks).\n\n`;
+
+  // Matrix
+  md += `## Matrix (systems × tasks)\n\n`;
+  md += `| System | ${MCP_TASKS.map((t) => t.id).join(' | ')} |\n`;
+  md += `|${'---|'.repeat(MCP_TASKS.length + 1)}\n`;
+  for (const label of labels) {
+    const rowCells = MCP_TASKS.map((t) => {
+      const r = mcpResults.find((x) => x.system === label && x.task === t.id);
+      return r ? cell(r) : '—';
+    });
+    md += `| ${label} | ${rowCells.join(' | ')} |\n`;
+  }
+
+  // Per-system summary
+  md += `\n## Per-system summary\n\n`;
+  md += `| System | MCP reliability | Overall pass | Median latency | Errors |\n|---|---|---|---|---|\n`;
+  const ranking: Array<{ label: string; mcpRel: number; latency: number | null }> = [];
+  for (const label of labels) {
+    const rows = mcpResults.filter((r) => r.system === label);
+    const mcpRows = rows.filter((r) => isMcp(r.task));
+    const mcpPass = mcpRows.filter((r) => !r.errored && r.toolPass && r.answerPass).length;
+    const overallPass = rows.filter((r) => !r.errored && r.toolPass && r.answerPass).length;
+    const errs = rows.filter((r) => r.errored).length;
+    const lat = median(rows.map((r) => r.latencyMs ?? NaN).filter((n) => Number.isFinite(n)) as number[]);
+    const mcpRel = mcpRows.length ? mcpPass / mcpRows.length : 0;
+    ranking.push({ label, mcpRel, latency: lat });
+    md += `| ${label} | ${mcpPass}/${mcpRows.length} (${Math.round(mcpRel * 100)}%) | ${overallPass}/${rows.length} | ${lat != null ? lat + 'ms' : '—'} | ${errs} |\n`;
+  }
+
+  // Computed ranking (MCP reliability desc, then latency asc)
+  ranking.sort((a, b) => b.mcpRel - a.mcpRel || (a.latency ?? Infinity) - (b.latency ?? Infinity));
+  md += `\n## Computed ranking (MCP reliability, then latency)\n\n`;
+  ranking.forEach((r, i) => {
+    md += `${i + 1}. **${r.label}** — ${Math.round(r.mcpRel * 100)}% MCP reliability${r.latency != null ? `, ${r.latency}ms median` : ''}\n`;
+  });
+  md += `\n> Recommendation prose is written by the controller after reviewing this data (Task 3 Step 3).\n`;
+
+  // Appendix: replies
+  md += `\n## Appendix — replies (spot-check)\n\n`;
+  for (const label of labels) {
+    md += `### ${label}\n\n`;
+    for (const t of MCP_TASKS) {
+      const r = mcpResults.find((x) => x.system === label && x.task === t.id);
+      if (!r) continue;
+      const snippet = (r.reply || '').replace(/\s+/g, ' ').slice(0, 400);
+      md += `- **${t.id}** (${cell(r)}${r.latencyMs != null ? `, ${r.latencyMs}ms` : ''}): ${snippet}\n`;
+    }
+    md += `\n`;
+  }
+
+  fs.writeFileSync(REPORT_PATH, md);
+  return REPORT_PATH;
+}
+
 async function main(): Promise<void> {
   const { source, systems, reps, suite } = parseArgs();
 
@@ -1007,6 +1127,8 @@ async function main(): Promise<void> {
       const rowsPassed = rows.filter((r) => !r.errored && r.toolPass && r.answerPass).length;
       console.log(`  ${label}: ${rowsPassed}/${rows.length}`);
     }
+    const reportPath = renderMcpReport(mcpResults, systems);
+    console.log(`\nReport written: ${reportPath}`);
   } else {
     const systemCount = systems.length;
     const runsPerSystem = BENCH_PROMPTS.length * reps;

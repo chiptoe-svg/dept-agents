@@ -20,6 +20,9 @@ describe('bench-mcp-score', () => {
     const t = parseTurnRows(rows);
     expect(toolInvoked(t, 'search-clemson-classes')).toBe(true);
     expect(toolInvoked(t, 'get-clemson-room-availability')).toBe(false);
+    // `|`-alternation: matches if ANY alternative matches a tool name.
+    expect(toolInvoked(t, 'get-clemson-section-details|search-clemson-classes')).toBe(true);
+    expect(toolInvoked(t, 'room-availability|section-details')).toBe(false);
   });
   it('answerGrounded is true when reply shares a value with a tool result', () => {
     expect(answerGrounded(parseTurnRows(rows))).toBe(true);

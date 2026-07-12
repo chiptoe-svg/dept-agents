@@ -192,19 +192,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (131 commits ahead)
+- **Last tag:** `classroom-2026-07` (132 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
-A  scripts/bench-prompts-mcp.json
+## main...origin/main [ahead 5]
+M  scripts/bench-mcp-score.test.ts
+M  scripts/bench-mcp-score.ts
+M  scripts/bench-prompts-mcp.json
 M  scripts/bench.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+dbfa62b3 feat(bench): pi/model_provider systems + MCP reliability suite
 d5cf6d8b feat(bench): MCP tool-use scoring from real outbound trace
 2815794e docs(plan): revise A1 to extend bench.ts (not build fresh)
 f29154de docs(plan): A1 model-benchmark harness (MCP tool-use reliability)
@@ -219,9 +222,8 @@ a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 616e66ac docs(state): A3 file-capable member chat shipped; symlink-safe attach + tracked TOCTOU residual
 58de935e docs(security): correct the attachment-write comment — residual TOCTOU is tracked
 63c34180 fix(security): symlink-safe chat attachment writes; close mimeType-spoof allowlist bypass
-d5e16f34 docs(review): live verification — A3 file-centric member chat
 ```
 
 ### Last refresh
 
-2026-07-12T21:27:55Z
+2026-07-12T22:15:53Z
