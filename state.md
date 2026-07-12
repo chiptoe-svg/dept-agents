@@ -188,19 +188,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (117 commits ahead)
+- **Last tag:** `classroom-2026-07` (118 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 8]
-M  src/channels/playground/api-routes.attach.test.ts
+## main...origin/main [ahead 9]
 M  src/channels/playground/api-routes.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+63c34180 fix(security): symlink-safe chat attachment writes; close mimeType-spoof allowlist bypass
 d5e16f34 docs(review): live verification — A3 file-centric member chat
 631bcb1e feat(playground): members get the lean chat tab, drop the simple tab
 fdf6ff55 feat(playground): lean member chat component (inline, file attach/receive)
@@ -215,9 +215,8 @@ c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 941e8b77 feat(playground): rebrand wordmark "NanoClaw Classroom" -> "GC Agents"
 24c69a63 docs(state): A2 member onboarding shipped; correct :3003 bind note
 37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
-277f66d0 docs(review): live verification — A2 member onboarding
 ```
 
 ### Last refresh
 
-2026-07-12T13:48:12Z
+2026-07-12T13:57:28Z

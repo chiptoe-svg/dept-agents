@@ -57,12 +57,23 @@ import { isAllowedAttachment } from './attachment-allowlist.js';
 // replace `attachments/` itself with a symlink to a directory outside the
 // group), then upload a same-named attachment through chat — this runs in the
 // **host** service process, so an unguarded write is an arbitrary host-file
-// write. This helper closes both angles:
+// write. This helper closes the two DETERMINISTIC angles:
 //   - directory-symlink guard: realpath the group folder and the attachments
 //     dir and require the latter to be exactly `<group realpath>/attachments`
-//   - file-symlink guard: open with O_NOFOLLOW so a symlinked final path
-//     component fails atomically (ELOOP) instead of being followed — no
-//     lstat-then-write TOCTOU window
+//     (catches a persistently symlinked `attachments/` dir)
+//   - file-symlink guard: open with O_NOFOLLOW so a symlinked FINAL path
+//     component fails atomically (ELOOP) instead of being followed
+//
+// KNOWN RESIDUAL (tracked defense-in-depth follow-up, not yet closed):
+// O_NOFOLLOW guards only the final component, and the realpath check and the
+// open are two separate syscalls, so a member spinning a swap loop can win a
+// tight intermediate-directory-symlink TOCTOU race (mv attachments away &&
+// ln -s /outside attachments) in the window between them. This is a hard,
+// insider-only race and is PRE-EXISTING/SYSTEMIC (any host write into the
+// RW-mounted group dir, incl. the image branch, shares it). The robust close
+// is to stage attachments in a host-only dir mounted READ-ONLY into the
+// container so the agent cannot mutate the path — do that before opening the
+// pilot to all ~15. Accepted for the small trusted pilot.
 //
 // It also enforces the type gate so the `application/pdf` mimeType assertion
 // can't be used to smuggle an arbitrary filename/extension past the
