@@ -137,12 +137,21 @@ const SYSTEMS: Record<string, BenchSystem> = {
 };
 
 // -- CLI parsing ------------------------------------------------------------
-function parseArgs(): { source: string; systems: string[]; reps: number; suite: 'default' | 'mcp' } {
+function parseArgs(): {
+  source: string;
+  systems: string[];
+  reps: number;
+  suite: 'default' | 'mcp';
+  reportOnly: boolean;
+  fresh: boolean;
+} {
   const args = process.argv.slice(2);
   let source = 'dm-with-chiptonkin';
   let systems = ['clemson-qwen36'];
   let reps = 3;
   let suite: 'default' | 'mcp' = 'default';
+  let reportOnly = false;
+  let fresh = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--source' && args[i + 1]) {
@@ -157,15 +166,43 @@ function parseArgs(): { source: string; systems: string[]; reps: number; suite: 
         throw new Error(`Unknown --suite value: ${val}. Supported: default, mcp`);
       }
       suite = val;
+    } else if (args[i] === '--report-only') {
+      reportOnly = true;
+    } else if (args[i] === '--fresh') {
+      fresh = true;
     }
   }
 
-  return { source, systems, reps, suite };
+  return { source, systems, reps, suite, reportOnly, fresh };
+}
+
+/** Load MCP results from the durable JSONL, deduped by (system, task) — last wins. */
+function loadMcpResults(): McpResult[] {
+  if (!fs.existsSync(BENCH_RESULTS_PATH)) return [];
+  const byKey = new Map<string, McpResult>();
+  for (const line of fs.readFileSync(BENCH_RESULTS_PATH, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const r = JSON.parse(line) as McpResult;
+      byKey.set(`${r.system}|${r.task}`, r);
+    } catch {
+      /* skip malformed line */
+    }
+  }
+  return [...byKey.values()];
 }
 
 // -- HTTP helpers -----------------------------------------------------------
 const PLAYGROUND_BASE = 'http://127.0.0.1:3002';
-const TIMEOUT_MS = 300_000; // 5 minutes per turn
+// Per-turn timeout. A model that can't produce an MCP tool-use answer in this
+// window isn't viable as an interactive default, so a shorter cap both scores
+// flaky models correctly (as errors) and keeps the run bounded. Overridable
+// via NC_BENCH_TIMEOUT_MS.
+const TIMEOUT_MS = Number(process.env.NC_BENCH_TIMEOUT_MS) || 300_000;
+
+// Durable per-result log for the MCP suite (survives interruption).
+const BENCH_RESULTS_PATH =
+  process.env.NC_BENCH_RESULTS_PATH || path.join(PROJECT_ROOT, 'data', 'a1-bench-results.jsonl');
 
 function httpGet(url: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -803,7 +840,15 @@ async function runBenchMcp(
       console.log(`    ERROR: ${reply}`);
     }
 
-    results.push({ system: system.label, task: task.id, toolPass, answerPass, latencyMs, errored, reply });
+    const result: McpResult = { system: system.label, task: task.id, toolPass, answerPass, latencyMs, errored, reply };
+    results.push(result);
+    // Durable append so an interrupted run keeps partial results (render from
+    // this JSONL via --report-only). Path: NC_BENCH_RESULTS_PATH or default.
+    try {
+      fs.appendFileSync(BENCH_RESULTS_PATH, JSON.stringify(result) + '\n');
+    } catch {
+      /* best-effort persistence */
+    }
 
     const pass = task.expectedTool ? toolPass && answerPass : answerPass;
     const passStr = errored ? 'ERROR' : pass ? 'PASS' : 'FAIL';
@@ -958,7 +1003,7 @@ async function runBench(
 // -- Entry point ------------------------------------------------------------
 
 /** Render the MCP-reliability results to a markdown report file. */
-function renderMcpReport(mcpResults: McpResult[], systemKeys: string[]): string {
+function renderMcpReport(mcpResults: McpResult[]): string {
   const REPORT_PATH = path.join(
     PROJECT_ROOT,
     'docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md',
@@ -970,7 +1015,11 @@ function renderMcpReport(mcpResults: McpResult[], systemKeys: string[]): string 
     const mid = Math.floor(s.length / 2);
     return s.length % 2 ? s[mid]! : Math.round((s[mid - 1]! + s[mid]!) / 2);
   };
-  const labels = systemKeys.map((k) => SYSTEMS[k]!.label);
+  // Labels present in the results, ordered by the SYSTEMS declaration order.
+  const present = new Set(mcpResults.map((r) => r.system));
+  const labels = Object.values(SYSTEMS)
+    .map((s) => s.label)
+    .filter((label) => present.has(label));
   const cell = (r: McpResult): string => {
     if (r.errored) return 'ERR';
     if (isMcp(r.task)) return `${r.toolPass ? 'tool✓' : 'tool✗'} ${r.answerPass ? 'ans✓' : 'ans✗'}`;
@@ -1034,7 +1083,23 @@ function renderMcpReport(mcpResults: McpResult[], systemKeys: string[]): string 
 }
 
 async function main(): Promise<void> {
-  const { source, systems, reps, suite } = parseArgs();
+  const { source, systems, reps, suite, reportOnly, fresh } = parseArgs();
+
+  // Report-only: render from the durable JSONL without running any turns.
+  if (reportOnly) {
+    const reportPath = renderMcpReport(loadMcpResults());
+    console.log(`Report written from ${BENCH_RESULTS_PATH}: ${reportPath}`);
+    return;
+  }
+
+  // Fresh run: truncate the durable results log so it holds only this run.
+  if (suite === 'mcp' && fresh) {
+    try {
+      fs.rmSync(BENCH_RESULTS_PATH, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
 
   // Validate systems
   for (const s of systems) {
@@ -1127,7 +1192,7 @@ async function main(): Promise<void> {
       const rowsPassed = rows.filter((r) => !r.errored && r.toolPass && r.answerPass).length;
       console.log(`  ${label}: ${rowsPassed}/${rows.length}`);
     }
-    const reportPath = renderMcpReport(mcpResults, systems);
+    const reportPath = renderMcpReport(loadMcpResults());
     console.log(`\nReport written: ${reportPath}`);
   } else {
     const systemCount = systems.length;
