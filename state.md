@@ -190,18 +190,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (123 commits ahead)
+- **Last tag:** `classroom-2026-07` (124 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-M  docs/superpowers/plans/2026-07-12-member-setup-restructure.md
+## main...origin/main [ahead 4]
+A  docs/superpowers/reviews/2026-07-12-setup-restructure-verification.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+5c52a5e5 docs(plan): note Go-to-MyAgent button removed (redundant with nav tab)
 a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 8cb552fc feat(playground): member top nav = Setup + MyAgent; persona/skills reachable but off the bar
 347169d2 docs(plan): member Setup restructure — Setup + MyAgent nav, persona/skills under Advanced
@@ -216,9 +217,8 @@ fdf6ff55 feat(playground): lean member chat component (inline, file attach/recei
 27a7d1bf docs(spec): A3 — keep phase 1 simple; defer document conversion to skills
 e44e271b docs(spec): A3 — typical-files allowlist (block executables) + slides workaround
 de74e3f0 docs(spec): A3 file-centric member chat design
-94b1f14c docs(state): Slice D scoped to vocab; classroom_roster drop deferred (not vestigial)
 ```
 
 ### Last refresh
 
-2026-07-12T14:41:17Z
+2026-07-12T14:44:45Z
