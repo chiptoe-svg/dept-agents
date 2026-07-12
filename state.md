@@ -188,18 +188,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (110 commits ahead)
+- **Last tag:** `classroom-2026-07` (111 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
+## main...origin/main [ahead 2]
 M  docs/superpowers/specs/2026-07-12-a3-member-chat-design.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+e44e271b docs(spec): A3 — typical-files allowlist (block executables) + slides workaround
 de74e3f0 docs(spec): A3 file-centric member chat design
 94b1f14c docs(state): Slice D scoped to vocab; classroom_roster drop deferred (not vestigial)
 65290efb chore(copy): department vocabulary — user-visible 'instructor' -> admin/department
@@ -214,9 +215,8 @@ a29733f5 feat(provisioning): default new members to the free Clemson campus mode
 b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Home
 139fd10e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
 94a2c9cd docs(plan): A2 member onboarding/setup implementation plan
-8b26e360 docs(spec): A2 — members get persona + skills tabs (reused as-is)
 ```
 
 ### Last refresh
 
-2026-07-12T12:14:31Z
+2026-07-12T12:48:12Z
