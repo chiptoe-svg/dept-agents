@@ -188,18 +188,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (108 commits ahead)
+- **Last tag:** `classroom-2026-07` (109 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  state.md
+## main...origin/main
+A  docs/superpowers/specs/2026-07-12-a3-member-chat-design.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+94b1f14c docs(state): Slice D scoped to vocab; classroom_roster drop deferred (not vestigial)
 65290efb chore(copy): department vocabulary — user-visible 'instructor' -> admin/department
 c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 941e8b77 feat(playground): rebrand wordmark "NanoClaw Classroom" -> "GC Agents"
@@ -214,9 +215,8 @@ b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Ho
 94a2c9cd docs(plan): A2 member onboarding/setup implementation plan
 8b26e360 docs(spec): A2 — members get persona + skills tabs (reused as-is)
 d985b9bf docs(spec): A2 — Google card is a disabled "Available soon" placeholder
-8fe71363 docs(spec): A2 member onboarding/setup design (dept server)
 ```
 
 ### Last refresh
 
-2026-07-12T11:37:46Z
+2026-07-12T12:10:13Z
