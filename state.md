@@ -118,6 +118,8 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
 
+**2026-07-12 — Members get a file-capable chat (A3); attachment writes are symlink-safe, with one tracked TOCTOU residual.** The member `simple` tab is replaced by a new lean **`chat`** tab (`tabs/member-chat.js`, role-mounted like `home`): inline conversation, SSE streaming, first-class **file attach/receive**, a read-only "Running on: …" model indicator (no picker), XSS-safe (`textContent`-only). Member tabs are now `['home','chat','persona','skills']`. Attach accepts a **typical-files allowlist** (docs/sheets/slides/images/data, 29 extensions, 25 MB; executables rejected default-deny), saving to `groups/<folder>/attachments/<safeName>` with a `[File: …]` marker the agent reads; **no document conversion** (PDFs via `pdf-reader`/`pdftotext`, images inline, Office files land raw — docling text + the picture-description/DGX-vision workflow are a future phase as installable skills). Live-proven: a member attached a CSV → the agent read it on `provider=clemson`; a produced file downloaded via the outbox route. **Security:** the whole-branch review caught that attachment writes followed symlinks — and since `groups/<folder>` is mounted RW into the member's own agent container, that was a member→host arbitrary-write. Closed via a shared `saveMemberAttachment` (realpath-containment guard against a symlinked `attachments/` dir + `O_NOFOLLOW` against a symlinked final component + forced `.pdf` on the pdf branch to kill the mimeType-spoof), with a real symlink-write regression test. **Tracked residual (accepted for the small trusted pilot, close before all ~15):** an intermediate-directory-symlink **TOCTOU** race survives — `O_NOFOLLOW` guards only the final component, and it's pre-existing/systemic (any host write into the RW-mounted group dir, incl. the image branch). The robust close is to **stage attachments in a host-only dir mounted READ-ONLY into the container** so the agent can't mutate the path.
+
 **2026-07-12 — Slice D scoped to vocabulary only; the `classroom_roster` drop was deliberately deferred (it is NOT vestigial).** The playground wordmark was rebranded to **"GC Agents"** (text wordmark, `classroom-nano.png` dropped from HTML) and all member-visible **"instructor"** rendered strings were changed to admin/department wording (login-PIN error, owner Home Drive/Telegram copy, models-tab `ask admin` label, Google-auth error HTML in both `api/google-auth.ts` and `google-oauth.ts`). **The `classroom_roster` table drop was investigated and dropped from scope:** the table is 0 rows but is NOT dead — it backs (a) the superseded-but-wired Google-OAuth *login* path (`google-oauth.ts`, routes `/oauth/google/start`+`/callback`) and (b) the Phase-14 Google *Drive/Sheets* connect (`api/google-auth.ts` + `me.ts` use `lookupRosterByUserId` to map a user → their agent group + email when stamping connected Google creds). Dropping it would force rewriting the Drive-connect path — a feature we want to keep but which is currently disabled (A2 "Available soon" card, pending the GCP step). **Do NOT naively drop `classroom_roster`;** its roster→entity-model rewire (`agent_group_members` + `agent_groups.metadata` already carry the user→group→email mapping) belongs *with* the future Google-connect buildout. Still-deferred `class`-vocabulary (e.g. "class-shared Drive", "your class agent") and the internal `class_*`/`student-*`/`ta` identifier renames were left untouched (churn with no functional gain; the live-data `class_login_tokens`/`class_telegram_pair_codes` tables carry active rows). The Telegram bot stays `@CUInstructorBot` — a bot's Telegram @username is fixed at creation (needs a new bot via BotFather to change).
 
 **2026-07-11 — Members get a Home onboarding dashboard; new members default to the free Clemson model; connecting ChatGPT switches them onto it (A2).** Department members now land on a new member-only **Home** setup dashboard (`tabs/member-home.js`) instead of dropping into chat, with member tabs `['home','simple','persona','skills']` (persona/skills reused as-is — they already scope to the member's own agent via `window.__pg.agent.folder` + `requireGroupAccess`). The dashboard has an OAuth **"Connect your ChatGPT"** hero (reuses Plan 4 `cred-dialog`, OAuth-only), a Telegram card (existing pair-code flow), a disabled Google "Available soon" placeholder, and a model-status chip. **Provider tiering, made real:** a newly-provisioned member defaults to the free on-campus Clemson model `qwen3.6-35b-a3b-fp8` (`provision-user.ts`; the served id has the `-fp8` suffix — the bare `qwen3.6-35b-a3b` does not exist), so the agent works with zero setup at zero marginal cost (live-proven: a member turn replied on `provider=clemson`). **Connecting ChatGPT actually switches the agent to it** — on OAuth success the member's active model is set to `openai-codex`/`gpt-5.4` (routes to their own account per Plan 4), and the chip reads the *actual* `model_provider` (`/api/me/agent` now exposes `agent.modelProvider`), not merely "is codex connected". *Corollaries:* the gating change is a client-side tab filter only — every `/api/drafts/*` write stays server-gated by `requireGroupAccess`, so a member can never reach another agent (whole-branch-reviewed). Existing members were **not** backfilled — the stale `user_01` group was deleted, `owner_01` kept as-is. Deferred: A1 (model benchmark + local/DGX), A3 (file-centric chat), live Google OAuth (needs the GCP step), and the `class_*`→dept renames (slice D — includes the still-visible "NanoClaw Classroom" banner and `@CUInstructorBot`).
@@ -188,18 +190,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (118 commits ahead)
+- **Last tag:** `classroom-2026-07` (119 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 9]
-M  src/channels/playground/api-routes.ts
+## main...origin/main [ahead 10]
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+58de935e docs(security): correct the attachment-write comment — residual TOCTOU is tracked
 63c34180 fix(security): symlink-safe chat attachment writes; close mimeType-spoof allowlist bypass
 d5e16f34 docs(review): live verification — A3 file-centric member chat
 631bcb1e feat(playground): members get the lean chat tab, drop the simple tab
@@ -214,9 +217,8 @@ de74e3f0 docs(spec): A3 file-centric member chat design
 c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 941e8b77 feat(playground): rebrand wordmark "NanoClaw Classroom" -> "GC Agents"
 24c69a63 docs(state): A2 member onboarding shipped; correct :3003 bind note
-37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
 ```
 
 ### Last refresh
 
-2026-07-12T13:57:28Z
+2026-07-12T13:58:25Z
