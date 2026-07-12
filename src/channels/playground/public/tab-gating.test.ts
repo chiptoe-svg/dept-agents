@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { TABS, MEMBER_TABS, hasFullAccess, tabsForRole } from './tab-gating.js';
 
 describe('tab gating', () => {
-  it('members get exactly home, simple, persona, skills and land on home', () => {
-    expect(MEMBER_TABS).toEqual(['home', 'simple', 'persona', 'skills']);
+  it('members get exactly home, chat, persona, skills and land on home', () => {
+    expect(MEMBER_TABS).toEqual(['home', 'chat', 'persona', 'skills']);
     expect(tabsForRole('member')).toEqual(MEMBER_TABS);
     expect(tabsForRole('member')[0]).toBe('home');
   });

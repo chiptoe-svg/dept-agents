@@ -194,13 +194,15 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ```
 ## main...origin/main [ahead 6]
-M  src/channels/playground/public/tabs/member-chat.js
+M  src/channels/playground/public/app.js
+M  src/channels/playground/public/tab-gating.js
+M  src/channels/playground/public/tab-gating.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
-604ba47e feat(playground): lean member chat component (inline, file attach/receive)
+fdf6ff55 feat(playground): lean member chat component (inline, file attach/receive)
 0eb968aa feat(playground): accept typical work files as chat attachments (allowlist, [File:] marker)
 7dea36af docs(plan): A3 file-centric member chat implementation plan
 27a7d1bf docs(spec): A3 — keep phase 1 simple; defer document conversion to skills
@@ -219,4 +221,4 @@ b71c9c72 docs(a2): correct Clemson default model id to qwen3.6-35b-a3b-fp8
 
 ### Last refresh
 
-2026-07-12T13:24:21Z
+2026-07-12T13:27:27Z

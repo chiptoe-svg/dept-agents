@@ -1,6 +1,7 @@
 import { mountHome } from './tabs/home.js';
 import { mountSimple } from './tabs/simple.js';
 import { mountChat, refreshChatModels } from './tabs/chat.js';
+import { mountMemberChat } from './tabs/member-chat.js';
 import { mountPersona } from './tabs/persona.js';
 import { mountSkills } from './tabs/skills.js';
 import { mountModels } from './tabs/models.js';
@@ -15,7 +16,7 @@ import { TABS, MEMBER_TABS, hasFullAccess, tabsForRole } from './tab-gating.js';
 
 const mounters = {
   home: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountHome(tabEl) : mountMemberHome(tabEl)),
-  simple: mountSimple, chat: mountChat, persona: mountPersona, skills: mountSkills,
+  simple: mountSimple, chat: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountChat(tabEl) : mountMemberChat(tabEl)), persona: mountPersona, skills: mountSkills,
   models: mountModels, agents: mountAgents, sources: mountSources,
   retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus,
 };

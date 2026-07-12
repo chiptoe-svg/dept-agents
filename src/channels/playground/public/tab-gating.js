@@ -4,7 +4,7 @@
  *  Home/Chat/Persona/Skills set. */
 export const TABS = ['home', 'simple', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks', 'status'];
 
-export const MEMBER_TABS = ['home', 'simple', 'persona', 'skills'];
+export const MEMBER_TABS = ['home', 'chat', 'persona', 'skills'];
 
 export function hasFullAccess(role) {
   return role === 'owner' || role === 'ta';
