@@ -51,7 +51,7 @@ export function mountHome(el) {
           <dd><strong>${escapeHtml(agent.name || '?')}</strong> <span class="muted">(${escapeHtml(agent.folder || '?')})</span></dd>
           <dt>Sign-in identity</dt>
           <dd><code>${escapeHtml(user.id || 'anonymous')}</code></dd>
-          ${isOwner ? `<dt>Role</dt><dd><strong>owner</strong> <span class="muted">(class instructor)</span></dd>` : ''}
+          ${isOwner ? `<dt>Role</dt><dd><strong>owner</strong> <span class="muted">(admin)</span></dd>` : ''}
         </dl>
       </section>
 
@@ -419,7 +419,7 @@ async function renderTelegramCard(body) {
     }
     if (!data.botUsername) {
       body.innerHTML = `
-        <p>The instructor hasn't configured the Telegram bot yet, so pairing is unavailable.</p>
+        <p>The admin hasn't configured the Telegram bot yet, so pairing is unavailable.</p>
       `;
       return;
     }
@@ -477,7 +477,7 @@ async function renderGoogleCard(body) {
     if (data.connected) {
       body.innerHTML = `
         <p>✅ Connected as <code>${escapeHtml(data.email || '?')}</code>.</p>
-        <p class="muted">Your agent's Drive / Sheets / Slides tools now use YOUR Google Drive instead of the instructor's shared one. Disconnect to revert to the class-shared Drive.</p>
+        <p class="muted">Your agent's Drive / Sheets / Slides tools now use YOUR Google Drive instead of the department's shared one. Disconnect to revert to the shared department Drive.</p>
         <div class="home-actions">
           <button id="google-disconnect-btn" class="btn btn-danger">Disconnect</button>
         </div>
@@ -495,7 +495,7 @@ async function renderGoogleCard(body) {
       return;
     }
     body.innerHTML = `
-      <p class="muted">Connect your Google account so your agent operates against YOUR Drive (not the instructor's). Optional — until you connect, Drive tools work via the shared class-Drive (Mode A). Gmail and Calendar tools (coming soon) will require connection.</p>
+      <p class="muted">Connect your Google account so your agent operates against YOUR Drive (not the department's). Optional — until you connect, Drive tools work via the shared department Drive (Mode A). Gmail and Calendar tools (coming soon) will require connection.</p>
       <div class="home-actions">
         <a class="btn" href="/google-auth/start">Connect Google</a>
       </div>
@@ -537,7 +537,7 @@ async function renderProvidersCard(body) {
     const visibleProviders = (data.providers || []).filter((p) => p.state !== 'HIDDEN');
 
     const rows = visibleProviders.map(renderProviderRow).filter(Boolean);
-    body.innerHTML = rows.length ? rows.join('') : `<p class="muted">No providers enabled by your instructor.</p>`;
+    body.innerHTML = rows.length ? rows.join('') : `<p class="muted">No providers enabled by your admin.</p>`;
 
     visibleProviders.forEach((p) => wireProviderRow(body, p));
   } catch (err) {
@@ -739,7 +739,7 @@ function renderProviderRow(p) {
   // 'none' shape (omlx, clemson): no per-student creds. Render a status row
   // with a Settings affordance that opens the cred-dialog's none-variant.
   if (p.credentialFileShape === 'none') {
-    const subtitle = p.id === 'omlx' ? 'Local server' : 'Provided by instructor';
+    const subtitle = p.id === 'omlx' ? 'Local server' : 'Provided by the department';
     return `
       <div class="provider-row" data-provider="${p.id}">
         <strong>✅ ${displayName}</strong> · ${subtitle}
@@ -753,7 +753,7 @@ function renderProviderRow(p) {
   if (p.policy.provideDefault) {
     return `
       <div class="provider-row" data-provider="${p.id}">
-        <strong>✅ ${displayName}</strong> · Provided by instructor
+        <strong>✅ ${displayName}</strong> · Provided by the department
         ${p.policy.allowByo ? `<div class="home-actions"><button class="btn" data-add="open">Use my own</button></div>` : ''}
       </div>`;
   }

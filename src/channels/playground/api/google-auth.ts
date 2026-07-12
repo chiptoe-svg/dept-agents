@@ -129,7 +129,7 @@ export async function handleGoogleAuthStart(req: http.IncomingMessage, res: http
       res,
       500,
       '<h1>Google login not configured</h1>' +
-        '<p>The instructor needs to run /add-classroom-gws so the OAuth client is on disk.</p>',
+        '<p>The admin needs to run /add-classroom-gws so the OAuth client is on disk.</p>',
     );
     return true;
   }

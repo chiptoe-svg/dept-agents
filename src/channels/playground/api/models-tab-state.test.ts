@@ -96,7 +96,7 @@ describe('deriveProviderState — truth table', () => {
     expect(r.actionLabel).toBe('connect');
   });
 
-  it('GREYED + "ask instructor" when allow=true but no fallbacks', () => {
+  it('GREYED + "ask admin" when allow=true but no fallbacks', () => {
     const r = deriveProviderState({
       spec: baseSpec,
       policy: allow,
@@ -104,7 +104,7 @@ describe('deriveProviderState — truth table', () => {
       reachable: true,
     });
     expect(r.state).toBe('GREYED');
-    expect(r.actionLabel).toBe('ask instructor');
+    expect(r.actionLabel).toBe('ask admin');
   });
 });
 
