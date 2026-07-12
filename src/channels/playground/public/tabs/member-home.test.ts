@@ -12,7 +12,8 @@ function baseState(over = {}) {
     telegram: { paired: false, botUsername: 'CUInstructorBot' },
     onConnectChatgpt: vi.fn(),
     onConnectTelegram: vi.fn(),
-    onGoToChat: vi.fn(),
+    onEditPersona: vi.fn(),
+    onEditSkills: vi.fn(),
     ...over,
   };
 }
@@ -99,12 +100,21 @@ describe('renderDashboard', () => {
     expect(host.querySelector('[data-card="google"]').textContent).toContain('Available soon');
   });
 
-  it('Go to Chat button invokes onGoToChat', () => {
+  it('renders an Advanced section with persona/skills entry points', () => {
     const host = document.createElement('div');
     const st = baseState();
     renderDashboard(host, st);
-    host.querySelector('[data-action="go-to-chat"]').click();
-    expect(st.onGoToChat).toHaveBeenCalledOnce();
+    const adv = host.querySelector('[data-advanced]');
+    expect(adv).toBeTruthy();
+    expect(adv.tagName.toLowerCase()).toBe('details');
+    const p = host.querySelector('[data-action="edit-persona"]');
+    const s = host.querySelector('[data-action="edit-skills"]');
+    expect(p).toBeTruthy();
+    expect(s).toBeTruthy();
+    p.click();
+    expect(st.onEditPersona).toHaveBeenCalledOnce();
+    s.click();
+    expect(st.onEditSkills).toHaveBeenCalledOnce();
   });
 });
 

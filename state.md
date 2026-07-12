@@ -190,20 +190,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (121 commits ahead)
+- **Last tag:** `classroom-2026-07` (123 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-M  src/channels/playground/public/app.js
-M  src/channels/playground/public/tab-gating.js
-M  src/channels/playground/public/tab-gating.test.ts
+## main...origin/main [ahead 3]
+ M docs/superpowers/plans/2026-07-12-member-setup-restructure.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+935f96dd feat(playground): Setup dashboard Advanced section (persona/skills); Go to MyAgent
+8cb552fc feat(playground): member top nav = Setup + MyAgent; persona/skills reachable but off the bar
 347169d2 docs(plan): member Setup restructure — Setup + MyAgent nav, persona/skills under Advanced
 616e66ac docs(state): A3 file-capable member chat shipped; symlink-safe attach + tracked TOCTOU residual
 58de935e docs(security): correct the attachment-write comment — residual TOCTOU is tracked
@@ -217,10 +217,8 @@ fdf6ff55 feat(playground): lean member chat component (inline, file attach/recei
 e44e271b docs(spec): A3 — typical-files allowlist (block executables) + slides workaround
 de74e3f0 docs(spec): A3 file-centric member chat design
 94b1f14c docs(state): Slice D scoped to vocab; classroom_roster drop deferred (not vestigial)
-65290efb chore(copy): department vocabulary — user-visible 'instructor' -> admin/department
-c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 ```
 
 ### Last refresh
 
-2026-07-12T14:27:30Z
+2026-07-12T14:39:57Z
