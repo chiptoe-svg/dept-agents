@@ -192,18 +192,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (126 commits ahead)
+- **Last tag:** `classroom-2026-07` (127 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 6]
-M  state.md
+## main...origin/main
+A  docs/superpowers/specs/2026-07-12-a1-model-benchmark-design.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+20ea6db6 docs(state): member nav collapsed to Setup + MyAgent; persona/skills under Advanced
 d093f6c9 chore(playground): drop unused tab-gating imports in app.js (final-review minor)
 afbd038f docs(review): live verification — member Setup restructure
 5c52a5e5 docs(plan): note Go-to-MyAgent button removed (redundant with nav tab)
@@ -218,9 +219,8 @@ d5e16f34 docs(review): live verification — A3 file-centric member chat
 fdf6ff55 feat(playground): lean member chat component (inline, file attach/receive)
 0eb968aa feat(playground): accept typical work files as chat attachments (allowlist, [File:] marker)
 7dea36af docs(plan): A3 file-centric member chat implementation plan
-27a7d1bf docs(spec): A3 — keep phase 1 simple; defer document conversion to skills
 ```
 
 ### Last refresh
 
-2026-07-12T14:49:32Z
+2026-07-12T16:26:42Z
