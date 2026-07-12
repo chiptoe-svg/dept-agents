@@ -190,18 +190,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (119 commits ahead)
+- **Last tag:** `classroom-2026-07` (120 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 10]
-M  state.md
+## main...origin/main
+A  docs/superpowers/plans/2026-07-12-member-setup-restructure.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+616e66ac docs(state): A3 file-capable member chat shipped; symlink-safe attach + tracked TOCTOU residual
 58de935e docs(security): correct the attachment-write comment — residual TOCTOU is tracked
 63c34180 fix(security): symlink-safe chat attachment writes; close mimeType-spoof allowlist bypass
 d5e16f34 docs(review): live verification — A3 file-centric member chat
@@ -216,9 +217,8 @@ de74e3f0 docs(spec): A3 file-centric member chat design
 65290efb chore(copy): department vocabulary — user-visible 'instructor' -> admin/department
 c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 941e8b77 feat(playground): rebrand wordmark "NanoClaw Classroom" -> "GC Agents"
-24c69a63 docs(state): A2 member onboarding shipped; correct :3003 bind note
 ```
 
 ### Last refresh
 
-2026-07-12T13:58:25Z
+2026-07-12T14:20:21Z
