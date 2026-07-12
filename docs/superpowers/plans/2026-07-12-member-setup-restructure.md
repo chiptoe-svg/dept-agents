@@ -147,6 +147,8 @@ git commit -m "feat(playground): member top nav = Setup + MyAgent; persona/skill
 
 ### Task 2: Setup dashboard "Advanced" section + MyAgent relabel
 
+> **Amendment (post-review, user decision):** the "Go to MyAgent →" button is **removed entirely**, not relabeled/fixed — it's redundant now that the top nav has a **MyAgent** tab (Task 1). So `renderDashboard` drops the go-to button, `mountMemberHome`'s state drops `onGoToChat`, and the go-to test is removed. The Advanced section (Edit persona / Edit skills) stays. (The original steps below still describe the Advanced section correctly; ignore the go-to-button parts.)
+
 **Files:**
 - Modify: `src/channels/playground/public/tabs/member-home.js`, `src/channels/playground/public/tabs/member-home.test.ts`
 

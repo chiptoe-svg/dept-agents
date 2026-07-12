@@ -196,13 +196,13 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 
 ```
 ## main...origin/main [ahead 3]
- M docs/superpowers/plans/2026-07-12-member-setup-restructure.md
+M  docs/superpowers/plans/2026-07-12-member-setup-restructure.md
 ```
 
 ### Recent commits (last 15)
 
 ```
-935f96dd feat(playground): Setup dashboard Advanced section (persona/skills); Go to MyAgent
+a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 8cb552fc feat(playground): member top nav = Setup + MyAgent; persona/skills reachable but off the bar
 347169d2 docs(plan): member Setup restructure — Setup + MyAgent nav, persona/skills under Advanced
 616e66ac docs(state): A3 file-capable member chat shipped; symlink-safe attach + tracked TOCTOU residual
@@ -221,4 +221,4 @@ de74e3f0 docs(spec): A3 file-centric member chat design
 
 ### Last refresh
 
-2026-07-12T14:39:57Z
+2026-07-12T14:41:17Z
