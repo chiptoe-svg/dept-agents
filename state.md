@@ -192,18 +192,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (129 commits ahead)
+- **Last tag:** `classroom-2026-07` (130 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
-M  docs/superpowers/plans/2026-07-12-a1-model-benchmark.md
+## main...origin/main [ahead 3]
+A  scripts/bench-fixtures/mcp-turn.json
+A  scripts/bench-mcp-score.test.ts
+A  scripts/bench-mcp-score.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+2815794e docs(plan): revise A1 to extend bench.ts (not build fresh)
 f29154de docs(plan): A1 model-benchmark harness (MCP tool-use reliability)
 cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
 20ea6db6 docs(state): member nav collapsed to Setup + MyAgent; persona/skills under Advanced
@@ -218,9 +221,8 @@ a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 63c34180 fix(security): symlink-safe chat attachment writes; close mimeType-spoof allowlist bypass
 d5e16f34 docs(review): live verification — A3 file-centric member chat
 631bcb1e feat(playground): members get the lean chat tab, drop the simple tab
-fdf6ff55 feat(playground): lean member chat component (inline, file attach/receive)
 ```
 
 ### Last refresh
 
-2026-07-12T21:15:17Z
+2026-07-12T21:17:46Z
