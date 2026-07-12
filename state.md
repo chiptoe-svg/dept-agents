@@ -188,20 +188,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (115 commits ahead)
+- **Last tag:** `classroom-2026-07` (116 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 6]
-M  src/channels/playground/public/app.js
-M  src/channels/playground/public/tab-gating.js
-M  src/channels/playground/public/tab-gating.test.ts
+## main...origin/main [ahead 7]
+A  docs/superpowers/reviews/2026-07-12-a3-verification.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+631bcb1e feat(playground): members get the lean chat tab, drop the simple tab
 fdf6ff55 feat(playground): lean member chat component (inline, file attach/receive)
 0eb968aa feat(playground): accept typical work files as chat attachments (allowlist, [File:] marker)
 7dea36af docs(plan): A3 file-centric member chat implementation plan
@@ -216,9 +215,8 @@ c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
 277f66d0 docs(review): live verification — A2 member onboarding
 62e11fd9 docs(plan): add the proxy-bind-hardening plan (was uncommitted)
-b71c9c72 docs(a2): correct Clemson default model id to qwen3.6-35b-a3b-fp8
 ```
 
 ### Last refresh
 
-2026-07-12T13:27:27Z
+2026-07-12T13:35:11Z
