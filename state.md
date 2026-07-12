@@ -188,21 +188,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (113 commits ahead)
+- **Last tag:** `classroom-2026-07` (115 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 4]
-A  src/channels/playground/api-routes.attach.test.ts
-M  src/channels/playground/api-routes.ts
-A  src/channels/playground/attachment-allowlist.test.ts
-A  src/channels/playground/attachment-allowlist.ts
+## main...origin/main [ahead 6]
+M  src/channels/playground/public/tabs/member-chat.js
 ```
 
 ### Recent commits (last 15)
 
 ```
+604ba47e feat(playground): lean member chat component (inline, file attach/receive)
+0eb968aa feat(playground): accept typical work files as chat attachments (allowlist, [File:] marker)
 7dea36af docs(plan): A3 file-centric member chat implementation plan
 27a7d1bf docs(spec): A3 — keep phase 1 simple; defer document conversion to skills
 e44e271b docs(spec): A3 — typical-files allowlist (block executables) + slides workaround
@@ -216,10 +215,8 @@ c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
 277f66d0 docs(review): live verification — A2 member onboarding
 62e11fd9 docs(plan): add the proxy-bind-hardening plan (was uncommitted)
 b71c9c72 docs(a2): correct Clemson default model id to qwen3.6-35b-a3b-fp8
-a29733f5 feat(provisioning): default new members to the free Clemson campus model
-b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Home
 ```
 
 ### Last refresh
 
-2026-07-12T13:05:34Z
+2026-07-12T13:24:21Z
