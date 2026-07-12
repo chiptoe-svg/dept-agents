@@ -2,23 +2,31 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a host-side benchmark harness that drives **real pi agent turns** against a scratch agent group re-pointed at each candidate free model, scores **MCP tool-use reliability** (did it call the tool, from the outbound trace; is the answer grounded in the tool's result) + latency, and produces a comparison report + a default recommendation.
+**Goal:** Extend the existing `scripts/bench.ts` agent-harness benchmark to measure **MCP tool-use reliability** of the free candidate models via **real pi agent turns**, and produce a comparison report + a default recommendation.
 
-**Architecture:** A Node script (`scripts/model-benchmark/`) reuses the running server: it re-points ONE scratch agent group's `container_config` model per candidate (restarting its container), POSTs each task to `/api/drafts/<folder>/messages`, then reads that session's `outbound.db` (`messages_out`: `kind:'chat'` = final reply, `kind:'trace'` = pi-event rows carrying tool calls + tool results). Scoring self-grounds from the trace — no external ground-truth service. Runs serially against the live host; produces a markdown report. No production code path changes; nothing auto-updates the default.
+**Architecture:** Reuse `bench.ts`'s proven mechanics — real turns via SSE (`/api/drafts/<folder>/stream` + `POST /messages`), per-system bench-group provisioning, container-kill + continuation-clear between reps, `/api/bench/session` owner auth (`BENCH_MODE=1`, already in `.env`). **Modernize it for the current pi-only harness**: candidate systems become `provider:'pi'` + `model_provider` (`clemson`/`local`); model routing is set in the DB `container_configs` row (which `materializeContainerJson` regenerates `container.json` from at each spawn — direct `container.json` writes are overwritten and must NOT be relied on); tool-use is scored from the session `outbound.db` trace (verified shape below), not the stale SSE `tool_use` count. Add the MCP task set + a reliability report. No production code path changes; nothing auto-updates the default.
 
-**Tech Stack:** Node/pnpm host, TypeScript, `tsx` for the script, `better-sqlite3` (via the in-tree `scripts/q.ts` pattern or direct) to read `outbound.db`, vitest for the parser/scorer unit tests.
+**Tech Stack:** Node/pnpm host, TypeScript, `tsx`, `better-sqlite3` to read `outbound.db`, vitest for the scoring unit tests.
 
 ## Global Constraints
 
-- **Real agent turns, not raw completions** — every score comes from a real container turn through the actual pipeline (tools + credential proxy).
-- **Headline metric = MCP tool-use reliability:** per MCP task, (a) **tool-invoked** — the expected MCP tool appears in the outbound `kind:'trace'` rows; (b) **answer-grounded** — the final reply shares a key value with that tool's result in the trace (catches hallucination-despite-tool-call). Plus latency + turn-error.
+- **Real agent turns, not raw completions** — every score comes from a real container turn through the actual pipeline (tools + credential proxy), driven exactly as `bench.ts` already does.
+- **Headline metric = MCP tool-use reliability:** per MCP task, (a) **tool-invoked** — the expected MCP tool name appears in the turn's `outbound.db` `kind:'trace'` rows; (b) **answer-grounded** — the final reply shares a key value with that tool's result captured in the trace (catches hallucination-despite-tool-call). Plus latency + turn-error.
 - **Self-grounded scoring:** ground truth for MCP tasks comes from the tool's own result captured in the trace during that turn — NOT an external call, NOT hardcoded live-data facts (which drift).
-- **Roster (free models):** `model_provider:'clemson'` → `qwen3.6-35b-a3b-fp8`, `qwen3-30b-a3b-instruct-fp8`, `glm-5.1-fp8`; `model_provider:'omlx'` → `Qwen3.6-35B-A3B-UD-MLX-4bit`, `gemma-4-26B-A4B-it-QAT-MLX-4bit`. (deepseek-v4-pro, gptoss-120b excluded for latency; DGX deferred.)
-- **Model routing:** `clemson` → proxy `/clemson/v1`, `omlx` → `/omlx/v1` (already wired in `container/agent-runner/src/providers/pi-model.ts`). Setting a group's model is `updateContainerConfigScalars(agentGroupId, { model, model_provider })`; the model is baked at container spawn, so after changing it the group's container must be recycled before the next turn.
-- **No auto-change:** the report RECOMMENDS a default; it never edits `provision-user.ts` or any group.
+- **Roster (free models), exact `model_provider` + `model`:**
+  - `model_provider:'clemson'` → `qwen3.6-35b-a3b-fp8`, `qwen3-30b-a3b-instruct-fp8`, `glm-5.1-fp8`
+  - `model_provider:'local'` → `Qwen3.6-35B-A3B-UD-MLX-4bit`, `gemma-4-26B-A4B-it-QAT-MLX-4bit`
+  - (`'local'` routes to the proxy `/omlx/v1` prefix — there is no `'omlx'` model_provider value. `'clemson'` routes to `/clemson/v1`.)
+  - Excluded for latency: `deepseek-v4-pro`, `gptoss-120b`. DGX deferred.
+- **Setting a system's model (authoritative path):** `ensureContainerConfig(agentGroupId)` then `updateContainerConfigScalars(agentGroupId, { provider:'pi', model, model_provider })` (from `src/db/container-configs.ts`). The model is baked at container spawn, so after changing it the group's container must be killed (`killContainer` — `bench.ts`'s `clearContinuation` already does this) before the next turn. Do NOT rely on writing `groups/<folder>/container.json` — `materializeContainerJson` regenerates it from the DB at spawn.
+- **Verified trace shape** (`data/v2-sessions/<agentGroupId>/<sessionId>/outbound.db`, table `messages_out`):
+  - chat reply → `kind='chat'`, `content` = JSON `{"text": "...", ...}` → reply is `.text`.
+  - tool call → `kind='trace'`, `content` = `{"type":"pi_event","event":{"type":"tool_execution_start","toolCallId":"...","toolName":"cuassistant-public__search-clemson-classes","args":{...}}}`.
+  - tool result → `kind='trace'`, `content` = `{"type":"pi_event","event":{"type":"tool_execution_end","toolCallId":"...","toolName":"...","result":{"content":[{"type":"text","text":"<tool output json string>"}]}}}`.
+- **No auto-change:** the report RECOMMENDS a default; it never edits `provision-user.ts` or any group config.
 - **No secret read/print/log.** Read only non-secret data (model ids, replies, traces, latency).
-- **Cleanup:** the harness uses ONE scratch agent group, torn down at the end (token revoked, group + fs deleted, container stopped) — mirror prior canary teardown.
-- Host build/test: `pnpm run build` clean and `pnpm test` green before a task is done. Clean stray `groups/` fixture dirs (leave `_default_participant`, `owner_01`).
+- **Cleanup:** tear down every bench group created (kill container, remove group + fs) at the end. Leave `owner_01` and `_default_participant` untouched.
+- Host build/test: `pnpm run build` clean and `pnpm test` green before a task is done. Clean stray `groups/bench_*` dirs at teardown.
 - Commit messages end (after a blank line) with:
   ```
   Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
@@ -29,70 +37,73 @@
 
 ## File Structure
 
-- **Create `scripts/model-benchmark/parse-turn.ts`** — pure functions: read a session's `outbound.db` for one turn and extract `{ reply, toolCalls: [{name, resultText}], errored }`; the scorers (`toolInvoked`, `answerGrounded`, `matchesExpected`).
-- **Create `scripts/model-benchmark/parse-turn.test.ts`** — unit tests against a REAL captured trace fixture.
-- **Create `scripts/model-benchmark/fixtures/mcp-turn.json`** — a real outbound `messages_out` dump from one MCP-tool turn (captured in Task 1 Step 1), so the parser is grounded in the real trace shape, not guessed.
-- **Create `scripts/model-benchmark/roster.ts`** — the candidate list `[{label, model, modelProvider, tier}]` and the task set `[{id, prompt, kind:'mcp'|'general', expectedTool?, expected?, files?, scorer}]`.
-- **Create `scripts/model-benchmark/run.ts`** — the runner: for each model, re-point the scratch group + recycle its container, drive each task turn, read+score via `parse-turn`, collect results; then render the markdown report.
+- **Create `scripts/bench-mcp-score.ts`** — pure scoring module: `parseTurnRows(rows)` → `{reply, toolCalls:[{name,resultText}], errored}` from `messages_out` rows; `readTurnOutbound(outboundPath, sinceSeq)` DB wrapper; scorers `toolInvoked`, `answerGrounded`, `matchesExpected`. This is the crux — grounded in the verified real trace shape.
+- **Create `scripts/bench-mcp-score.test.ts`** — unit tests against a REAL captured trace fixture.
+- **Create `scripts/bench-fixtures/mcp-turn.json`** — real `messages_out` rows (chat + tool_execution_start/end) captured from the owner session (controller supplies this in Task 1 Step 1).
+- **Create `scripts/bench-prompts-mcp.json`** — the MCP + general task set (same array shape `bench.ts` already loads, extended with an `expectedTool` field for MCP tasks).
+- **Modify `scripts/bench.ts`** — replace stale `SYSTEMS` with the pi/`model_provider` roster; fix provisioning to set the DB `container_configs` row (`ensureContainerConfig` + `updateContainerConfigScalars`) instead of relying on `container.json`; add a `--suite mcp` path that loads `bench-prompts-mcp.json` and scores via `bench-mcp-score.ts` reading `outbound.db`; add the MCP-reliability report.
 - **Output:** `docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md` (the generated report — the deliverable).
 
 ---
 
-### Task 1: Outbound-turn parser + scorers (grounded in a real trace)
+### Task 1: MCP-reliability scoring module (grounded in a real trace)
 
 **Files:**
-- Create: `scripts/model-benchmark/parse-turn.ts`, `scripts/model-benchmark/parse-turn.test.ts`, `scripts/model-benchmark/fixtures/mcp-turn.json`
+- Create: `scripts/bench-mcp-score.ts`, `scripts/bench-mcp-score.test.ts`, `scripts/bench-fixtures/mcp-turn.json`
 
 **Interfaces:**
 - Produces:
   - `type ToolCall = { name: string; resultText: string }`
   - `type TurnResult = { reply: string; toolCalls: ToolCall[]; errored: boolean }`
-  - `readTurn(outboundDbPath: string, sinceIso: string): TurnResult` — read all `messages_out` rows with `timestamp >= sinceIso`, take the last `kind:'chat'` row's `content.text` as `reply`, parse every `kind:'trace'` row's `content` (`{type:'pi_event', event}`) to extract tool calls (name + result), set `errored` if no chat reply appeared.
-  - `toolInvoked(t: TurnResult, expectedTool: string): boolean` — a tool call whose `name` contains `expectedTool` exists.
-  - `answerGrounded(t: TurnResult): boolean` — the `reply` shares a non-trivial token (e.g. a number/code ≥3 chars) with some tool's `resultText`.
-  - `matchesExpected(reply: string, expected: string | RegExp): boolean` — for general tasks.
+  - `type OutboundRow = { kind: string; content: string }`
+  - `parseTurnRows(rows: OutboundRow[]): TurnResult` — last `kind:'chat'` row's `JSON.parse(content).text` is `reply`; for each `kind:'trace'` row, `JSON.parse(content)` → if `.type==='pi_event'` and `.event.type==='tool_execution_start'` record a tool call keyed by `.event.toolCallId` with `name=.event.toolName`; on the matching `tool_execution_end` (same `toolCallId`) set its `resultText` = the joined `.event.result.content[].text`; `errored` = no chat reply present.
+  - `readTurnOutbound(outboundPath: string, sinceSeq: number): TurnResult` — opens the DB (`better-sqlite3`, readonly), selects `seq, kind, content FROM messages_out WHERE seq > @sinceSeq ORDER BY seq`, maps to `OutboundRow[]`, calls `parseTurnRows`.
+  - `toolInvoked(t: TurnResult, expectedTool: string): boolean` — some `toolCalls[].name` includes `expectedTool`.
+  - `answerGrounded(t: TurnResult): boolean` — the reply shares an alphanumeric token of length ≥3 (case-insensitive) with some tool's `resultText`.
+  - `matchesExpected(reply: string, expected: string | RegExp): boolean`.
 
-- [ ] **Step 1: Capture a REAL MCP-tool trace fixture (grounding step)**
+- [ ] **Step 1 (CONTROLLER — already have the data): capture the real fixture**
 
-Drive one MCP turn on the running server and dump the raw outbound rows, so the parser targets the actual shape. Provision a throwaway group (or reuse an owner turn), send an MCP question ("What sections of GC 1010 are offered in Fall 2026?"), wait for the reply, then dump that session's `messages_out`:
+The controller extracts real `messages_out` rows from the owner session's Fall-2026 exploration (`data/v2-sessions/ag_1783646694218_qht2p4/sess-1783647060183-5f0q56/outbound.db`, seq 585–701) — a contiguous slice containing a `tool_execution_start`/`tool_execution_end` for `cuassistant-public__search-clemson-classes` (result includes `202608`, `Fall 2026`, `Jordan Hall`, `G33`) and the following chat reply (contains `202608`/`Fall 2026`). Written to `scripts/bench-fixtures/mcp-turn.json` as an array of `{seq, kind, content}` objects verbatim from the DB. The implementer treats this file as given.
 
-```bash
-# after driving one MCP turn to a group whose session dir is $SESS:
-pnpm exec tsx scripts/q.ts "$SESS/outbound.db" \
-  "SELECT seq, kind, substr(content,1,4000) AS content, timestamp FROM messages_out ORDER BY seq DESC LIMIT 40;" \
-  > /tmp/raw-trace.txt
-```
-Inspect `/tmp/raw-trace.txt`: find the `kind:'trace'` rows, parse a couple of `content` JSON blobs (`{type:'pi_event', event:{...}}`), and identify **(a)** the event field that names the tool called (e.g. `event.name`, or nested under a `toolCall`/`tool_use` object) and **(b)** the field carrying the tool's RESULT text. Save a representative slice (the trace rows for one MCP turn + the final chat row) as `scripts/model-benchmark/fixtures/mcp-turn.json` (an array of `{kind, content, timestamp}` objects, verbatim from the DB). Record the exact tool-name and tool-result field paths in the test + a comment in `parse-turn.ts`.
+> The controller provides this file before dispatch. The implementer does NOT capture it and must not guess the shape — it is real rows on disk.
 
-> This step resolves the spec's open item. Do NOT write the parser before capturing the fixture — the pi-event shape must come from a real trace, not a guess. If the trace does not carry tool RESULTS (only calls), fall back: `answerGrounded` becomes "reply is non-empty and the tool was invoked", and note the limitation in the report.
+- [ ] **Step 2: Write the failing scorer tests**
 
-- [ ] **Step 2: Write the failing parser/scorer tests**
-
-Create `scripts/model-benchmark/parse-turn.test.ts` using the captured fixture:
+Create `scripts/bench-mcp-score.test.ts` using the fixture:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { readTurnFromRows, toolInvoked, answerGrounded, matchesExpected } from './parse-turn.js';
-import fixture from './fixtures/mcp-turn.json'; // array of {kind, content, timestamp}
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { parseTurnRows, toolInvoked, answerGrounded, matchesExpected } from './bench-mcp-score.js';
 
-describe('parse-turn', () => {
-  it('extracts the reply and the tool call(s) from a real MCP turn', () => {
-    const t = readTurnFromRows(fixture as any);
+const here = dirname(fileURLToPath(import.meta.url));
+const rows = JSON.parse(readFileSync(join(here, 'bench-fixtures/mcp-turn.json'), 'utf8'));
+
+describe('bench-mcp-score', () => {
+  it('extracts the reply and the tool call + result from real trace rows', () => {
+    const t = parseTurnRows(rows);
     expect(t.reply.length).toBeGreaterThan(0);
     expect(t.errored).toBe(false);
-    // the fixture turn called the scheduling search tool — assert its name is captured
-    expect(t.toolCalls.some((c) => c.name.includes('clemson-classes') || c.name.includes('search'))).toBe(true);
+    const call = t.toolCalls.find((c) => c.name.includes('search-clemson-classes'));
+    expect(call).toBeTruthy();
+    expect(call!.resultText).toContain('202608'); // tool result carried through
   });
-  it('toolInvoked matches the expected tool name substring', () => {
-    const t = readTurnFromRows(fixture as any);
+  it('toolInvoked matches expected tool-name substring', () => {
+    const t = parseTurnRows(rows);
     expect(toolInvoked(t, 'search-clemson-classes')).toBe(true);
     expect(toolInvoked(t, 'get-clemson-room-availability')).toBe(false);
   });
-  it('answerGrounded is true when the reply shares a value with a tool result', () => {
-    const t = readTurnFromRows(fixture as any);
-    expect(answerGrounded(t)).toBe(true);
+  it('answerGrounded is true when reply shares a value with a tool result', () => {
+    expect(answerGrounded(parseTurnRows(rows))).toBe(true);
   });
-  it('matchesExpected handles the general-task checks', () => {
+  it('answerGrounded is false when nothing overlaps', () => {
+    const t = { reply: 'zzz nothing here', toolCalls: [{ name: 'x', resultText: '202608 Fall' }], errored: false };
+    expect(answerGrounded(t)).toBe(false);
+  });
+  it('matchesExpected handles general-task checks', () => {
     expect(matchesExpected('{"answer": 42}', /\{\s*"answer"\s*:\s*42\s*\}/)).toBe(true);
     expect(matchesExpected('Alice', 'Alice')).toBe(true);
     expect(matchesExpected('Bob', 'Alice')).toBe(false);
@@ -100,89 +111,109 @@ describe('parse-turn', () => {
 });
 ```
 
-> `readTurnFromRows(rows)` is the pure core; `readTurn(dbPath, sinceIso)` is a thin wrapper that queries the DB then calls it — keep the DB read out of the unit test.
-
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `pnpm exec vitest run scripts/model-benchmark/parse-turn.test.ts`
+Run: `pnpm exec vitest run scripts/bench-mcp-score.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 4: Implement `parse-turn.ts`**
+- [ ] **Step 4: Implement `bench-mcp-score.ts`**
 
-Write `parse-turn.ts` with `readTurnFromRows(rows)`, `readTurn(dbPath, sinceIso)` (opens the DB with `better-sqlite3`, selects `id, seq, kind, content, timestamp` where `timestamp >= sinceIso` order by seq, calls `readTurnFromRows`), and the three scorers. Extract tool name + result using the EXACT field paths found in Step 1 (documented in a comment). `content` for chat rows is `JSON.parse(content).text`; for trace rows `JSON.parse(content).event` → tool lifecycle. `answerGrounded`: tokenize the reply into alphanumeric tokens ≥3 chars, return true if any appears (case-insensitive) in any tool's `resultText`.
+Implement `parseTurnRows` (correlate `tool_execution_start`/`end` by `toolCallId`; join `result.content[].text`), `readTurnOutbound` (readonly `better-sqlite3`), and the three scorers exactly as specified in Interfaces. `answerGrounded`: tokenize the reply into `[A-Za-z0-9]{3,}` tokens, lowercase, return true if any appears (as a substring, lowercased) in any tool `resultText`.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm exec vitest run scripts/model-benchmark/parse-turn.test.ts`
-Expected: PASS.
+Run: `pnpm exec vitest run scripts/bench-mcp-score.test.ts`
+Expected: PASS (5/5).
 
 - [ ] **Step 6: Build + commit**
 
-Run: `pnpm run build` (expected clean; scripts are `tsx`-run but the test compiles).
+Run: `pnpm run build` (expected clean).
 ```bash
-git add scripts/model-benchmark/parse-turn.ts scripts/model-benchmark/parse-turn.test.ts scripts/model-benchmark/fixtures/mcp-turn.json
-git commit -m "feat(benchmark): outbound-turn parser + scorers grounded in a real MCP trace"
+git add scripts/bench-mcp-score.ts scripts/bench-mcp-score.test.ts scripts/bench-fixtures/mcp-turn.json
+git commit -m "feat(bench): MCP tool-use scoring from real outbound trace"
 ```
 
 ---
 
-### Task 2: Roster + task set + the runner (proven on one model)
+### Task 2: Modernize bench.ts for pi/model_provider + wire the MCP suite
 
 **Files:**
-- Create: `scripts/model-benchmark/roster.ts`, `scripts/model-benchmark/run.ts`
+- Modify: `scripts/bench.ts`
+- Create: `scripts/bench-prompts-mcp.json`
 
 **Interfaces:**
-- Consumes: `readTurn`, `toolInvoked`, `answerGrounded`, `matchesExpected` from `./parse-turn.js` (Task 1).
-- Produces (in `roster.ts`):
-  - `ROSTER: Array<{ label: string; model: string; modelProvider: 'clemson'|'omlx'; tier: string }>` — the 5 candidates.
-  - `TASKS: Array<{ id: string; prompt: string; files?: Array<{name,mimeType,base64}>; score: (t: TurnResult) => { toolPass?: boolean; answerPass: boolean } }>` — the 5 MCP tasks (each `score` uses `toolInvoked(t, '<tool>') && answerGrounded(t)`) + 2 general tasks (attach+read → `matchesExpected(reply, 'Alice')`; strict format → `matchesExpected(reply, /\{\s*"answer"\s*:\s*42\s*\}/)`).
-- Produces (in `run.ts`): a `runOne(model, task, ctx)` that drives one turn and returns a scored result; a `main()` that loops the roster × tasks and writes the report.
+- Consumes: `parseTurnRows`, `readTurnOutbound`, `toolInvoked`, `answerGrounded`, `matchesExpected` from `./bench-mcp-score.js` (Task 1); existing `bench.ts` helpers `obtainSessionCookie`, `sendAndCollect`, `clearContinuation`, HTTP helpers; `ensureContainerConfig`, `updateContainerConfigScalars`, `updateContainerConfigJson` from `../src/db/container-configs.js`; `getAgentGroupByFolder` from `../src/db/agent-groups.js`; `getActiveSessions` from `../src/db/sessions.js`.
+- Produces: a `--suite mcp` code path in `bench.ts` that runs the roster × MCP task set and emits the report.
 
-- [ ] **Step 1: Write `roster.ts`**
+- [ ] **Step 1: Replace the stale SYSTEMS map**
 
-Define `ROSTER` (the 5 candidates above with exact ids) and `TASKS` (the 5 MCP prompts + 2 general, each with its `expectedTool` and `score`). Use the MCP prompts from the spec; the attach task carries a small inline CSV (`name,score\nAlice,91\nBob,77`) with expected `Alice`; the strict-format task expects the JSON regex. No test (it's data) — but keep it importable.
+In `bench.ts`, replace the `SYSTEMS` record with the pi/model_provider roster. Each entry: `{ provider: 'pi', model: <id>, modelProvider: 'clemson'|'local', label }`. Keys + values:
+- `clemson-qwen36` → `{ provider:'pi', model:'qwen3.6-35b-a3b-fp8', modelProvider:'clemson' }`
+- `clemson-qwen3-30b` → `{ provider:'pi', model:'qwen3-30b-a3b-instruct-fp8', modelProvider:'clemson' }`
+- `clemson-glm51` → `{ provider:'pi', model:'glm-5.1-fp8', modelProvider:'clemson' }`
+- `local-qwen36` → `{ provider:'pi', model:'Qwen3.6-35B-A3B-UD-MLX-4bit', modelProvider:'local' }`
+- `local-gemma4` → `{ provider:'pi', model:'gemma-4-26B-A4B-it-QAT-MLX-4bit', modelProvider:'local' }`
 
-- [ ] **Step 2: Implement `run.ts`'s per-turn driver + a one-model dry run**
+Update the `SYSTEMS` value type to `{ provider: string; model: string; modelProvider: string; label: string }`.
 
-`run.ts` needs, once at start: resolve the scratch group's folder + agentGroupId + a session cookie (provision a scratch member OR reuse the owner group — the harness runs host-side, so it can drive via the CLI/session-DB path or the authenticated HTTP path; pick the HTTP path with a minted token, mirroring the live-verification scripts used in A2/A3). For each `(model, task)`:
-1. `updateContainerConfigScalars(agentGroupId, { model: model.model, model_provider: model.modelProvider })`, then recycle the group's container (kill it so the next turn respawns with the new model) — reuse the existing kill/restart helper (`killGroupContainer` / `simple-restart`); wait for readiness.
-2. Record `sinceIso = new Date().toISOString()` (pass a timestamp — the script may not call `new Date()` in a workflow context, but a plain `tsx` script can; if run under the workflow engine, accept the timestamp via args).
-3. `POST /api/drafts/<folder>/messages { text: task.prompt, files: task.files }`.
-4. Poll the session `outbound.db` (via `readTurn(dbPath, sinceIso)`) until a `kind:'chat'` reply appears or a timeout (e.g. 180s); measure wall-clock latency.
-5. Score with `task.score(turn)`; record `{ model, task, toolPass, answerPass, latencyMs, errored }`.
+- [ ] **Step 2: Fix provisioning to set the DB container_configs row**
 
-Prove the loop end-to-end with a **one-model, two-task dry run** (the current default `qwen3.6-35b-a3b-fp8` on one MCP task + the strict-format task) printed to stdout — confirm it re-points the model, drives the turn, reads the trace, and scores. Do NOT run the full roster yet.
+In `provisionBenchGroup` / `createBenchGroupViaDb`: after the agent group exists, resolve `agentGroupId` via `getAgentGroupByFolder(folder)`, then call `ensureContainerConfig(agentGroupId)` and `updateContainerConfigScalars(agentGroupId, { provider: 'pi', model: system.model, model_provider: system.modelProvider })`. Seed the MCP tools by copying the `owner_01` group's `mcp_servers` and `skills` container-config values into the bench group's row via `updateContainerConfigJson` (read owner's row with the existing `getContainerConfig`/equivalent in `src/db/container-configs.ts`). The existing `container.json`/`CLAUDE.md` file copy may stay for scaffolding, but model routing now comes from the DB.
 
-- [ ] **Step 3: Commit**
+> Rationale for the reviewer: `materializeContainerJson` (container-runner.ts:136) regenerates `container.json` from the DB at spawn, so the DB row — not the file — is authoritative for `model`/`model_provider`/`mcp_servers`.
+
+- [ ] **Step 3: Add the MCP task set**
+
+Create `scripts/bench-prompts-mcp.json` — an array of `{ id, kind:'single', prompt, expectedTool?, gate, expected }`. MCP tasks (`expectedTool` set, gate `'mcp'`):
+- `class-search` → prompt "What sections of GC 1010 are offered in Fall 2026? List section numbers and CRNs." → `expectedTool:"search-clemson-classes"`.
+- `section-details` → "Where and when does GC 1010 section 001 meet in Fall 2026?" → `expectedTool:"section-details"`.
+- `room-availability` → "Is Jordan Hall G33 free Friday afternoon in Fall 2026?" → `expectedTool:"room-availability"`.
+- `curriculum` → a gc-wiki-answerable prereq/content question → `expectedTool:"gc-wiki"` (tool substring adjusted to the seeded curriculum server prefix confirmed at run time).
+General tasks (no `expectedTool`):
+- `attach-max` → gate `'contains'`, "Given this CSV, which name has the max score? Reply with just the name.\nname,score\nAlice,91\nBob,77" → expected `"Alice"`.
+- `strict-format` → gate `'json'`, 'Reply with exactly {"answer": 42} and nothing else.' → expected `{"answer":42}`.
+
+> The exact seeded MCP server/tool prefixes are confirmed by the controller against the provisioned bench group before the live run; `toolInvoked` uses substring match so the short tool name suffices.
+
+- [ ] **Step 4: Add the `--suite mcp` run path + scoring**
+
+Add `--suite <default|mcp>` to `parseArgs` (default `default`). When `mcp`: load `bench-prompts-mcp.json`; resolve the bench group's session `outbound.db` path once per system (same resolution `clearContinuation` uses: `getAgentGroupByFolder` → `getActiveSessions` filtered by `ag.id` → `data/v2-sessions/<ag.id>/<sess.id>/outbound.db`). For each `(system × task)`: read the session's current max `seq` (small `SELECT max(seq)` query, or 0 if the DB/rows don't exist yet) as `sinceSeq`, drive the turn with `sendAndCollect`, then call `readTurnOutbound(path, sinceSeq)` (re-resolve the session path if it didn't exist before the first turn). Score: MCP tasks pass = `toolInvoked(turn, expectedTool) && answerGrounded(turn)`; general tasks pass = `matchesExpected(reply, expected)`. Record `{system, task, toolPass, answerPass, latencyMs (from sendAndCollect), errored, reply}`. Reuse `clearContinuation` between tasks so each is a fresh thread on the new model.
+
+- [ ] **Step 5: Typecheck + gate the code path**
+
+Run `pnpm run build` (expected clean). Confirm `pnpm exec tsx scripts/bench.ts --suite mcp --systems clemson-qwen36 --help`-equivalent arg parsing (dry, no live turn) resolves without throwing on unknown args. The live one-system smoke run is controller-run in Task 3; the implementer only ensures the `--suite mcp` path compiles and is complete.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/model-benchmark/roster.ts scripts/model-benchmark/run.ts
-git commit -m "feat(benchmark): roster + task set + per-turn runner (dry-run proven on one model)"
+git add scripts/bench.ts scripts/bench-prompts-mcp.json
+git commit -m "feat(bench): pi/model_provider systems + MCP reliability suite"
 ```
 
 ---
 
-### Task 3: Full live run + report
+### Task 3: Full live run + report (CONTROLLER-run)
 
-**Files:** Modify `scripts/model-benchmark/run.ts` (report rendering); Create `docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md` (generated).
+**Files:** Modify `scripts/bench.ts` (report rendering for `--suite mcp`); Create `docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md` (generated).
 
-- [ ] **Step 1: Add report rendering to `run.ts`**
+- [ ] **Step 1: Add MCP report rendering**
 
-After the loop, render a markdown report: a **models × tasks** matrix (each cell: `tool✓/✗ ans✓/✗` for MCP tasks, `✓/✗` for general), a per-model summary row (**MCP-reliability** = fraction of MCP tasks with tool✓ AND ans✓; overall pass count; median latency; error count), the raw reply text per (model,task) in an appendix for human spot-check, and a **Recommendation** section (best free-campus default for MCP work; whether the current `qwen3.6-35b-a3b-fp8` default suffices; best fully-private local option; fallback ordering). Write it to `docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md`.
+After the `--suite mcp` loop, render a markdown report: a **systems × tasks** matrix (MCP cell `tool✓/✗ ans✓/✗`, general cell `✓/✗`), a per-system summary (**MCP-reliability** = fraction of MCP tasks with tool✓ AND ans✓; overall pass count; median latency; error count), the reply text per (system,task) in an appendix for spot-check, and a **Recommendation** (best free-campus default for MCP; whether the current `qwen3.6-35b-a3b-fp8` default suffices; best fully-private local option; fallback ordering). Write to `docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md`.
 
-- [ ] **Step 2: Run the full benchmark live**
+- [ ] **Step 2: Run the full benchmark live (CONTROLLER)**
 
-Rebuild/ensure the host is running. Execute the harness across the full roster × task set (`pnpm exec tsx scripts/model-benchmark/run.ts`), serially. This spawns real container turns per (model,task) — expect tens of minutes. Confirm it completes without harness errors and writes the results file. Tear down the scratch group at the end (token revoked, group + fs deleted, container stopped).
+Ensure the host is running + `BENCH_MODE=1`. First a one-system smoke run (`--suite mcp --systems clemson-qwen36 --reps 1`); on success, the full roster `--systems clemson-qwen36,clemson-qwen3-30b,clemson-glm51,local-qwen36,local-gemma4 --reps 1` serially (real container turns; expect tens of minutes). Confirm it completes and writes the report.
 
-- [ ] **Step 3: Review the results + write the recommendation**
+- [ ] **Step 3: Review results + recommendation**
 
-Read the generated report. Confirm the matrix is populated, the MCP-reliability scores are sensible (a strong model should call tools + ground answers; a weak one should visibly fail tool-invoke or grounding), and the recommendation follows from the data. If the current default `qwen3.6-35b-a3b-fp8` is NOT the top free MCP performer, state that clearly and name the better default — but do NOT change any config (owner's call).
+Read the generated report; confirm the matrix is populated and the reliability scores + recommendation follow from the data. If the current default `qwen3.6-35b-a3b-fp8` is not the top free MCP performer, state that clearly and name the better default — but change NO config.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Teardown + commit**
 
+Tear down every `bench_*` group created (kill container, delete group row + `groups/bench_*` fs). Commit:
 ```bash
-git add scripts/model-benchmark/run.ts docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md
-git commit -m "feat(benchmark): full live run + MCP-reliability report and default recommendation"
+git add scripts/bench.ts docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md
+git commit -m "feat(bench): MCP-reliability report + default recommendation"
 ```
 
 ---
@@ -190,14 +221,14 @@ git commit -m "feat(benchmark): full live run + MCP-reliability report and defau
 ## Self-Review
 
 **1. Spec coverage:**
-- Real pi agent turns via scratch group re-pointed per model → Task 2 runner.
-- MCP tool-use reliability (tool-invoked from trace + answer-grounded), self-grounded → Task 1 scorers (grounded in a real fixture).
-- Task set (5 MCP + 2 general) → `roster.ts` TASKS (Task 2).
-- Roster (Clemson 3 + local MLX 2; deepseek/gptoss excluded; DGX deferred) → `ROSTER` (Task 2).
-- Latency + error scored → the per-turn result (Task 2) + report (Task 3).
-- Report + default recommendation, no auto-change → Task 3 (explicitly no config edit).
-- Model routing (clemson/omlx) + model-set-then-recycle → Global Constraints + Task 2 Step 2.
+- Real pi agent turns via re-pointed bench groups → Task 2 (reuses bench.ts SSE driving).
+- MCP tool-use reliability (tool-invoked + answer-grounded), self-grounded from the trace → Task 1 scorers (grounded in a real fixture) + Task 2 Step 4 scoring.
+- Task set (4 MCP + 2 general) → `bench-prompts-mcp.json` (Task 2 Step 3).
+- Roster (Clemson ×3 clemson, local MLX ×2) with correct `model_provider` (`clemson`/`local`) → Task 2 Step 1 + Global Constraints.
+- Latency + error scored → Task 2 Step 4; report → Task 3.
+- Report + recommendation, no auto-change → Task 3 (explicitly changes no config).
+- DB-authoritative model routing (`ensureContainerConfig`+`updateContainerConfigScalars`, kill container) → Task 2 Step 2 + Global Constraints.
 
-**2. Placeholder scan:** No TBD/TODO. The one genuinely-unknown-until-runtime detail — the exact pi-event tool-name/result field paths — is resolved by the mandated **fixture-capture step (Task 1 Step 1)** before any parser code, with a documented fallback if results aren't in the trace. That is a discovery step, not a placeholder.
+**2. Placeholder scan:** No TBD/TODO. The only run-time-confirmed detail — the exact seeded curriculum tool prefix — is handled by substring `toolInvoked` matching + a controller confirmation before the live run, not a code placeholder.
 
-**3. Type consistency:** `TurnResult`/`ToolCall` and `readTurn`/`readTurnFromRows`/`toolInvoked`/`answerGrounded`/`matchesExpected` names are defined in Task 1 and consumed unchanged in Task 2; `ROSTER`/`TASKS` shapes defined in Task 2 and consumed by the runner; model ids + `model_provider` values match the Global Constraints roster verbatim; the report file path is consistent between Task 3 steps.
+**3. Type consistency:** `TurnResult`/`ToolCall`/`OutboundRow` and `parseTurnRows`/`readTurnOutbound`/`toolInvoked`/`answerGrounded`/`matchesExpected` are defined in Task 1 and consumed unchanged in Task 2; `SYSTEMS` gains `modelProvider` (Task 2 Step 1) and every consumer (`provisionBenchGroup`) is updated in the same task; model ids + `model_provider` values (`clemson`/`local`) match Global Constraints verbatim; the report path is consistent across Task 3 steps.

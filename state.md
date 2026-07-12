@@ -192,18 +192,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (128 commits ahead)
+- **Last tag:** `classroom-2026-07` (129 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 1]
-A  docs/superpowers/plans/2026-07-12-a1-model-benchmark.md
+## main...origin/main [ahead 2]
+M  docs/superpowers/plans/2026-07-12-a1-model-benchmark.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+f29154de docs(plan): A1 model-benchmark harness (MCP tool-use reliability)
 cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
 20ea6db6 docs(state): member nav collapsed to Setup + MyAgent; persona/skills under Advanced
 d093f6c9 chore(playground): drop unused tab-gating imports in app.js (final-review minor)
@@ -218,9 +219,8 @@ a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 d5e16f34 docs(review): live verification — A3 file-centric member chat
 631bcb1e feat(playground): members get the lean chat tab, drop the simple tab
 fdf6ff55 feat(playground): lean member chat component (inline, file attach/receive)
-0eb968aa feat(playground): accept typical work files as chat attachments (allowlist, [File:] marker)
 ```
 
 ### Last refresh
 
-2026-07-12T18:40:51Z
+2026-07-12T21:15:17Z
