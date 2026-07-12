@@ -192,18 +192,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (133 commits ahead)
+- **Last tag:** `classroom-2026-07` (134 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 6]
+## main...origin/main [ahead 7]
 M  scripts/bench.ts
+?? docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+8436f95c feat(bench): configurable timeout + durable results + --report-only recovery
 26caaf74 feat(bench): valid + fair MCP-reliability suite (isolation fix, scoring, report)
 dbfa62b3 feat(bench): pi/model_provider systems + MCP reliability suite
 d5cf6d8b feat(bench): MCP tool-use scoring from real outbound trace
@@ -218,9 +220,8 @@ a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 8cb552fc feat(playground): member top nav = Setup + MyAgent; persona/skills reachable but off the bar
 347169d2 docs(plan): member Setup restructure — Setup + MyAgent nav, persona/skills under Advanced
 616e66ac docs(state): A3 file-capable member chat shipped; symlink-safe attach + tracked TOCTOU residual
-58de935e docs(security): correct the attachment-write comment — residual TOCTOU is tracked
 ```
 
 ### Last refresh
 
-2026-07-12T22:34:51Z
+2026-07-12T23:02:35Z

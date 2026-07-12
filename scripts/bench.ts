@@ -345,13 +345,23 @@ async function provisionBenchGroup(
   // Always re-copy config files from source to keep bench fresh.
   fs.mkdirSync(benchDir, { recursive: true });
 
-  for (const filename of ['CLAUDE.md', 'CLAUDE.local.md', 'container.json']) {
+  for (const filename of ['CLAUDE.md', 'container.json']) {
     const src = path.join(sourceDir, filename);
     const dst = path.join(benchDir, filename);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, dst);
     }
   }
+
+  // Write a NEUTRAL per-group persona rather than inheriting the source's
+  // CLAUDE.local.md. owner_01's is a "Socratic tutor — never answer directly,
+  // ask a question back" persona, which confounds an MCP tool-use benchmark:
+  // models that follow it refuse to answer (scored as failures) independent of
+  // their actual tool ability. Neutral persona lets the tool-use signal show.
+  fs.writeFileSync(
+    path.join(benchDir, 'CLAUDE.local.md'),
+    '# Assistant\n\nYou are a helpful assistant for Clemson faculty. Answer the user’s question directly and concisely.\n',
+  );
 
   // Best-effort scaffolding copy of container.json — not authoritative for
   // routing (see comment above), but keeps the file in sync for inspection.
