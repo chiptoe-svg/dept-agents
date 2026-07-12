@@ -192,20 +192,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (130 commits ahead)
+- **Last tag:** `classroom-2026-07` (131 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 3]
-A  scripts/bench-fixtures/mcp-turn.json
-A  scripts/bench-mcp-score.test.ts
-A  scripts/bench-mcp-score.ts
+## main...origin/main [ahead 4]
+A  scripts/bench-prompts-mcp.json
+M  scripts/bench.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+d5cf6d8b feat(bench): MCP tool-use scoring from real outbound trace
 2815794e docs(plan): revise A1 to extend bench.ts (not build fresh)
 f29154de docs(plan): A1 model-benchmark harness (MCP tool-use reliability)
 cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
@@ -220,9 +220,8 @@ a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 58de935e docs(security): correct the attachment-write comment — residual TOCTOU is tracked
 63c34180 fix(security): symlink-safe chat attachment writes; close mimeType-spoof allowlist bypass
 d5e16f34 docs(review): live verification — A3 file-centric member chat
-631bcb1e feat(playground): members get the lean chat tab, drop the simple tab
 ```
 
 ### Last refresh
 
-2026-07-12T21:17:46Z
+2026-07-12T21:27:55Z
