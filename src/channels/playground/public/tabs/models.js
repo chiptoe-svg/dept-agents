@@ -338,7 +338,7 @@ function renderHiddenFooter(count, names) {
   div.style.cssText =
     'font-size:11px;color:var(--text-muted);text-align:center;font-style:italic;' +
     'padding-top:8px;border-top:1px dashed var(--border);margin-top:16px';
-  div.textContent = `${count} provider${count === 1 ? '' : 's'} hidden — ${names.join(', ')} not enabled by instructor.`;
+  div.textContent = `${count} provider${count === 1 ? '' : 's'} hidden — ${names.join(', ')} not enabled by admin.`;
   return div;
 }
 

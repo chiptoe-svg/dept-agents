@@ -157,7 +157,7 @@ export function handleOAuthStart(url: URL, res: http.ServerResponse): boolean {
     sendHtml(
       res,
       500,
-      '<h1>Google login not configured</h1><p>The instructor needs to run /add-classroom-gws so the OAuth client is on disk.</p>',
+      '<h1>Google login not configured</h1><p>The admin needs to run /add-classroom-gws so the OAuth client is on disk.</p>',
     );
     return true;
   }
@@ -256,7 +256,7 @@ export async function processOAuthCallback(opts: {
     return {
       status: 403,
       contentType: 'text/html; charset=utf-8',
-      body: `<h1>Not enrolled</h1><p>The email <code>${escapeHtml(email)}</code> isn't on the class roster. Ask your instructor to add you.</p>`,
+      body: `<h1>Not enrolled</h1><p>The email <code>${escapeHtml(email)}</code> isn't on the class roster. Ask your admin to add you.</p>`,
     };
   }
 
