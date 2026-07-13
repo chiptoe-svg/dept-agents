@@ -15,10 +15,15 @@ export function hasFullAccess(role) {
   return role === 'owner' || role === 'ta';
 }
 
+// 'admin' is owner-only: TAs get every other full-access tab but not this one.
+function withoutAdminUnlessOwner(role, tabs) {
+  return role === 'owner' ? tabs : tabs.filter((t) => t !== 'admin');
+}
+
 export function tabsForRole(role) {
-  return hasFullAccess(role) ? TABS : MEMBER_TABS;
+  return withoutAdminUnlessOwner(role, hasFullAccess(role) ? TABS : MEMBER_TABS);
 }
 
 export function navTabsForRole(role) {
-  return hasFullAccess(role) ? TABS : MEMBER_NAV_TABS;
+  return withoutAdminUnlessOwner(role, hasFullAccess(role) ? TABS : MEMBER_NAV_TABS);
 }

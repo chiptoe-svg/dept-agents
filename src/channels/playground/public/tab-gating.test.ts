@@ -8,9 +8,9 @@ describe('tab gating', () => {
     expect(tabsForRole('member')[0]).toBe('home');
   });
 
-  it('owners and TAs get the full tab set', () => {
+  it('owners and TAs get the full tab set, minus admin for TAs', () => {
     expect(tabsForRole('owner')).toEqual(TABS);
-    expect(tabsForRole('ta')).toEqual(TABS);
+    expect(tabsForRole('ta')).toEqual(TABS.filter((t) => t !== 'admin'));
     expect(hasFullAccess('owner')).toBe(true);
     expect(hasFullAccess('ta')).toBe(true);
     expect(hasFullAccess('member')).toBe(false);
@@ -31,16 +31,16 @@ describe('nav vs reachable split', () => {
     expect(navTabsForRole('member')).not.toContain('persona');
     expect(navTabsForRole('member')).not.toContain('skills');
   });
-  it('owners/TAs see the full nav', () => {
+  it('owners see the full nav; TAs see the full nav minus admin', () => {
     expect(navTabsForRole('owner')).toEqual(TABS);
-    expect(navTabsForRole('ta')).toEqual(TABS);
+    expect(navTabsForRole('ta')).toEqual(TABS.filter((t) => t !== 'admin'));
   });
 });
 
 describe('admin tab — owner only', () => {
-  it('navTabsForRole includes admin for owners but not members', () => {
+  it('navTabsForRole includes admin for owners but not TAs or members', () => {
     expect(navTabsForRole('owner')).toContain('admin');
-    expect(navTabsForRole('ta')).toContain('admin');
+    expect(navTabsForRole('ta')).not.toContain('admin');
     expect(navTabsForRole('member')).not.toContain('admin');
   });
   it('admin is absent from MEMBER_TABS/MEMBER_NAV_TABS but present in TABS', () => {

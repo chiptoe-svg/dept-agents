@@ -1014,6 +1014,9 @@ export async function route(
   // POST /api/admin/users/:folder/rotate-link — owner-only.
   const rotateLinkMatch = url.pathname.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/rotate-link$/);
   if (method === 'POST' && rotateLinkMatch) {
+    if (!session.userId || !isOwner(session.userId)) {
+      return send(res, 403, { error: 'owner role required' });
+    }
     const folder = rotateLinkMatch[1]!;
     const userId = userIdForFolder(folder);
     if (!userId) return send(res, 404, { error: `no provisioned user for folder ${folder}` });
@@ -1023,6 +1026,9 @@ export async function route(
   // POST /api/admin/users/:folder/deactivate — owner-only.
   const deactivateMatch = url.pathname.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/deactivate$/);
   if (method === 'POST' && deactivateMatch) {
+    if (!session.userId || !isOwner(session.userId)) {
+      return send(res, 403, { error: 'owner role required' });
+    }
     const folder = deactivateMatch[1]!;
     const userId = userIdForFolder(folder);
     if (!userId) return send(res, 404, { error: `no provisioned user for folder ${folder}` });

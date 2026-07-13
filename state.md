@@ -192,20 +192,21 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (146 commits ahead)
+- **Last tag:** `classroom-2026-07` (147 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 19]
-M  src/channels/playground/api/privacy-mode.test.ts
-M  src/channels/playground/api/privacy-mode.ts
-M  src/channels/playground/public/tabs/member-chat.js
+## main...origin/main [ahead 20]
+M  src/channels/playground/api-routes.ts
+M  src/channels/playground/public/tab-gating.js
+M  src/channels/playground/public/tab-gating.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+dce28fc7 fix(member): return effective provider from privacy-mode; visible toggle error state
 f990c150 feat(member): Cloud↔Private toggle in MyAgent (replaces Running-on chip)
 3b2f473b feat(member): /api/me/privacy-mode Cloud↔Private toggle
 46355d9c feat(admin): owner-only Admin tab UI
@@ -220,9 +221,8 @@ e7a04ffd docs(bench): A1 MCP-reliability report + default recommendation
 2539610f fix(bench): neutral bench persona (remove Socratic-tutor confound)
 8436f95c feat(bench): configurable timeout + durable results + --report-only recovery
 26caaf74 feat(bench): valid + fair MCP-reliability suite (isolation fix, scoring, report)
-dbfa62b3 feat(bench): pi/model_provider systems + MCP reliability suite
 ```
 
 ### Last refresh
 
-2026-07-13T03:12:25Z
+2026-07-13T03:18:12Z
