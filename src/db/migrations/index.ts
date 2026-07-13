@@ -21,6 +21,7 @@ import { migration021 } from './021-container-configs-model-provider.js';
 import { migration022 } from './022-allowed-models-rename-providers.js';
 import { migration023 } from './023-backfill-agent-provider-pi.js';
 import { migration024 } from './024-backstop-usage.js';
+import { migration025 } from './025-app-config.js';
 import { moduleApprovalsPendingApprovals } from './module-approvals-pending-approvals.js';
 import { moduleApprovalsTitleOptions } from './module-approvals-title-options.js';
 import { moduleClassLoginTokens } from './module-class-login-tokens.js';
@@ -56,6 +57,7 @@ const migrations: Migration[] = [
   migration022,
   migration023,
   migration024,
+  migration025,
   moduleClassLoginTokens,
   moduleClassLoginPins,
   moduleClassTelegramPair,

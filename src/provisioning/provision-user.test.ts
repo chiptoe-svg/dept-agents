@@ -17,6 +17,8 @@ import { initTestDb, closeDb, runMigrations, getDb } from '../db/index.js';
 import { getAgentGroupByFolder, getPlaygroundAgentForUser } from '../db/agent-groups.js';
 import { getMessagingGroupByPlatform } from '../db/messaging-groups.js';
 import { isMember } from '../modules/permissions/db/agent-group-members.js';
+import { setDeptModelConfig } from '../db/app-config.js';
+import { getContainerConfig } from '../db/container-configs.js';
 import { provisionUser } from './provision-user.js';
 
 beforeEach(() => {
@@ -58,6 +60,17 @@ describe('provisionUser', () => {
   it('refuses to double-provision the same identity', () => {
     provisionUser({ displayName: 'Dana', email: 'dana@clemson.edu' });
     expect(() => provisionUser({ displayName: 'Dana', email: 'dana@clemson.edu' })).toThrow(/exists/i);
+  });
+
+  it('provisions on the dept default-cloud model', () => {
+    setDeptModelConfig({
+      defaultCloud: { model: 'glm-5.1-fp8', provider: 'clemson' },
+      private: { model: 'x', provider: 'local' },
+    });
+    const r = provisionUser({ displayName: 'T', email: 't@clemson.edu' });
+    const cc = getContainerConfig(r.agentGroupId)!;
+    expect(cc.model).toBe('glm-5.1-fp8');
+    expect(cc.model_provider).toBe('clemson');
   });
 
   it('does not leak another user’s agent', () => {

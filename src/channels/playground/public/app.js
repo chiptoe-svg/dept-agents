@@ -1,6 +1,7 @@
 import { mountHome } from './tabs/home.js';
 import { mountSimple } from './tabs/simple.js';
 import { mountChat, refreshChatModels } from './tabs/chat.js';
+import { mountMemberChat } from './tabs/member-chat.js';
 import { mountPersona } from './tabs/persona.js';
 import { mountSkills } from './tabs/skills.js';
 import { mountModels } from './tabs/models.js';
@@ -9,15 +10,17 @@ import { mountSources } from './tabs/sources.js';
 import { mountRetrieval } from './tabs/retrieval.js';
 import { mountBenchmarks } from './tabs/benchmarks.js';
 import { mountStatus } from './tabs/status.js';
+import { mountAdmin } from './tabs/admin.js';
 import { initDraftBanner } from './draft-banner.js';
 import { mountMemberHome } from './tabs/member-home.js';
-import { TABS, MEMBER_TABS, hasFullAccess, tabsForRole } from './tab-gating.js';
+import { TABS, hasFullAccess, tabsForRole, navTabsForRole } from './tab-gating.js';
 
 const mounters = {
   home: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountHome(tabEl) : mountMemberHome(tabEl)),
-  simple: mountSimple, chat: mountChat, persona: mountPersona, skills: mountSkills,
+  simple: mountSimple, chat: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountChat(tabEl) : mountMemberChat(tabEl)), persona: mountPersona, skills: mountSkills,
   models: mountModels, agents: mountAgents, sources: mountSources,
   retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus,
+  admin: mountAdmin,
 };
 const mounted = {};
 let allowedTabs = TABS.slice();
@@ -38,15 +41,18 @@ function showTab(name) {
 }
 
 function applyTabGating(user) {
-  allowedTabs = tabsForRole(user.role);
+  allowedTabs = tabsForRole(user.role);         // reachable via showTab (incl. persona/skills for members)
+  const navTabs = navTabsForRole(user.role);    // shown in the top nav bar
   for (const t of TABS) {
     const btn = document.querySelector(`[data-tab="${t}"]`);
-    if (btn) btn.hidden = !allowedTabs.includes(t);
+    if (btn) btn.hidden = !navTabs.includes(t);
   }
-  // Members see the chat surface labeled "Chat" rather than "My Agent".
+  // Members: relabel the two nav tabs. Persona/Skills live under Setup > Advanced.
   if (!hasFullAccess(user.role)) {
-    const chatBtn = document.querySelector('[data-tab="simple"]');
-    if (chatBtn) chatBtn.textContent = 'Chat';
+    const setupBtn = document.querySelector('[data-tab="home"]');
+    if (setupBtn) setupBtn.textContent = 'Setup';
+    const agentBtn = document.querySelector('[data-tab="chat"]');
+    if (agentBtn) agentBtn.textContent = 'MyAgent';
   }
   const activeBtn = document.querySelector('[data-tab].active');
   const currentTab = activeBtn?.dataset?.tab;

@@ -95,6 +95,8 @@ Curated entries — "want to understand X, do Y." Codegraph queries beat hardcod
 - *API routes* — `src/channels/playground/api-routes.ts` (top-level dispatch), `src/channels/playground/api/*.ts` (per-resource handlers).
 - *Active-model dropdown wiring* — `PUT /api/drafts/<folder>/active-model` accepts `{ modelProvider, model }`; handler at `src/channels/playground/api/models.ts:handlePutActiveModel`, calls `setModelProviderAndModel` in `src/model-provider-switch.ts`.
 - *Trace renderer* — `src/channels/playground/public/tabs/chat.js`, search for `piHandle*` functions. Lossy `tool_use`/`tool_result`/`model_call` paths were deleted in Phase D d-5; pi_event passthrough is the only live path.
+- *Owner Admin tab (add user, active-users+cost, model-defaults, backstop)* — `src/channels/playground/api/admin.ts` (owner-gated handlers) + `tabs/admin.js` (owner-only UI). Dept model defaults live in `app_config` (`src/db/app-config.ts`, `getDeptModelConfig`); read by `provisionUser`, the privacy toggle, and the admin list.
+- *Member Cloud↔Private toggle* — `src/channels/playground/api/privacy-mode.ts` (`handlePrivacyMode`, member-self; stashes the cloud choice in `agent_groups.metadata.cloudChoice`, flips `container_configs` to the dept `private` model) + the toggle in `tabs/member-chat.js`.
 
 **Admin CLI (`ncl`)**
 - *Adding a resource verb* — pattern in `src/cli/resources/groups.ts` (the most complex example). Generic CRUD reg in `src/cli/crud.ts`. Verbs are HYPHENATED (`config-update`, not `config update`) because the client only joins the first two positionals.
@@ -117,6 +119,14 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 ## Decision log
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
+
+**2026-07-12 — Owner Admin tab + member Cloud↔Private toggle shipped (code on main, deploy pending).** A new `app_config` central-DB key/value store (migration 025) holds the **department model defaults** — `default_cloud_*` (seeded `qwen3.6-35b-a3b-fp8`/`clemson`) and `private_*` (seeded `Qwen3.6-35B-A3B-UD-MLX-4bit`/`local`); `provisionUser` now reads `default_cloud_*` instead of a hardcode, so the owner controls what new users get. **Owner-only** `/api/admin/*` (`api/admin.ts`, every handler `isOwner`-gated, and the `:folder` routes gate before folder lookup): add-user → copyable magic link, active-users list with month-to-date cost (`aggregateAgentUsage`), rotate link, deactivate (`revokeAllForUser` = revoke tokens + kill sessions), dept model-defaults GET/PUT, backstop-key health (`OPENAI_API_KEY` presence, no probe). Admin tab UI (`tabs/admin.js`) gated to `role==='owner'` (TAs excluded). **Member `POST /api/me/privacy-mode`** (`api/privacy-mode.ts`, member-SELF — resolves the caller's own group from the session, never a body field) flips `container_configs` between the cloud provider (stashed in `agent_groups.metadata.cloudChoice`) and the dept private (on-box `local`) model, returning the effective provider; the MyAgent chip is now an interactive **Cloud ↔ Private** toggle (`member-chat.js`, replaces the read-only "Running on"). `container_configs.model_provider/model` always hold the EFFECTIVE value, so proxy routing is unchanged. Whole-branch review clean (merge-safe); accepted cosmetic minors: admin rotate/deactivate no error toast, rotate result placement, `member-chat` hardcodes private provider = `local`. Spec `docs/superpowers/specs/2026-07-12-admin-tab-and-privacy-toggle-design.md`, plan `.../plans/2026-07-12-admin-tab-and-privacy-toggle.md`.
+
+**2026-07-12 — A1 model benchmark: free default validated (no config change).** Ran real pi agent turns across 5 free models scoring MCP tool-use reliability (tool-invoked + answer-grounded from the outbound.db trace) via the reusable `scripts/bench.ts --suite mcp`. Outcome: **keep `qwen3.6-35b-a3b-fp8` as the free default** (6/6); `glm-5.1-fp8` (Clemson) and `Qwen3.6-35B-A3B` (local, on-box) equal fallbacks (6/6); `gemma-4-26B` 5/6; `qwen3-30b-a3b-instruct-fp8` unviable (1/6, 180s timeouts). Report `docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md`. **Finding: the Banner class-schedule MCP tool (`cuassistant-public`) returns inconsistent/empty results independent of the model** — a tool/backend bug affecting every agent, to investigate. Harness gotchas learned: use a legit owner login-token cookie (`NC_BENCH_COOKIE`), not `BENCH_MODE=1` (which opens an external owner bypass via Caddy); per-task isolation needs stopping the container via the runtime CLI (the in-memory kill Map is host-process-only); bench groups must use a neutral persona.
+
+**2026-07-12 — Member top nav collapsed to Setup + MyAgent; Persona/Skills tucked under Setup > Advanced.** The member top bar is now just two tabs — **Setup** (the renamed Home dashboard) and **MyAgent** (the renamed A3 chat). Achieved by splitting nav-visible from reachable: `MEMBER_NAV_TABS = ['home','chat']` drives the top-bar buttons while `allowedTabs`/`MEMBER_TABS` still includes `persona`/`skills` so `showTab` permits them — they're opened from an **"Advanced"** `<details>` on the Setup dashboard ("Edit persona"/"Edit skills" click the reachable-but-hidden tab buttons, opening the existing full editors). Tab **ids** unchanged (`home`/`chat`/`persona`/`skills`); owners/TAs keep the full nav. The redundant "Go to MyAgent" button was removed (the nav tab handles it). Live-verified. Minor cosmetic: opening Persona/Skills leaves no top-nav tab highlighted (navigation works, Setup returns).
+
+**2026-07-12 — Members get a file-capable chat (A3); attachment writes are symlink-safe, with one tracked TOCTOU residual.** The member `simple` tab is replaced by a new lean **`chat`** tab (`tabs/member-chat.js`, role-mounted like `home`): inline conversation, SSE streaming, first-class **file attach/receive**, a read-only "Running on: …" model indicator (no picker), XSS-safe (`textContent`-only). Member tabs are now `['home','chat','persona','skills']`. Attach accepts a **typical-files allowlist** (docs/sheets/slides/images/data, 29 extensions, 25 MB; executables rejected default-deny), saving to `groups/<folder>/attachments/<safeName>` with a `[File: …]` marker the agent reads; **no document conversion** (PDFs via `pdf-reader`/`pdftotext`, images inline, Office files land raw — docling text + the picture-description/DGX-vision workflow are a future phase as installable skills). Live-proven: a member attached a CSV → the agent read it on `provider=clemson`; a produced file downloaded via the outbox route. **Security:** the whole-branch review caught that attachment writes followed symlinks — and since `groups/<folder>` is mounted RW into the member's own agent container, that was a member→host arbitrary-write. Closed via a shared `saveMemberAttachment` (realpath-containment guard against a symlinked `attachments/` dir + `O_NOFOLLOW` against a symlinked final component + forced `.pdf` on the pdf branch to kill the mimeType-spoof), with a real symlink-write regression test. **Tracked residual (accepted for the small trusted pilot, close before all ~15):** an intermediate-directory-symlink **TOCTOU** race survives — `O_NOFOLLOW` guards only the final component, and it's pre-existing/systemic (any host write into the RW-mounted group dir, incl. the image branch). The robust close is to **stage attachments in a host-only dir mounted READ-ONLY into the container** so the agent can't mutate the path.
 
 **2026-07-12 — Slice D scoped to vocabulary only; the `classroom_roster` drop was deliberately deferred (it is NOT vestigial).** The playground wordmark was rebranded to **"GC Agents"** (text wordmark, `classroom-nano.png` dropped from HTML) and all member-visible **"instructor"** rendered strings were changed to admin/department wording (login-PIN error, owner Home Drive/Telegram copy, models-tab `ask admin` label, Google-auth error HTML in both `api/google-auth.ts` and `google-oauth.ts`). **The `classroom_roster` table drop was investigated and dropped from scope:** the table is 0 rows but is NOT dead — it backs (a) the superseded-but-wired Google-OAuth *login* path (`google-oauth.ts`, routes `/oauth/google/start`+`/callback`) and (b) the Phase-14 Google *Drive/Sheets* connect (`api/google-auth.ts` + `me.ts` use `lookupRosterByUserId` to map a user → their agent group + email when stamping connected Google creds). Dropping it would force rewriting the Drive-connect path — a feature we want to keep but which is currently disabled (A2 "Available soon" card, pending the GCP step). **Do NOT naively drop `classroom_roster`;** its roster→entity-model rewire (`agent_group_members` + `agent_groups.metadata` already carry the user→group→email mapping) belongs *with* the future Google-connect buildout. Still-deferred `class`-vocabulary (e.g. "class-shared Drive", "your class agent") and the internal `class_*`/`student-*`/`ta` identifier renames were left untouched (churn with no functional gain; the live-data `class_login_tokens`/`class_telegram_pair_codes` tables carry active rows). The Telegram bot stays `@CUInstructorBot` — a bot's Telegram @username is fixed at creation (needs a new bot via BotFather to change).
 
@@ -188,35 +198,35 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (108 commits ahead)
+- **Last tag:** `classroom-2026-07` (148 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 2]
+## main...origin/main [ahead 21]
 M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
-65290efb chore(copy): department vocabulary — user-visible 'instructor' -> admin/department
-c478f4c5 docs(plan): Slice D scoped — drop classroom_roster + dept vocabulary
-941e8b77 feat(playground): rebrand wordmark "NanoClaw Classroom" -> "GC Agents"
-24c69a63 docs(state): A2 member onboarding shipped; correct :3003 bind note
-37034024 fix(playground): connecting ChatGPT switches the agent to it; truthful model chip; real greeting name
-277f66d0 docs(review): live verification — A2 member onboarding
-62e11fd9 docs(plan): add the proxy-bind-hardening plan (was uncommitted)
-b71c9c72 docs(a2): correct Clemson default model id to qwen3.6-35b-a3b-fp8
-a29733f5 feat(provisioning): default new members to the free Clemson campus model
-b7807113 feat(playground): members get Home/Chat/Persona/Skills tabs, land on Home
-139fd10e feat(playground): member Home setup dashboard (connect ChatGPT/Telegram, campus-model default)
-94a2c9cd docs(plan): A2 member onboarding/setup implementation plan
-8b26e360 docs(spec): A2 — members get persona + skills tabs (reused as-is)
-d985b9bf docs(spec): A2 — Google card is a disabled "Available soon" placeholder
-8fe71363 docs(spec): A2 member onboarding/setup design (dept server)
+cbd1eae6 fix(playground): owner-gate admin routes before folder lookup; admin tab owner-only
+dce28fc7 fix(member): return effective provider from privacy-mode; visible toggle error state
+f990c150 feat(member): Cloud↔Private toggle in MyAgent (replaces Running-on chip)
+3b2f473b feat(member): /api/me/privacy-mode Cloud↔Private toggle
+46355d9c feat(admin): owner-only Admin tab UI
+d720331a refactor(admin): reuse canonical userIdForAgentGroup for folder resolution
+ff6d0f35 feat(admin): owner-gated user + model-defaults + backstop endpoints
+b3612d80 feat(provisioning): new users get the dept default-cloud model from app_config
+b12e3cac feat(db): app_config store + dept model defaults
+ecf79440 docs(plan): Admin tab + Cloud↔Private toggle (6 tasks, 2 phases)
+349884be docs(spec): owner Admin tab + member Cloud↔Private toggle
+3871cb6a fix(bench): final-review polish (gateway call, robustness, guards)
+e7a04ffd docs(bench): A1 MCP-reliability report + default recommendation
+2539610f fix(bench): neutral bench persona (remove Socratic-tutor confound)
+8436f95c feat(bench): configurable timeout + durable results + --report-only recovery
 ```
 
 ### Last refresh
 
-2026-07-12T11:37:46Z
+2026-07-13T03:22:37Z

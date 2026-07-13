@@ -13,6 +13,7 @@ import { getDb } from '../db/connection.js';
 import { createAgentGroup, getAgentGroupByFolder } from '../db/agent-groups.js';
 import { createMessagingGroup, createMessagingGroupAgent } from '../db/messaging-groups.js';
 import { updateContainerConfigScalars } from '../db/container-configs.js';
+import { getDeptModelConfig } from '../db/app-config.js';
 import { addMember } from '../modules/permissions/db/agent-group-members.js';
 import { createUser, getUser } from '../modules/permissions/db/users.js';
 import { initGroupFilesystem } from '../group-init.js';
@@ -116,12 +117,13 @@ export function provisionUser(input: ProvisionUserInput): ProvisionResult {
     // set, the container dies at startup with a misleading "Module not
     // found" instead of running the pi harness.
     // Free, on-campus default so a newly-provisioned member's agent works
-    // before they connect their own ChatGPT. Deep model selection is A1;
-    // qwen3.6-35b-a3b-fp8 is the Clemson catalog's agentic pick.
+    // before they connect their own ChatGPT. Sourced from the owner-configurable
+    // dept default-cloud model (app_config), not hardcoded.
+    const dept = getDeptModelConfig();
     updateContainerConfigScalars(agentGroupId, {
       provider: 'pi',
-      model: 'qwen3.6-35b-a3b-fp8',
-      model_provider: 'clemson',
+      model: dept.defaultCloud.model,
+      model_provider: dept.defaultCloud.provider,
     });
 
     addMember({ user_id: userId, agent_group_id: agentGroupId, added_by: null, added_at: now });
