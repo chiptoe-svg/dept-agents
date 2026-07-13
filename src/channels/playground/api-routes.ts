@@ -35,7 +35,7 @@ import { materializeContainerJson } from '../../container-config.js';
 import { updateContainerConfigJson } from '../../db/container-configs.js';
 import { isContainerRunning, killContainer } from '../../container-runner.js';
 import { getAgentGroupByFolder } from '../../db/agent-groups.js';
-import { getMembers } from '../../modules/permissions/db/agent-group-members.js';
+import { userIdForAgentGroup } from '../../provisioning/agent-group-user.js';
 import { getActiveSessions } from '../../db/sessions.js';
 import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
@@ -135,14 +135,15 @@ function saveMemberAttachment(
 }
 
 // Resolve a `:folder` path segment to the provisioned user_id that owns it,
-// for the /api/admin/users/:folder/* routes. provisionUser adds exactly one
-// agent_group_members row per user (see provision-user.ts), so the first
-// member is the owning identity.
+// for the /api/admin/users/:folder/* routes. Delegates to the canonical
+// userIdForAgentGroup (src/provisioning/agent-group-user.ts) — the same
+// earliest-member lookup used by user-provider-resolver.ts and providers/pi.ts
+// — so this security-relevant "whose tokens get rotated/revoked" resolution
+// can't silently drift from a second copy.
 function userIdForFolder(folder: string): string | null {
   const group = getAgentGroupByFolder(folder);
   if (!group) return null;
-  const members = getMembers(group.id);
-  return members[0]?.user_id ?? null;
+  return userIdForAgentGroup(group.id);
 }
 
 // Minimal content-type lookup for agent-produced files. The chat tab renders

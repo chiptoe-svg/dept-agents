@@ -192,20 +192,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (141 commits ahead)
+- **Last tag:** `classroom-2026-07` (142 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 14]
+## main...origin/main [ahead 15]
 M  src/channels/playground/api-routes.ts
-A  src/channels/playground/api/admin.test.ts
-A  src/channels/playground/api/admin.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+ff6d0f35 feat(admin): owner-gated user + model-defaults + backstop endpoints
 b3612d80 feat(provisioning): new users get the dept default-cloud model from app_config
 b12e3cac feat(db): app_config store + dept model defaults
 ecf79440 docs(plan): Admin tab + Cloud↔Private toggle (6 tasks, 2 phases)
@@ -220,9 +219,8 @@ d5cf6d8b feat(bench): MCP tool-use scoring from real outbound trace
 2815794e docs(plan): revise A1 to extend bench.ts (not build fresh)
 f29154de docs(plan): A1 model-benchmark harness (MCP tool-use reliability)
 cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
-20ea6db6 docs(state): member nav collapsed to Setup + MyAgent; persona/skills under Advanced
 ```
 
 ### Last refresh
 
-2026-07-13T02:38:36Z
+2026-07-13T02:45:19Z
