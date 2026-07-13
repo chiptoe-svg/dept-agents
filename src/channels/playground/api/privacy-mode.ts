@@ -64,7 +64,7 @@ function recycleContainerForGroup(agentGroupId: string): void {
 export function handlePrivacyMode(
   session: PlaygroundSession,
   body: { private?: unknown },
-): ApiResult<{ private: boolean }> {
+): ApiResult<{ private: boolean; provider: string }> {
   const agentGroup = getPlaygroundAgentForUser(session.userId);
   if (!agentGroup) return { status: 401, body: { error: 'not signed in' } };
   const agentGroupId = agentGroup.id;
@@ -81,6 +81,11 @@ export function handlePrivacyMode(
 
   const goingPrivate = body?.private === true;
 
+  // The provider actually written to the container config — returned to the
+  // client so it can label the resulting mode precisely (e.g. which cloud
+  // provider was restored) without guessing from a stale local cache.
+  let effectiveProvider: string;
+
   if (goingPrivate) {
     // Stash the current cloud choice unless we're already on the private
     // pair (avoids clobbering a real stash with the private pair itself).
@@ -94,6 +99,7 @@ export function handlePrivacyMode(
       model_provider: dept.private.provider,
       model: dept.private.model,
     });
+    effectiveProvider = dept.private.provider;
   } else {
     const stash = getAgentGroupMetadata(agentGroupId).cloudChoice;
     const restore = isModelSpec(stash)
@@ -103,9 +109,10 @@ export function handlePrivacyMode(
       model_provider: restore.provider,
       model: restore.model,
     });
+    effectiveProvider = restore.provider;
   }
 
   recycleContainerForGroup(agentGroupId);
 
-  return { status: 200, body: { private: goingPrivate } };
+  return { status: 200, body: { private: goingPrivate, provider: effectiveProvider } };
 }

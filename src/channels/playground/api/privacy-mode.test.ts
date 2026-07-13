@@ -60,7 +60,7 @@ describe('handlePrivacyMode', () => {
     const r = handlePrivacyMode(sess('playground:alice'), { private: true });
 
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ private: true });
+    expect(r.body).toEqual({ private: true, provider: PRIVATE.provider });
     const cc = getContainerConfig('ag_alice');
     expect(cc?.model_provider).toBe(PRIVATE.provider);
     expect(cc?.model).toBe(PRIVATE.model);
@@ -75,7 +75,7 @@ describe('handlePrivacyMode', () => {
     const r = handlePrivacyMode(sess('playground:alice'), { private: false });
 
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ private: false });
+    expect(r.body).toEqual({ private: false, provider: CLOUD.provider });
     const cc = getContainerConfig('ag_alice');
     expect(cc?.model_provider).toBe(CLOUD.provider);
     expect(cc?.model).toBe(CLOUD.model);
@@ -91,6 +91,7 @@ describe('handlePrivacyMode', () => {
     const r = handlePrivacyMode(sess('playground:bob'), { private: false });
 
     expect(r.status).toBe(200);
+    expect(r.body).toEqual({ private: false, provider: getAppConfig('default_cloud_provider') });
     const cc = getContainerConfig('ag_bob');
     expect(cc?.model_provider).toBe(getAppConfig('default_cloud_provider'));
     expect(cc?.model).toBe(getAppConfig('default_cloud_model'));

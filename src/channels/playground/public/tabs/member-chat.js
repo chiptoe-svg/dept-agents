@@ -152,14 +152,11 @@ export function mountMemberChat(host) {
 
   // --- Cloud/Private mode indicator + toggle ---
   // currentModelProvider / privateProvider track server-reported state so the
-  // toggle always flips relative to reality, not a stale local guess.
-  // lastKnownCloudProvider remembers the cloud provider we were on right
-  // before switching to Private, so switching back can show its label
-  // immediately (mirrors the server's own stash/restore in privacy-mode.ts)
-  // without a second round-trip.
+  // toggle always flips relative to reality, not a stale local guess. The
+  // post-toggle label comes from the privacy-mode response's own `provider`
+  // field, so no local cloud-provider cache is needed here.
   let currentModelProvider = null;
   let privateProvider = PRIVATE_PROVIDER_FALLBACK;
-  let lastKnownCloudProvider = null;
 
   const modeValueEl = el('b', { text: privacyLabel({ modelProvider: currentModelProvider, privateProvider }) });
   const modeToggleBtn = el('button', {
@@ -179,13 +176,6 @@ export function mountMemberChat(host) {
   async function toggleMode() {
     const currentlyPrivate = currentModelProvider === privateProvider;
     const goingPrivate = !currentlyPrivate;
-    // Leaving cloud for Private — remember the real cloud provider so
-    // switching back can label it precisely without a second round-trip.
-    // (If we're leaving Private instead, lastKnownCloudProvider already
-    // holds whatever we recorded on the way in — or null if the page
-    // loaded already-Private, in which case privacyLabel falls back to a
-    // generic Cloud label until the next full refresh.)
-    if (goingPrivate) lastKnownCloudProvider = currentModelProvider;
 
     const prevLabel = modeValueEl.textContent;
     modeToggleBtn.disabled = true;
@@ -198,14 +188,18 @@ export function mountMemberChat(host) {
         body: JSON.stringify({ private: goingPrivate }),
       });
       if (!r.ok) {
-        modeValueEl.textContent = prevLabel;
+        modeValueEl.textContent = "Couldn't switch — try again";
         return;
       }
       const data = await r.json().catch(() => ({}));
-      currentModelProvider = data.private ? privateProvider : lastKnownCloudProvider;
+      // The server reports the EFFECTIVE provider it just wrote (the private
+      // provider, or the exact cloud provider it restored) — label from that
+      // directly rather than guessing, so switching back from an
+      // already-Private page load still shows the right cloud provider.
+      currentModelProvider = data.provider;
       modeValueEl.textContent = privacyLabel({ modelProvider: currentModelProvider, privateProvider });
     } catch {
-      modeValueEl.textContent = prevLabel;
+      modeValueEl.textContent = "Couldn't switch — try again";
     } finally {
       modeToggleBtn.disabled = false;
     }
@@ -349,7 +343,6 @@ export function mountMemberChat(host) {
       // Not exposed by /api/me/agent today — fall back to the known dept
       // private provider id (see PRIVATE_PROVIDER_FALLBACK).
       if (agent && typeof agent.privateProvider === 'string') privateProvider = agent.privateProvider;
-      if (currentModelProvider !== privateProvider) lastKnownCloudProvider = currentModelProvider;
       modeValueEl.textContent = privacyLabel({ modelProvider: currentModelProvider, privateProvider });
       modeToggleBtn.disabled = false;
     })
