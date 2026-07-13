@@ -95,6 +95,8 @@ Curated entries — "want to understand X, do Y." Codegraph queries beat hardcod
 - *API routes* — `src/channels/playground/api-routes.ts` (top-level dispatch), `src/channels/playground/api/*.ts` (per-resource handlers).
 - *Active-model dropdown wiring* — `PUT /api/drafts/<folder>/active-model` accepts `{ modelProvider, model }`; handler at `src/channels/playground/api/models.ts:handlePutActiveModel`, calls `setModelProviderAndModel` in `src/model-provider-switch.ts`.
 - *Trace renderer* — `src/channels/playground/public/tabs/chat.js`, search for `piHandle*` functions. Lossy `tool_use`/`tool_result`/`model_call` paths were deleted in Phase D d-5; pi_event passthrough is the only live path.
+- *Owner Admin tab (add user, active-users+cost, model-defaults, backstop)* — `src/channels/playground/api/admin.ts` (owner-gated handlers) + `tabs/admin.js` (owner-only UI). Dept model defaults live in `app_config` (`src/db/app-config.ts`, `getDeptModelConfig`); read by `provisionUser`, the privacy toggle, and the admin list.
+- *Member Cloud↔Private toggle* — `src/channels/playground/api/privacy-mode.ts` (`handlePrivacyMode`, member-self; stashes the cloud choice in `agent_groups.metadata.cloudChoice`, flips `container_configs` to the dept `private` model) + the toggle in `tabs/member-chat.js`.
 
 **Admin CLI (`ncl`)**
 - *Adding a resource verb* — pattern in `src/cli/resources/groups.ts` (the most complex example). Generic CRUD reg in `src/cli/crud.ts`. Verbs are HYPHENATED (`config-update`, not `config update`) because the client only joins the first two positionals.
@@ -117,6 +119,10 @@ Pointers, not duplications. Read the relevant one when you're going deep.
 ## Decision log
 
 Append-only, newest first. One line per decision: *what + 1-line why*. Prune (move to archive) when older than ~6 months.
+
+**2026-07-12 — Owner Admin tab + member Cloud↔Private toggle shipped (code on main, deploy pending).** A new `app_config` central-DB key/value store (migration 025) holds the **department model defaults** — `default_cloud_*` (seeded `qwen3.6-35b-a3b-fp8`/`clemson`) and `private_*` (seeded `Qwen3.6-35B-A3B-UD-MLX-4bit`/`local`); `provisionUser` now reads `default_cloud_*` instead of a hardcode, so the owner controls what new users get. **Owner-only** `/api/admin/*` (`api/admin.ts`, every handler `isOwner`-gated, and the `:folder` routes gate before folder lookup): add-user → copyable magic link, active-users list with month-to-date cost (`aggregateAgentUsage`), rotate link, deactivate (`revokeAllForUser` = revoke tokens + kill sessions), dept model-defaults GET/PUT, backstop-key health (`OPENAI_API_KEY` presence, no probe). Admin tab UI (`tabs/admin.js`) gated to `role==='owner'` (TAs excluded). **Member `POST /api/me/privacy-mode`** (`api/privacy-mode.ts`, member-SELF — resolves the caller's own group from the session, never a body field) flips `container_configs` between the cloud provider (stashed in `agent_groups.metadata.cloudChoice`) and the dept private (on-box `local`) model, returning the effective provider; the MyAgent chip is now an interactive **Cloud ↔ Private** toggle (`member-chat.js`, replaces the read-only "Running on"). `container_configs.model_provider/model` always hold the EFFECTIVE value, so proxy routing is unchanged. Whole-branch review clean (merge-safe); accepted cosmetic minors: admin rotate/deactivate no error toast, rotate result placement, `member-chat` hardcodes private provider = `local`. Spec `docs/superpowers/specs/2026-07-12-admin-tab-and-privacy-toggle-design.md`, plan `.../plans/2026-07-12-admin-tab-and-privacy-toggle.md`.
+
+**2026-07-12 — A1 model benchmark: free default validated (no config change).** Ran real pi agent turns across 5 free models scoring MCP tool-use reliability (tool-invoked + answer-grounded from the outbound.db trace) via the reusable `scripts/bench.ts --suite mcp`. Outcome: **keep `qwen3.6-35b-a3b-fp8` as the free default** (6/6); `glm-5.1-fp8` (Clemson) and `Qwen3.6-35B-A3B` (local, on-box) equal fallbacks (6/6); `gemma-4-26B` 5/6; `qwen3-30b-a3b-instruct-fp8` unviable (1/6, 180s timeouts). Report `docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md`. **Finding: the Banner class-schedule MCP tool (`cuassistant-public`) returns inconsistent/empty results independent of the model** — a tool/backend bug affecting every agent, to investigate. Harness gotchas learned: use a legit owner login-token cookie (`NC_BENCH_COOKIE`), not `BENCH_MODE=1` (which opens an external owner bypass via Caddy); per-task isolation needs stopping the container via the runtime CLI (the in-memory kill Map is host-process-only); bench groups must use a neutral persona.
 
 **2026-07-12 — Member top nav collapsed to Setup + MyAgent; Persona/Skills tucked under Setup > Advanced.** The member top bar is now just two tabs — **Setup** (the renamed Home dashboard) and **MyAgent** (the renamed A3 chat). Achieved by splitting nav-visible from reachable: `MEMBER_NAV_TABS = ['home','chat']` drives the top-bar buttons while `allowedTabs`/`MEMBER_TABS` still includes `persona`/`skills` so `showTab` permits them — they're opened from an **"Advanced"** `<details>` on the Setup dashboard ("Edit persona"/"Edit skills" click the reachable-but-hidden tab buttons, opening the existing full editors). Tab **ids** unchanged (`home`/`chat`/`persona`/`skills`); owners/TAs keep the full nav. The redundant "Go to MyAgent" button was removed (the nav tab handles it). Live-verified. Minor cosmetic: opening Persona/Skills leaves no top-nav tab highlighted (navigation works, Setup returns).
 
@@ -192,20 +198,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (147 commits ahead)
+- **Last tag:** `classroom-2026-07` (148 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 20]
-M  src/channels/playground/api-routes.ts
-M  src/channels/playground/public/tab-gating.js
-M  src/channels/playground/public/tab-gating.test.ts
+## main...origin/main [ahead 21]
+M  state.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+cbd1eae6 fix(playground): owner-gate admin routes before folder lookup; admin tab owner-only
 dce28fc7 fix(member): return effective provider from privacy-mode; visible toggle error state
 f990c150 feat(member): Cloud↔Private toggle in MyAgent (replaces Running-on chip)
 3b2f473b feat(member): /api/me/privacy-mode Cloud↔Private toggle
@@ -220,9 +225,8 @@ ecf79440 docs(plan): Admin tab + Cloud↔Private toggle (6 tasks, 2 phases)
 e7a04ffd docs(bench): A1 MCP-reliability report + default recommendation
 2539610f fix(bench): neutral bench persona (remove Socratic-tutor confound)
 8436f95c feat(bench): configurable timeout + durable results + --report-only recovery
-26caaf74 feat(bench): valid + fair MCP-reliability suite (isolation fix, scoring, report)
 ```
 
 ### Last refresh
 
-2026-07-13T03:18:12Z
+2026-07-13T03:22:37Z
