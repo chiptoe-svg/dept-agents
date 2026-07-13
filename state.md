@@ -192,18 +192,24 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (142 commits ahead)
+- **Last tag:** `classroom-2026-07` (143 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 15]
-M  src/channels/playground/api-routes.ts
+## main...origin/main [ahead 16]
+M  src/channels/playground/public/app.js
+M  src/channels/playground/public/index.html
+M  src/channels/playground/public/tab-gating.js
+M  src/channels/playground/public/tab-gating.test.ts
+A  src/channels/playground/public/tabs/admin.js
+A  src/channels/playground/public/tabs/admin.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+d720331a refactor(admin): reuse canonical userIdForAgentGroup for folder resolution
 ff6d0f35 feat(admin): owner-gated user + model-defaults + backstop endpoints
 b3612d80 feat(provisioning): new users get the dept default-cloud model from app_config
 b12e3cac feat(db): app_config store + dept model defaults
@@ -218,9 +224,8 @@ dbfa62b3 feat(bench): pi/model_provider systems + MCP reliability suite
 d5cf6d8b feat(bench): MCP tool-use scoring from real outbound trace
 2815794e docs(plan): revise A1 to extend bench.ts (not build fresh)
 f29154de docs(plan): A1 model-benchmark harness (MCP tool-use reliability)
-cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
 ```
 
 ### Last refresh
 
-2026-07-13T02:45:19Z
+2026-07-13T02:49:34Z

@@ -2,7 +2,7 @@
  *  gating is unit-testable without importing app.js (which runs init() on
  *  load). Department server: owners/TAs see everything; members get the
  *  Home/Chat/Persona/Skills set. */
-export const TABS = ['home', 'simple', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks', 'status'];
+export const TABS = ['home', 'simple', 'chat', 'persona', 'skills', 'models', 'agents', 'sources', 'retrieval', 'benchmarks', 'status', 'admin'];
 
 export const MEMBER_TABS = ['home', 'chat', 'persona', 'skills'];
 

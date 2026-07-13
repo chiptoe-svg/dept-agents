@@ -10,6 +10,7 @@ import { mountSources } from './tabs/sources.js';
 import { mountRetrieval } from './tabs/retrieval.js';
 import { mountBenchmarks } from './tabs/benchmarks.js';
 import { mountStatus } from './tabs/status.js';
+import { mountAdmin } from './tabs/admin.js';
 import { initDraftBanner } from './draft-banner.js';
 import { mountMemberHome } from './tabs/member-home.js';
 import { TABS, hasFullAccess, tabsForRole, navTabsForRole } from './tab-gating.js';
@@ -19,6 +20,7 @@ const mounters = {
   simple: mountSimple, chat: (tabEl) => (hasFullAccess(window.__pg?.user?.role) ? mountChat(tabEl) : mountMemberChat(tabEl)), persona: mountPersona, skills: mountSkills,
   models: mountModels, agents: mountAgents, sources: mountSources,
   retrieval: mountRetrieval, benchmarks: mountBenchmarks, status: mountStatus,
+  admin: mountAdmin,
 };
 const mounted = {};
 let allowedTabs = TABS.slice();

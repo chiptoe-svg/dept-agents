@@ -36,3 +36,17 @@ describe('nav vs reachable split', () => {
     expect(navTabsForRole('ta')).toEqual(TABS);
   });
 });
+
+describe('admin tab — owner only', () => {
+  it('navTabsForRole includes admin for owners but not members', () => {
+    expect(navTabsForRole('owner')).toContain('admin');
+    expect(navTabsForRole('ta')).toContain('admin');
+    expect(navTabsForRole('member')).not.toContain('admin');
+  });
+  it('admin is absent from MEMBER_TABS/MEMBER_NAV_TABS but present in TABS', () => {
+    expect(TABS).toContain('admin');
+    expect(MEMBER_TABS).not.toContain('admin');
+    expect(MEMBER_NAV_TABS).not.toContain('admin');
+    expect(tabsForRole('member')).not.toContain('admin');
+  });
+});
