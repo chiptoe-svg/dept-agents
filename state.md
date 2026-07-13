@@ -192,21 +192,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (139 commits ahead)
+- **Last tag:** `classroom-2026-07` (140 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 12]
-A  src/db/app-config.test.ts
-A  src/db/app-config.ts
-A  src/db/migrations/025-app-config.ts
-M  src/db/migrations/index.ts
+## main...origin/main [ahead 13]
+M  src/provisioning/provision-user.test.ts
+M  src/provisioning/provision-user.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+b12e3cac feat(db): app_config store + dept model defaults
 ecf79440 docs(plan): Admin tab + Cloud↔Private toggle (6 tasks, 2 phases)
 349884be docs(spec): owner Admin tab + member Cloud↔Private toggle
 3871cb6a fix(bench): final-review polish (gateway call, robustness, guards)
@@ -221,9 +220,8 @@ f29154de docs(plan): A1 model-benchmark harness (MCP tool-use reliability)
 cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
 20ea6db6 docs(state): member nav collapsed to Setup + MyAgent; persona/skills under Advanced
 d093f6c9 chore(playground): drop unused tab-gating imports in app.js (final-review minor)
-afbd038f docs(review): live verification — member Setup restructure
 ```
 
 ### Last refresh
 
-2026-07-13T02:26:06Z
+2026-07-13T02:30:00Z
