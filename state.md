@@ -192,18 +192,22 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (138 commits ahead)
+- **Last tag:** `classroom-2026-07` (139 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 11]
-A  docs/superpowers/plans/2026-07-12-admin-tab-and-privacy-toggle.md
+## main...origin/main [ahead 12]
+A  src/db/app-config.test.ts
+A  src/db/app-config.ts
+A  src/db/migrations/025-app-config.ts
+M  src/db/migrations/index.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+ecf79440 docs(plan): Admin tab + Cloud↔Private toggle (6 tasks, 2 phases)
 349884be docs(spec): owner Admin tab + member Cloud↔Private toggle
 3871cb6a fix(bench): final-review polish (gateway call, robustness, guards)
 e7a04ffd docs(bench): A1 MCP-reliability report + default recommendation
@@ -218,9 +222,8 @@ cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
 20ea6db6 docs(state): member nav collapsed to Setup + MyAgent; persona/skills under Advanced
 d093f6c9 chore(playground): drop unused tab-gating imports in app.js (final-review minor)
 afbd038f docs(review): live verification — member Setup restructure
-5c52a5e5 docs(plan): note Go-to-MyAgent button removed (redundant with nav tab)
 ```
 
 ### Last refresh
 
-2026-07-13T02:21:28Z
+2026-07-13T02:26:06Z
