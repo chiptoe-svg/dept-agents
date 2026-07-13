@@ -1,19 +1,26 @@
 /**
- * NanoClaw agent-harness benchmark runner — B1+B2+B3.
+ * NanoClaw agent-harness benchmark runner — B1+B2+B3 + MCP reliability suite.
  *
- * CLI: pnpm exec tsx scripts/bench.ts --source <folder> --systems <comma-list> --reps <n>
+ * CLI: pnpm exec tsx scripts/bench.ts --source <folder> --systems <comma-list> --reps <n> --suite <default|mcp>
  *
- * Systems (pass as comma-separated list to --systems):
- *   claude-sonnet   claude provider  + claude-sonnet-4-6          (default)
- *   claude-haiku    claude provider  + claude-haiku-4-5
- *   codex-5.4       codex provider   + gpt-5.4
- *   codex-5.4-mini  codex provider   + gpt-5.4-mini
- *   local-qwen3     local provider   + Qwen3.6-35B-A3B-UD-MLX-4bit (requires mlx-omni-server)
+ * Systems (pass as comma-separated list to --systems) — all pi provider, routed
+ * by model_provider through the credential proxy (`clemson` → Clemson RCD LLM
+ * endpoint, `local` → local MLX server):
+ *   clemson-qwen36      model_provider clemson + qwen3.6-35b-a3b-fp8            (default)
+ *   clemson-qwen3-30b   model_provider clemson + qwen3-30b-a3b-instruct-fp8
+ *   clemson-glm51       model_provider clemson + glm-5.1-fp8
+ *   local-qwen36        model_provider local   + Qwen3.6-35B-A3B-UD-MLX-4bit (requires local MLX server)
+ *   local-gemma4        model_provider local   + gemma-4-26B-A4B-it-QAT-MLX-4bit (requires local MLX server)
  *
- * Full matrix: --systems claude-sonnet,claude-haiku,codex-5.4,codex-5.4-mini
- * (Omit local-qwen3 if mlx-omni-server is not running on port 8000.)
+ * Full matrix: --systems clemson-qwen36,clemson-qwen3-30b,clemson-glm51,local-qwen36,local-gemma4
+ * (Omit the local-* systems if the local MLX server isn't running.)
  *
- * Workflow:
+ * Suites:
+ *   --suite default (default) — B1+B2+B3 prompts from bench-prompts.json, scored via bench-gates.ts + LLM judge.
+ *   --suite mcp                — MCP reliability tasks from bench-prompts-mcp.json, scored by reading
+ *                                 outbound.db directly (tool invocation + answer grounding) via bench-mcp-score.ts.
+ *
+ * Workflow (default suite):
  *   1. Verify the playground server is reachable on http://127.0.0.1:3002
  *   2. Start the fixture server on localhost:7777
  *   3. Provision (or refresh) the bench agent group for each system under test
@@ -22,7 +29,13 @@
  *   6. Persist events + aggregated metrics + LLM-judge score to data/benchmarks.db
  *   7. Stop the fixture server
  *   8. Print summary
+ *
+ * Workflow (mcp suite): same provisioning + auth, then for each (system × task):
+ * clear the continuation, send the prompt, read the fresh outbound.db rows since the
+ * pre-turn max seq, and score tool use / grounding / exact-match. No DB persistence yet
+ * (the markdown report renderer is a follow-up task) — just a console summary.
  */
+import { execSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';
@@ -33,7 +46,8 @@ import { startFixtureServer, stopFixtureServer, FIXTURE_PORT } from './bench-fix
 import { computeCost, insertEvent, insertRun } from './bench-db.js';
 import { judgeOutput } from './bench-judge.js';
 import { runGate } from './bench-gates.js';
-import { CONTAINER_HOST_GATEWAY } from '../src/container-runtime.js';
+import { readTurnOutbound, toolInvoked, answerGrounded, matchesExpected } from './bench-mcp-score.js';
+import { CONTAINER_HOST_GATEWAY, CONTAINER_RUNTIME_BIN, stopContainer } from '../src/container-runtime.js';
 
 // -- Resolve project root from __dirname (scripts/) -------------------------
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -60,53 +74,84 @@ type BenchPrompt = SinglePrompt | MultiPrompt;
 
 const BENCH_PROMPTS: BenchPrompt[] = JSON.parse(fs.readFileSync(PROMPTS_PATH, 'utf8')) as BenchPrompt[];
 
+// -- MCP reliability suite prompts -------------------------------------------
+const MCP_PROMPTS_PATH = path.join(__dirname, 'bench-prompts-mcp.json');
+interface McpTask {
+  id: string;
+  kind: 'single';
+  prompt: string;
+  expectedTool?: string;
+  gate: string;
+  expected: string | null;
+}
+const MCP_TASKS: McpTask[] = JSON.parse(fs.readFileSync(MCP_PROMPTS_PATH, 'utf8')) as McpTask[];
+
 // -- Fixture URL rewriting --------------------------------------------------
 // Prompts use http://127.0.0.1:7777/ as a canonical placeholder.
 // Apple Container VMs reach the host via the bridge gateway IP, not 127.0.0.1.
 // We rewrite URLs in prompts at send time so the containers can actually fetch them.
 function rewriteFixtureUrls(text: string): string {
   const localBase = `http://127.0.0.1:${FIXTURE_PORT}/`;
-  const gatewayBase = `http://${CONTAINER_HOST_GATEWAY}:${FIXTURE_PORT}/`;
+  const gatewayBase = `http://${CONTAINER_HOST_GATEWAY()}:${FIXTURE_PORT}/`;
   return text.split(localBase).join(gatewayBase);
 }
 
-// -- System definitions (B3: full matrix) -----------------------------------
-const SYSTEMS: Record<string, { provider: string; model: string; label: string }> = {
-  'claude-sonnet': {
-    provider: 'claude',
-    model: 'claude-sonnet-4-6',
-    label: 'claude-sonnet',
+// -- System definitions (pi-only roster; model_provider drives credential-proxy routing) --
+interface BenchSystem {
+  provider: string;
+  model: string;
+  modelProvider: string;
+  label: string;
+}
+const SYSTEMS: Record<string, BenchSystem> = {
+  'clemson-qwen36': {
+    provider: 'pi',
+    model: 'qwen3.6-35b-a3b-fp8',
+    modelProvider: 'clemson',
+    label: 'clemson-qwen36',
   },
-  'claude-haiku': {
-    provider: 'claude',
-    model: 'claude-haiku-4-5',
-    label: 'claude-haiku',
+  'clemson-qwen3-30b': {
+    provider: 'pi',
+    model: 'qwen3-30b-a3b-instruct-fp8',
+    modelProvider: 'clemson',
+    label: 'clemson-qwen3-30b',
   },
-  'codex-5.4': {
-    provider: 'codex',
-    model: 'gpt-5.4',
-    label: 'codex-5.4',
+  'clemson-glm51': {
+    provider: 'pi',
+    model: 'glm-5.1-fp8',
+    modelProvider: 'clemson',
+    label: 'clemson-glm51',
   },
-  'codex-5.4-mini': {
-    provider: 'codex',
-    model: 'gpt-5.4-mini',
-    label: 'codex-5.4-mini',
-  },
-  // Requires mlx-omni-server running on host port 8000.
-  // The credential proxy forwards /omlx/* to http://localhost:8000.
-  'local-qwen3': {
-    provider: 'local',
+  'local-qwen36': {
+    provider: 'pi',
     model: 'Qwen3.6-35B-A3B-UD-MLX-4bit',
-    label: 'local-qwen3',
+    modelProvider: 'local',
+    label: 'local-qwen36',
+  },
+  'local-gemma4': {
+    provider: 'pi',
+    model: 'gemma-4-26B-A4B-it-QAT-MLX-4bit',
+    modelProvider: 'local',
+    label: 'local-gemma4',
   },
 };
 
 // -- CLI parsing ------------------------------------------------------------
-function parseArgs(): { source: string; systems: string[]; reps: number } {
+function parseArgs(): {
+  source: string;
+  systems: string[];
+  reps: number;
+  suite: 'default' | 'mcp';
+  reportOnly: boolean;
+  fresh: boolean;
+} {
   const args = process.argv.slice(2);
   let source = 'dm-with-chiptonkin';
-  let systems = ['claude-sonnet'];
+  let systems = ['clemson-qwen36'];
   let reps = 3;
+  let suite: 'default' | 'mcp' = 'default';
+  let reportOnly = false;
+  let fresh = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--source' && args[i + 1]) {
@@ -115,15 +160,49 @@ function parseArgs(): { source: string; systems: string[]; reps: number } {
       systems = args[++i]!.split(',').map((s) => s.trim());
     } else if (args[i] === '--reps' && args[i + 1]) {
       reps = parseInt(args[++i]!, 10);
+    } else if (args[i] === '--suite' && args[i + 1]) {
+      const val = args[++i]!;
+      if (val !== 'default' && val !== 'mcp') {
+        throw new Error(`Unknown --suite value: ${val}. Supported: default, mcp`);
+      }
+      suite = val;
+    } else if (args[i] === '--report-only') {
+      reportOnly = true;
+    } else if (args[i] === '--fresh') {
+      fresh = true;
     }
   }
 
-  return { source, systems, reps };
+  return { source, systems, reps, suite, reportOnly, fresh };
+}
+
+/** Load MCP results from the durable JSONL, deduped by (system, task) — last wins. */
+function loadMcpResults(): McpResult[] {
+  if (!fs.existsSync(BENCH_RESULTS_PATH)) return [];
+  const byKey = new Map<string, McpResult>();
+  for (const line of fs.readFileSync(BENCH_RESULTS_PATH, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const r = JSON.parse(line) as McpResult;
+      byKey.set(`${r.system}|${r.task}`, r);
+    } catch {
+      /* skip malformed line */
+    }
+  }
+  return [...byKey.values()];
 }
 
 // -- HTTP helpers -----------------------------------------------------------
 const PLAYGROUND_BASE = 'http://127.0.0.1:3002';
-const TIMEOUT_MS = 300_000; // 5 minutes per turn
+// Per-turn timeout. A model that can't produce an MCP tool-use answer in this
+// window isn't viable as an interactive default, so a shorter cap both scores
+// flaky models correctly (as errors) and keeps the run bounded. Overridable
+// via NC_BENCH_TIMEOUT_MS.
+const TIMEOUT_MS = Number(process.env.NC_BENCH_TIMEOUT_MS) || 300_000;
+
+// Durable per-result log for the MCP suite (survives interruption).
+const BENCH_RESULTS_PATH =
+  process.env.NC_BENCH_RESULTS_PATH || path.join(PROJECT_ROOT, 'data', 'a1-bench-results.jsonl');
 
 function httpGet(url: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -171,6 +250,13 @@ function httpPost(
 
 // -- Auth -------------------------------------------------------------------
 async function obtainSessionCookie(): Promise<string> {
+  // Prefer a caller-supplied legitimate session cookie (e.g. an owner
+  // login-token redeemed to a cookie). This avoids enabling the
+  // BENCH_MODE owner-session bypass on a network-reachable host.
+  const supplied = process.env.NC_BENCH_COOKIE;
+  if (supplied && supplied.trim()) {
+    return supplied.trim().startsWith('nc_playground=') ? supplied.trim() : `nc_playground=${supplied.trim()}`;
+  }
   const resp = await httpGet(`${PLAYGROUND_BASE}/api/bench/session`);
   if (resp.status !== 200) {
     throw new Error(
@@ -186,7 +272,7 @@ async function obtainSessionCookie(): Promise<string> {
 // -- Bench agent group provisioning ----------------------------------------
 
 function benchFolder(systemKey: string, sourceFolder: string): string {
-  // bench_<system>_<source>   e.g. bench_claude-sonnet_dm-with-chiptonkin
+  // bench_<system>_<source>   e.g. bench_clemson-qwen36_owner_01
   return `bench_${systemKey}_${sourceFolder}`;
 }
 
@@ -195,7 +281,7 @@ function benchFolder(systemKey: string, sourceFolder: string): string {
 async function provisionBenchGroup(
   systemKey: string,
   sourceFolder: string,
-  system: { provider: string; model: string; label: string },
+  system: BenchSystem,
   sessionCookie: string,
 ): Promise<void> {
   const folder = benchFolder(systemKey, sourceFolder);
@@ -223,10 +309,43 @@ async function provisionBenchGroup(
     console.log(`  Bench group exists: ${folder} — refreshing config files`);
   }
 
+  // Model routing is DB-authoritative: container-runner.ts materializes
+  // container.json from the container_configs DB row at every spawn, so the
+  // file write below is scaffolding only — the DB row set here is what wins.
+  await ensureDbInitialized();
+  const { getAgentGroupByFolder } = await import('../src/db/agent-groups.js');
+  const {
+    ensureContainerConfig,
+    updateContainerConfigScalars,
+    updateContainerConfigJson,
+    getContainerConfig,
+  } = await import('../src/db/container-configs.js');
+
+  const ag = getAgentGroupByFolder(folder);
+  if (!ag) throw new Error(`Bench group "${folder}" not found in DB after provisioning`);
+
+  ensureContainerConfig(ag.id);
+  updateContainerConfigScalars(ag.id, {
+    provider: 'pi',
+    model: system.model,
+    model_provider: system.modelProvider,
+  });
+
+  // Seed the MCP tool catalog from owner_01 so the agent has the
+  // catalog/scheduling/curriculum tools the MCP suite exercises.
+  const ownerAg = getAgentGroupByFolder('owner_01');
+  if (ownerAg) {
+    const ownerConfig = getContainerConfig(ownerAg.id);
+    if (ownerConfig) {
+      updateContainerConfigJson(ag.id, 'mcp_servers', JSON.parse(ownerConfig.mcp_servers));
+      updateContainerConfigJson(ag.id, 'skills', JSON.parse(ownerConfig.skills));
+    }
+  }
+
   // Always re-copy config files from source to keep bench fresh.
   fs.mkdirSync(benchDir, { recursive: true });
 
-  for (const filename of ['CLAUDE.md', 'CLAUDE.local.md', 'container.json']) {
+  for (const filename of ['CLAUDE.md', 'container.json']) {
     const src = path.join(sourceDir, filename);
     const dst = path.join(benchDir, filename);
     if (fs.existsSync(src)) {
@@ -234,7 +353,18 @@ async function provisionBenchGroup(
     }
   }
 
-  // Override container.json with bench provider/model.
+  // Write a NEUTRAL per-group persona rather than inheriting the source's
+  // CLAUDE.local.md. owner_01's is a "Socratic tutor — never answer directly,
+  // ask a question back" persona, which confounds an MCP tool-use benchmark:
+  // models that follow it refuse to answer (scored as failures) independent of
+  // their actual tool ability. Neutral persona lets the tool-use signal show.
+  fs.writeFileSync(
+    path.join(benchDir, 'CLAUDE.local.md'),
+    '# Assistant\n\nYou are a helpful assistant for Clemson faculty. Answer the user’s question directly and concisely.\n',
+  );
+
+  // Best-effort scaffolding copy of container.json — not authoritative for
+  // routing (see comment above), but keeps the file in sync for inspection.
   const containerJsonPath = path.join(benchDir, 'container.json');
   let containerConfig: Record<string, unknown> = {};
   if (fs.existsSync(containerJsonPath)) {
@@ -246,7 +376,8 @@ async function provisionBenchGroup(
   }
   containerConfig['provider'] = system.provider;
   containerConfig['model'] = system.model;
-  containerConfig['agentGroupId'] = existing?.id ?? '';
+  containerConfig['modelProvider'] = system.modelProvider;
+  containerConfig['agentGroupId'] = ag.id;
   fs.writeFileSync(containerJsonPath, JSON.stringify(containerConfig, null, 2) + '\n');
 
   // Ensure messaging group + wiring exist via the messages POST endpoint
@@ -271,7 +402,7 @@ async function ensureDbInitialized(): Promise<void> {
 async function createBenchGroupViaDb(
   folder: string,
   _sourceFolder: string,
-  system: { provider: string; model: string },
+  system: BenchSystem,
 ): Promise<void> {
   // Dynamic import of host DB layer — tsx resolves .ts files.
   // This runs in the same process so the DB connection is shared
@@ -297,6 +428,33 @@ async function createBenchGroupViaDb(
   ensureDraftWiring(folder);
 }
 
+/**
+ * Stop every running container for a bench group, by name pattern, via the
+ * runtime CLI (`container`/`docker`). Process-independent — works from this
+ * separate bench process where the host's in-memory container Map is empty.
+ * The container name is `nanoclaw-v2-<folder>-<timestamp>` (container-runner.ts).
+ */
+function stopContainersForFolder(folder: string): void {
+  const prefix = `nanoclaw-v2-${folder}-`;
+  let names: string[] = [];
+  try {
+    const out = execSync(`${CONTAINER_RUNTIME_BIN} ls`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    names = out
+      .split('\n')
+      .map((line: string) => line.trim().split(/\s+/)[0] ?? '')
+      .filter((name: string) => name.startsWith(prefix));
+  } catch {
+    return; // runtime unavailable — best effort
+  }
+  for (const name of names) {
+    try {
+      stopContainer(name);
+    } catch {
+      /* already stopped / race */
+    }
+  }
+}
+
 async function clearContinuation(
   systemKey: string,
   sourceFolder: string,
@@ -310,20 +468,20 @@ async function clearContinuation(
   const ag = getAgentGroupByFolder(folder);
   if (!ag) return;
 
-  // Find active sessions for this agent group.
+  // Kill any running container for this group so the next spawn starts a
+  // fresh agent session. isContainerRunning/killContainer track containers in
+  // an in-memory Map owned by the HOST process; this bench script is a
+  // separate process, so that path is a no-op here. Stop the container
+  // process-independently via the runtime CLI, matching the host's naming
+  // (`nanoclaw-v2-<folder>-<timestamp>`). Without this the old container keeps
+  // polling and answers the next task from its in-memory continuation — the
+  // task-isolation leak that invalidates tool-invoked scoring.
+  stopContainersForFolder(folder);
+
+  // Find active sessions for this agent group (to clear the DB continuation slot).
   const sessions = getActiveSessions().filter((s) => s.agent_group_id === ag.id);
-  const { isContainerRunning, killContainer } = await import('../src/container-runner.js');
 
   for (const sess of sessions) {
-    // Kill any running container so the next spawn picks up fresh container.json.
-    if (isContainerRunning(sess.id)) {
-      try {
-        killContainer(sess.id, 'bench: fresh thread requested');
-      } catch {
-        // best-effort — container may have just exited
-      }
-    }
-
     const outboundPath = path.join(PROJECT_ROOT, 'data', 'v2-sessions', ag.id, sess.id, 'outbound.db');
     if (!fs.existsSync(outboundPath)) continue;
     // Open outbound.db and delete continuation:* rows.
@@ -587,6 +745,137 @@ async function sendAndCollect(
   return resultPromise;
 }
 
+// -- MCP reliability suite ---------------------------------------------------
+// Scores tool use from outbound.db directly (sendAndCollect's numToolCalls
+// field is unused here — it reads a stale trace-event shape).
+
+/** Resolve the bench group's active session outbound.db path, same resolution clearContinuation uses. */
+async function resolveOutboundPath(folder: string): Promise<string | undefined> {
+  await ensureDbInitialized();
+  const { getAgentGroupByFolder } = await import('../src/db/agent-groups.js');
+  const { getActiveSessions } = await import('../src/db/sessions.js');
+  const ag = getAgentGroupByFolder(folder);
+  if (!ag) return undefined;
+  const sessions = getActiveSessions()
+    .filter((s) => s.agent_group_id === ag.id)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  if (sessions.length === 0) return undefined;
+  const sess = sessions[0]!; // most-recent active session for this bench group
+  const outboundPath = path.join(PROJECT_ROOT, 'data', 'v2-sessions', ag.id, sess.id, 'outbound.db');
+  return fs.existsSync(outboundPath) ? outboundPath : undefined;
+}
+
+async function getMaxSeq(outboundPath: string | undefined): Promise<number> {
+  if (!outboundPath) return 0;
+  const { default: Database } = await import('better-sqlite3');
+  let db: import('better-sqlite3').Database | undefined;
+  try {
+    db = new Database(outboundPath, { readonly: true });
+    const row = db.prepare('SELECT MAX(seq) AS maxSeq FROM messages_out').get() as { maxSeq: number | null };
+    return row.maxSeq ?? 0;
+  } catch {
+    // DB missing/uninitialized before the first turn — treat as no prior rows
+    // rather than aborting the whole run (this runs outside the per-task try).
+    return 0;
+  } finally {
+    db?.close();
+  }
+}
+
+interface McpResult {
+  system: string;
+  task: string;
+  toolPass: boolean;
+  answerPass: boolean;
+  latencyMs: number | null;
+  errored: boolean;
+  reply: string;
+}
+
+async function runBenchMcp(
+  sourceFolder: string,
+  systemKey: string,
+  sessionCookie: string,
+): Promise<McpResult[]> {
+  const system = SYSTEMS[systemKey];
+  if (!system) {
+    throw new Error(`Unknown system: ${systemKey}. Supported: ${Object.keys(SYSTEMS).join(', ')}`);
+  }
+
+  const folder = benchFolder(systemKey, sourceFolder);
+  const results: McpResult[] = [];
+
+  console.log(`\nRunning ${MCP_TASKS.length} MCP tasks against ${system.label}`);
+  console.log(`Bench agent group: ${folder}\n`);
+
+  for (const task of MCP_TASKS) {
+    // Fresh thread per task, same as the default suite between reps.
+    await clearContinuation(systemKey, sourceFolder);
+
+    const outboundPathBefore = await resolveOutboundPath(folder);
+    const sinceSeq = await getMaxSeq(outboundPathBefore);
+
+    console.log(`  [${task.id}]…`);
+
+    let reply = '';
+    let latencyMs: number | null = null;
+    let errored = false;
+    let toolPass = false;
+    let answerPass = false;
+
+    try {
+      const turn = await sendAndCollect(folder, task.prompt, sessionCookie);
+      reply = turn.outputText;
+      latencyMs = turn.latencyMs;
+
+      const outboundPath = (await resolveOutboundPath(folder)) ?? outboundPathBefore;
+      if (!outboundPath) {
+        throw new Error(`Could not resolve outbound.db for "${folder}" after sending the turn`);
+      }
+      const outboundTurn = readTurnOutbound(outboundPath, sinceSeq);
+      errored = outboundTurn.errored;
+
+      if (task.expectedTool) {
+        toolPass = toolInvoked(outboundTurn, task.expectedTool);
+        answerPass = answerGrounded(outboundTurn);
+      } else {
+        toolPass = true; // no tool expected for general tasks
+        if (task.expected == null) {
+          answerPass = false;
+        } else if (task.gate === 'json') {
+          // Format task: compare whitespace-insensitively so a correct answer
+          // like `{"answer": 42}` matches the expected `{"answer":42}`.
+          const strip = (s: string) => s.replace(/\s+/g, '');
+          answerPass = strip(reply).includes(strip(task.expected));
+        } else {
+          answerPass = matchesExpected(reply, task.expected);
+        }
+      }
+    } catch (err) {
+      errored = true;
+      reply = String(err);
+      console.log(`    ERROR: ${reply}`);
+    }
+
+    const result: McpResult = { system: system.label, task: task.id, toolPass, answerPass, latencyMs, errored, reply };
+    results.push(result);
+    // Durable append so an interrupted run keeps partial results (render from
+    // this JSONL via --report-only). Path: NC_BENCH_RESULTS_PATH or default.
+    try {
+      fs.appendFileSync(BENCH_RESULTS_PATH, JSON.stringify(result) + '\n');
+    } catch {
+      /* best-effort persistence */
+    }
+
+    const pass = task.expectedTool ? toolPass && answerPass : answerPass;
+    const passStr = errored ? 'ERROR' : pass ? 'PASS' : 'FAIL';
+    const latStr = latencyMs != null ? ` · ${latencyMs}ms` : '';
+    console.log(`    ${passStr}${latStr}`);
+  }
+
+  return results;
+}
+
 // -- Main run loop ----------------------------------------------------------
 
 async function runBench(
@@ -730,8 +1019,112 @@ async function runBench(
 
 // -- Entry point ------------------------------------------------------------
 
+/** Render the MCP-reliability results to a markdown report file. */
+function renderMcpReport(mcpResults: McpResult[]): string {
+  const REPORT_PATH = path.join(
+    PROJECT_ROOT,
+    'docs/superpowers/reviews/2026-07-12-a1-benchmark-results.md',
+  );
+  const isMcp = (taskId: string): boolean => MCP_TASKS.find((t) => t.id === taskId)?.expectedTool != null;
+  const median = (xs: number[]): number | null => {
+    const s = xs.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+    if (!s.length) return null;
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid]! : Math.round((s[mid - 1]! + s[mid]!) / 2);
+  };
+  // Labels present in the results, ordered by the SYSTEMS declaration order.
+  const present = new Set(mcpResults.map((r) => r.system));
+  const labels = Object.values(SYSTEMS)
+    .map((s) => s.label)
+    .filter((label) => present.has(label));
+  const cell = (r: McpResult): string => {
+    if (r.errored) return 'ERR';
+    if (isMcp(r.task)) return `${r.toolPass ? 'tool✓' : 'tool✗'} ${r.answerPass ? 'ans✓' : 'ans✗'}`;
+    return r.answerPass ? '✓' : '✗';
+  };
+
+  let md = `# A1 — Model Benchmark: MCP Tool-Use Reliability\n\n`;
+  md += `**Date:** 2026-07-12. Real pi agent turns driven through the live department server against a scratch bench group re-pointed at each candidate free model. Headline metric: does the model invoke a relevant MCP tool AND ground its answer in that tool's result (vs. hallucinating). Each task runs in an isolated fresh agent session (container stopped between tasks).\n\n`;
+
+  // Matrix
+  md += `## Matrix (systems × tasks)\n\n`;
+  md += `| System | ${MCP_TASKS.map((t) => t.id).join(' | ')} |\n`;
+  md += `|${'---|'.repeat(MCP_TASKS.length + 1)}\n`;
+  for (const label of labels) {
+    const rowCells = MCP_TASKS.map((t) => {
+      const r = mcpResults.find((x) => x.system === label && x.task === t.id);
+      return r ? cell(r) : '—';
+    });
+    md += `| ${label} | ${rowCells.join(' | ')} |\n`;
+  }
+
+  // Per-system summary
+  md += `\n## Per-system summary\n\n`;
+  md += `| System | MCP reliability | Overall pass | Median latency | Errors |\n|---|---|---|---|---|\n`;
+  const ranking: Array<{ label: string; mcpRel: number; latency: number | null }> = [];
+  for (const label of labels) {
+    const rows = mcpResults.filter((r) => r.system === label);
+    const mcpRows = rows.filter((r) => isMcp(r.task));
+    const mcpPass = mcpRows.filter((r) => !r.errored && r.toolPass && r.answerPass).length;
+    const overallPass = rows.filter((r) => !r.errored && r.toolPass && r.answerPass).length;
+    const errs = rows.filter((r) => r.errored).length;
+    const lat = median(rows.map((r) => r.latencyMs ?? NaN).filter((n) => Number.isFinite(n)) as number[]);
+    const mcpRel = mcpRows.length ? mcpPass / mcpRows.length : 0;
+    ranking.push({ label, mcpRel, latency: lat });
+    md += `| ${label} | ${mcpPass}/${mcpRows.length} (${Math.round(mcpRel * 100)}%) | ${overallPass}/${rows.length} | ${lat != null ? lat + 'ms' : '—'} | ${errs} |\n`;
+  }
+
+  // Computed ranking (MCP reliability desc, then latency asc)
+  ranking.sort((a, b) => b.mcpRel - a.mcpRel || (a.latency ?? Infinity) - (b.latency ?? Infinity));
+  md += `\n## Computed ranking (MCP reliability, then latency)\n\n`;
+  ranking.forEach((r, i) => {
+    md += `${i + 1}. **${r.label}** — ${Math.round(r.mcpRel * 100)}% MCP reliability${r.latency != null ? `, ${r.latency}ms median` : ''}\n`;
+  });
+  md += `\n> Recommendation prose is written by the controller after reviewing this data (Task 3 Step 3).\n`;
+
+  // Appendix: replies
+  md += `\n## Appendix — replies (spot-check)\n\n`;
+  for (const label of labels) {
+    md += `### ${label}\n\n`;
+    for (const t of MCP_TASKS) {
+      const r = mcpResults.find((x) => x.system === label && x.task === t.id);
+      if (!r) continue;
+      const snippet = (r.reply || '').replace(/\s+/g, ' ').slice(0, 400);
+      md += `- **${t.id}** (${cell(r)}${r.latencyMs != null ? `, ${r.latencyMs}ms` : ''}): ${snippet}\n`;
+    }
+    md += `\n`;
+  }
+
+  fs.writeFileSync(REPORT_PATH, md);
+  return REPORT_PATH;
+}
+
 async function main(): Promise<void> {
-  const { source, systems, reps } = parseArgs();
+  const { source, systems, reps, suite, reportOnly, fresh } = parseArgs();
+
+  // Report-only: render from the durable JSONL without running any turns.
+  if (reportOnly) {
+    const loaded = loadMcpResults();
+    if (loaded.length === 0) {
+      console.error(
+        `No results in ${BENCH_RESULTS_PATH} — refusing to overwrite the report with empty tables. ` +
+          `Run the suite first (drop --report-only).`,
+      );
+      process.exit(1);
+    }
+    const reportPath = renderMcpReport(loaded);
+    console.log(`Report written from ${BENCH_RESULTS_PATH}: ${reportPath}`);
+    return;
+  }
+
+  // Fresh run: truncate the durable results log so it holds only this run.
+  if (suite === 'mcp' && fresh) {
+    try {
+      fs.rmSync(BENCH_RESULTS_PATH, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
 
   // Validate systems
   for (const s of systems) {
@@ -760,12 +1153,13 @@ async function main(): Promise<void> {
   }
 
   // 2. Start fixture server
-  console.log(`Starting fixture server on 0.0.0.0:${FIXTURE_PORT} (gateway: ${CONTAINER_HOST_GATEWAY})…`);
+  console.log(`Starting fixture server on 0.0.0.0:${FIXTURE_PORT} (gateway: ${CONTAINER_HOST_GATEWAY()})…`);
   await startFixtureServer();
-  console.log(`  Fixture server ready — containers will reach it at http://${CONTAINER_HOST_GATEWAY}:${FIXTURE_PORT}/`);
+  console.log(`  Fixture server ready — containers will reach it at http://${CONTAINER_HOST_GATEWAY()}:${FIXTURE_PORT}/`);
 
   let grandTotal = 0;
   let grandPassed = 0;
+  const mcpResults: McpResult[] = [];
 
   try {
     // 3. Obtain session cookie (requires BENCH_MODE=1 on the host)
@@ -794,9 +1188,14 @@ async function main(): Promise<void> {
         process.exit(1);
       }
 
-      const { total, passed } = await runBench(source, systemKey, reps, sessionCookie);
-      grandTotal += total;
-      grandPassed += passed;
+      if (suite === 'mcp') {
+        const results = await runBenchMcp(source, systemKey, sessionCookie);
+        mcpResults.push(...results);
+      } else {
+        const { total, passed } = await runBench(source, systemKey, reps, sessionCookie);
+        grandTotal += total;
+        grandPassed += passed;
+      }
     }
   } finally {
     // Always stop the fixture server.
@@ -804,14 +1203,32 @@ async function main(): Promise<void> {
     console.log('\nFixture server stopped.');
   }
 
-  const systemCount = systems.length;
-  const runsPerSystem = BENCH_PROMPTS.length * reps;
-  console.log(
-    `\n${systemCount} system${systemCount === 1 ? '' : 's'} · ` +
-    `${runsPerSystem} runs/system · ` +
-    `${grandPassed}/${grandTotal} programmatic gates passed`,
-  );
-  console.log('Run `pnpm exec tsx scripts/bench-report.ts` to see the full report.');
+  if (suite === 'mcp') {
+    const totalTasks = mcpResults.length;
+    const passedTasks = mcpResults.filter((r) =>
+      !r.errored && (r.toolPass && r.answerPass),
+    ).length;
+    console.log(`\n${systems.length} system${systems.length === 1 ? '' : 's'} · ` +
+      `${MCP_TASKS.length} tasks/system · ` +
+      `${passedTasks}/${totalTasks} MCP tasks passed`);
+    for (const systemKey of systems) {
+      const label = SYSTEMS[systemKey]!.label;
+      const rows = mcpResults.filter((r) => r.system === label);
+      const rowsPassed = rows.filter((r) => !r.errored && r.toolPass && r.answerPass).length;
+      console.log(`  ${label}: ${rowsPassed}/${rows.length}`);
+    }
+    const reportPath = renderMcpReport(loadMcpResults());
+    console.log(`\nReport written: ${reportPath}`);
+  } else {
+    const systemCount = systems.length;
+    const runsPerSystem = BENCH_PROMPTS.length * reps;
+    console.log(
+      `\n${systemCount} system${systemCount === 1 ? '' : 's'} · ` +
+      `${runsPerSystem} runs/system · ` +
+      `${grandPassed}/${grandTotal} programmatic gates passed`,
+    );
+    console.log('Run `pnpm exec tsx scripts/bench-report.ts` to see the full report.');
+  }
 }
 
 main().catch((err) => {

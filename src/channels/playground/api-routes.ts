@@ -35,6 +35,7 @@ import { materializeContainerJson } from '../../container-config.js';
 import { updateContainerConfigJson } from '../../db/container-configs.js';
 import { isContainerRunning, killContainer } from '../../container-runner.js';
 import { getAgentGroupByFolder } from '../../db/agent-groups.js';
+import { userIdForAgentGroup } from '../../provisioning/agent-group-user.js';
 import { getActiveSessions } from '../../db/sessions.js';
 import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
@@ -43,6 +44,107 @@ import { canReadDraft } from './draft-read-gate.js';
 import { requireGroupAccess } from './require-group-access.js';
 import { getPlatformPrefix, getSetupConfig, playgroundOutboxDir } from './adapter.js';
 import { isSafeAttachmentName } from '../../attachment-safety.js';
+import { isAllowedAttachment } from './attachment-allowlist.js';
+
+// Symlink-safe save for member-named chat attachments — the `application/pdf`
+// and allowlisted-"other file" branches of the POST /messages handler below,
+// both of which let the calling member choose the saved filename. Everything
+// else (image/* attachments) writes under a server-generated name and never
+// calls this.
+//
+// Threat model: `groups/<folder>` is mounted read-write into that group's own
+// agent container, and the member controls their agent. A member can have
+// their agent create `attachments/evil.csv` as a symlink to any host path (or
+// replace `attachments/` itself with a symlink to a directory outside the
+// group), then upload a same-named attachment through chat — this runs in the
+// **host** service process, so an unguarded write is an arbitrary host-file
+// write. This helper closes the two DETERMINISTIC angles:
+//   - directory-symlink guard: realpath the group folder and the attachments
+//     dir and require the latter to be exactly `<group realpath>/attachments`
+//     (catches a persistently symlinked `attachments/` dir)
+//   - file-symlink guard: open with O_NOFOLLOW so a symlinked FINAL path
+//     component fails atomically (ELOOP) instead of being followed
+//
+// KNOWN RESIDUAL (tracked defense-in-depth follow-up, not yet closed):
+// O_NOFOLLOW guards only the final component, and the realpath check and the
+// open are two separate syscalls, so a member spinning a swap loop can win a
+// tight intermediate-directory-symlink TOCTOU race (mv attachments away &&
+// ln -s /outside attachments) in the window between them. This is a hard,
+// insider-only race and is PRE-EXISTING/SYSTEMIC (any host write into the
+// RW-mounted group dir, incl. the image branch, shares it). The robust close
+// is to stage attachments in a host-only dir mounted READ-ONLY into the
+// container so the agent cannot mutate the path — do that before opening the
+// pilot to all ~15. Accepted for the small trusted pilot.
+//
+// It also enforces the type gate so the `application/pdf` mimeType assertion
+// can't be used to smuggle an arbitrary filename/extension past the
+// allowlist: PDF saves are forced to end in `.pdf`; non-PDF saves must pass
+// `isAllowedAttachment`.
+function saveMemberAttachment(
+  draftFolder: string,
+  attachDir: string,
+  providedName: string,
+  fallbackName: string,
+  buffer: Buffer,
+  kind: 'pdf' | 'file',
+): { ok: true; safeName: string } | { ok: false; error: string } {
+  if (kind === 'file' && !isAllowedAttachment(providedName)) {
+    return { ok: false, error: `blocked file type (${providedName})` };
+  }
+
+  let safeName = providedName.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
+  // Reject anything that still isn't a safe single-segment name (e.g. empty
+  // after stripping, or dotfile-shaped) — fall back to a known-safe generated
+  // name rather than writing an attacker-influenced path.
+  if (!isSafeAttachmentName(safeName)) safeName = fallbackName;
+  // The mimeType asserted PDF — force the extension so a spoofed mimeType
+  // can't smuggle an off-allowlist extension (e.g. "evil.sh") past this gate.
+  if (kind === 'pdf' && !/\.pdf$/i.test(safeName)) safeName = `${safeName}.pdf`;
+
+  let groupRoot: string;
+  let attachDirReal: string;
+  try {
+    groupRoot = fs.realpathSync(path.join(GROUPS_DIR, draftFolder));
+    attachDirReal = fs.realpathSync(attachDir);
+  } catch (err) {
+    return { ok: false, error: `save failed — ${(err as Error).message}` };
+  }
+  if (attachDirReal !== path.join(groupRoot, 'attachments')) {
+    return { ok: false, error: 'save failed — attachments directory is not safe' };
+  }
+
+  const savePath = path.join(attachDir, safeName);
+  try {
+    const fd = fs.openSync(
+      savePath,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW,
+      0o644,
+    );
+    try {
+      fs.writeSync(fd, buffer);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (err) {
+    // Symlinked final component throws ELOOP here — do NOT fall back to a
+    // symlink-following write; report it as a save failure.
+    return { ok: false, error: `save failed — ${(err as Error).message}` };
+  }
+
+  return { ok: true, safeName };
+}
+
+// Resolve a `:folder` path segment to the provisioned user_id that owns it,
+// for the /api/admin/users/:folder/* routes. Delegates to the canonical
+// userIdForAgentGroup (src/provisioning/agent-group-user.ts) — the same
+// earliest-member lookup used by user-provider-resolver.ts and providers/pi.ts
+// — so this security-relevant "whose tokens get rotated/revoked" resolution
+// can't silently drift from a second copy.
+function userIdForFolder(folder: string): string | null {
+  const group = getAgentGroupByFolder(folder);
+  if (!group) return null;
+  return userIdForAgentGroup(group.id);
+}
 
 // Minimal content-type lookup for agent-produced files. The chat tab renders
 // these as `<a download>` links so the browser only needs the type as a hint.
@@ -145,6 +247,7 @@ import {
   handleLogout,
   handleLogoutAll,
 } from './api/me.js';
+import { handlePrivacyMode } from './api/privacy-mode.js';
 import {
   handleGetSimpleConfig,
   handlePutAgentName,
@@ -152,6 +255,15 @@ import {
   handleSimpleReset,
 } from './api/simple-config.js';
 import { handleGetProviderStatus } from './api/provider-auth.js';
+import {
+  handleAddUser,
+  handleListUsers,
+  handleRotateLink,
+  handleDeactivateUser,
+  handleGetModelDefaults,
+  handlePutModelDefaults,
+  handleBackstopHealth,
+} from './api/admin.js';
 import { registerSseClient } from './sse.js';
 
 export async function route(
@@ -233,11 +345,14 @@ export async function route(
   // target agent_group.
   //
   // Optional `files: [{ name, mimeType, base64 }]` lets the playground UI
-  // send image and PDF attachments. Images run through processImage()
-  // (resize to 1024px / JPEG quality 80) and land in content.images[]
-  // alongside the text. PDFs save to groups/<folder>/attachments/ and
-  // are referenced as `[PDF: attachments/<name>.pdf]` text markers, same
-  // convention as Telegram. Total decoded size capped at 25 MB.
+  // send image and other typical work-file attachments. Images run through
+  // processImage() (resize to 1024px / JPEG quality 80) and land in
+  // content.images[] alongside the text. application/pdf and any other
+  // allowlisted file type (see attachment-allowlist.ts — docs, spreadsheets,
+  // slides, data files; executables are rejected) save to
+  // groups/<folder>/attachments/ and are referenced as `[PDF: attachments/<name>]`
+  // / `[File: attachments/<name>]` text markers, same convention as Telegram.
+  // Total decoded size capped at 25 MB.
   const messagesMatch = url.pathname.match(/^\/api\/drafts\/([A-Za-z0-9_-]+)\/messages$/);
   if (method === 'POST' && messagesMatch) {
     const draftFolder = messagesMatch[1]!;
@@ -271,6 +386,7 @@ export async function route(
     let totalBytes = 0;
     const images: Array<{ base64: string; mimeType: string; containerPath: string }> = [];
     const pdfMarkers: string[] = [];
+    const fileMarkers: string[] = [];
     const fileErrors: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
@@ -299,29 +415,52 @@ export async function route(
         }
       } else if (f.mimeType === 'application/pdf') {
         const fallbackName = `playground_${messageId}_${i}.pdf`;
-        let safeName = (f.name || fallbackName).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
-        // Reject anything that still isn't a safe single-segment name (e.g.
-        // empty after stripping, or dotfile-shaped) — fall back to a known-safe
-        // generated name rather than writing an attacker-influenced path.
-        if (!isSafeAttachmentName(safeName)) safeName = fallbackName;
-        const savePath = path.join(attachDir, safeName);
-        try {
-          fs.writeFileSync(savePath, buffer);
-          pdfMarkers.push(`[PDF: attachments/${safeName}]`);
-        } catch (err) {
-          fileErrors.push(`file[${i}]: PDF save failed — ${(err as Error).message}`);
+        const result = saveMemberAttachment(
+          draftFolder,
+          attachDir,
+          f.name || fallbackName,
+          fallbackName,
+          buffer,
+          'pdf',
+        );
+        if (result.ok) {
+          pdfMarkers.push(`[PDF: attachments/${result.safeName}]`);
+        } else {
+          fileErrors.push(`file[${i}]: ${result.error}`);
         }
       } else {
-        fileErrors.push(`file[${i}]: unsupported mimeType ${f.mimeType} (only image/* and application/pdf accepted)`);
+        // Any other allowlisted file type: save to attachments/ and reference
+        // it by a text marker the agent reads from /workspace/agent/attachments/.
+        // Off-allowlist (executables etc.) is rejected — default-deny.
+        const providedName = f.name || `playground_${messageId}_${i}`;
+        const fallbackName = `playground_${messageId}_${i}`;
+        const result = saveMemberAttachment(draftFolder, attachDir, providedName, fallbackName, buffer, 'file');
+        if (result.ok) {
+          fileMarkers.push(`[File: attachments/${result.safeName}]`);
+        } else {
+          fileErrors.push(`file[${i}]: ${result.error}`);
+        }
       }
     }
 
     if (fileErrors.length > 0) log.warn('Playground attachment(s) had errors', { draftFolder, fileErrors });
 
-    // Compose the chat-sdk-style content. Order: PDF markers prepended to
-    // text so the agent sees them in context; images carried separately as
-    // content.images[] which the formatter extracts into imagePaths.
-    const composedText = [...pdfMarkers, text].filter(Boolean).join('\n');
+    // Compose the chat-sdk-style content. Order: PDF markers and file markers
+    // prepended to text so the agent sees them in context; images carried
+    // separately as content.images[] which the formatter extracts into
+    // imagePaths.
+    const composedText = [...pdfMarkers, ...fileMarkers, text].filter(Boolean).join('\n');
+
+    // Every attachment may have been rejected (blocked type, symlink guard,
+    // save failure) leaving nothing to say — don't wake a container to reply
+    // to an empty message.
+    if (!composedText && images.length === 0) {
+      return send(res, 400, {
+        error: 'text or files required',
+        attachmentErrors: fileErrors.length > 0 ? fileErrors : undefined,
+      });
+    }
+
     const contentObj: Record<string, unknown> = {
       text: composedText,
       sender: 'You',
@@ -438,6 +577,16 @@ export async function route(
   // POST /api/me/logout-all — revoke all sessions for this user
   if (method === 'POST' && url.pathname === '/api/me/logout-all') {
     const r = handleLogoutAll(session);
+    return send(res, r.status, r.body);
+  }
+
+  // POST /api/me/privacy-mode — member-self Cloud↔Private toggle for the
+  // CALLER's OWN agent group. No owner gate: every member controls their
+  // own agent. The target group always comes from the session, never the
+  // body — see handlePrivacyMode.
+  if (method === 'POST' && url.pathname === '/api/me/privacy-mode') {
+    const body = await readJsonBody(req);
+    const r = handlePrivacyMode(session, body as { private?: unknown });
     return send(res, r.status, r.body);
   }
 
@@ -849,6 +998,59 @@ export async function route(
     if (!folder) return send(res, 400, { error: 'folder required' });
     const result = await handleGetStudentDetail(folder);
     return send(res, result.status, result.body);
+  }
+
+  // POST /api/admin/users — owner-only: provision a new dept-server user.
+  if (method === 'POST' && url.pathname === '/api/admin/users') {
+    const body = await readJsonBody(req);
+    const r = handleAddUser(session, body as { displayName?: unknown; email?: unknown });
+    return send(res, r.status, r.body);
+  }
+  // GET /api/admin/users — owner-only: roster with cost + model info.
+  if (method === 'GET' && url.pathname === '/api/admin/users') {
+    const r = handleListUsers(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/admin/users/:folder/rotate-link — owner-only.
+  const rotateLinkMatch = url.pathname.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/rotate-link$/);
+  if (method === 'POST' && rotateLinkMatch) {
+    if (!session.userId || !isOwner(session.userId)) {
+      return send(res, 403, { error: 'owner role required' });
+    }
+    const folder = rotateLinkMatch[1]!;
+    const userId = userIdForFolder(folder);
+    if (!userId) return send(res, 404, { error: `no provisioned user for folder ${folder}` });
+    const r = handleRotateLink(session, userId);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/admin/users/:folder/deactivate — owner-only.
+  const deactivateMatch = url.pathname.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/deactivate$/);
+  if (method === 'POST' && deactivateMatch) {
+    if (!session.userId || !isOwner(session.userId)) {
+      return send(res, 403, { error: 'owner role required' });
+    }
+    const folder = deactivateMatch[1]!;
+    const userId = userIdForFolder(folder);
+    if (!userId) return send(res, 404, { error: `no provisioned user for folder ${folder}` });
+    const r = handleDeactivateUser(session, userId);
+    return send(res, r.status, r.body);
+  }
+  // GET/PUT /api/admin/model-defaults — owner-only.
+  if (url.pathname === '/api/admin/model-defaults') {
+    if (method === 'GET') {
+      const r = handleGetModelDefaults(session);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'PUT') {
+      const body = await readJsonBody(req);
+      const r = handlePutModelDefaults(session, body as { defaultCloud?: unknown; private?: unknown });
+      return send(res, r.status, r.body);
+    }
+  }
+  // GET /api/admin/backstop-health — owner-only.
+  if (method === 'GET' && url.pathname === '/api/admin/backstop-health') {
+    const r = handleBackstopHealth(session);
+    return send(res, r.status, r.body);
   }
 
   // GET /api/default-participant — owner/admin: template status

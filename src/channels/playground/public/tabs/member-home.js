@@ -67,7 +67,13 @@ export function renderDashboard(host, state) {
 
   host.append(more);
 
-  host.append(el('button', { class: 'pg-goto-chat', 'data-action': 'go-to-chat', text: 'Go to Chat →', onclick: state.onGoToChat }));
+  // Advanced: open the member's own Persona / Skills editors (existing tabs,
+  // kept off the top nav — reached from here).
+  const adv = el('details', { class: 'pg-advanced', 'data-advanced': '' });
+  adv.append(el('summary', { text: 'Advanced' }));
+  adv.append(el('button', { class: 'pg-advanced-btn', 'data-action': 'edit-persona', text: 'Edit persona', onclick: state.onEditPersona }));
+  adv.append(el('button', { class: 'pg-advanced-btn', 'data-action': 'edit-skills', text: 'Edit skills', onclick: state.onEditSkills }));
+  host.append(adv);
 }
 
 /** Pure: render the Telegram pair-code instruction block into `host`. */
@@ -209,7 +215,8 @@ export async function mountMemberHome(el0) {
       }, 4000);
       poll.unref?.();
     },
-    onGoToChat: () => document.querySelector('[data-tab="simple"]')?.click(),
+    onEditPersona: () => document.querySelector('[data-tab="persona"]')?.click(),
+    onEditSkills: () => document.querySelector('[data-tab="skills"]')?.click(),
   };
   renderDashboard(el0, state);
 }
