@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from 'vitest';
-import { renderMessage, renderFileCard, renderAttachChips, modelLabel } from './member-chat.js';
+import { renderMessage, renderFileCard, renderAttachChips, modelLabel, privacyLabel } from './member-chat.js';
 
 describe('renderMessage', () => {
   it('renders a user message with its text', () => {
@@ -55,5 +55,23 @@ describe('modelLabel', () => {
     expect(modelLabel('openai-codex')).toContain('Your ChatGPT');
     expect(modelLabel('openai')).toContain('Your ChatGPT');
     expect(modelLabel('anthropic')).toContain('Department account');
+  });
+});
+
+describe('privacyLabel', () => {
+  it('labels Private when the active provider matches the private provider', () => {
+    expect(privacyLabel({ modelProvider: 'local', privateProvider: 'local' })).toBe('Private — on-box, stays local');
+  });
+  it('labels Clemson cloud mode', () => {
+    expect(privacyLabel({ modelProvider: 'clemson', privateProvider: 'local' })).toBe('Cloud — Clemson (free)');
+  });
+  it('labels ChatGPT cloud mode', () => {
+    expect(privacyLabel({ modelProvider: 'openai-codex', privateProvider: 'local' })).toBe('Cloud — your ChatGPT');
+  });
+  it('falls back to a generic cloud label for any other provider', () => {
+    expect(privacyLabel({ modelProvider: 'anthropic', privateProvider: 'local' })).toBe('Cloud — department account');
+  });
+  it('treats a null active provider as cloud, not private', () => {
+    expect(privacyLabel({ modelProvider: null, privateProvider: 'local' })).toBe('Cloud — department account');
   });
 });

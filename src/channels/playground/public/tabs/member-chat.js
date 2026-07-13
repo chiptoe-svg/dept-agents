@@ -23,6 +23,19 @@ export function modelLabel(modelProvider) {
   return 'Clemson campus model (free)';
 }
 
+/**
+ * Label for the Cloud↔Private mode indicator. `privateProvider` is the
+ * dept's private (on-box) provider id — the member is "Private" whenever
+ * their active `modelProvider` matches it; otherwise they're on some cloud
+ * provider and get a provider-specific "Cloud — …" label.
+ */
+export function privacyLabel({ modelProvider, privateProvider }) {
+  if (modelProvider === privateProvider) return 'Private — on-box, stays local';
+  if (modelProvider === 'clemson') return 'Cloud — Clemson (free)';
+  if (modelProvider === 'openai-codex') return 'Cloud — your ChatGPT';
+  return 'Cloud — department account';
+}
+
 /** Append one download card into `host`. */
 export function renderFileCard(host, file) {
   const card = el('div', { class: 'mc-file-card', 'data-file': '' });
@@ -127,14 +140,77 @@ function readFileAsBase64(file) {
 
 let sse = null; // single EventSource per mount, mirrors chat.js's module-level singleton
 
+// Dept private (on-box) provider fallback, used until /api/me/agent tells us
+// otherwise. Matches the dept model config's private.provider value.
+const PRIVATE_PROVIDER_FALLBACK = 'local';
+
 /** Tab mount entry: wires history load + SSE + send using the existing endpoints. */
 export function mountMemberChat(host) {
   const folder = window.__pg.agent.folder;
 
   host.replaceChildren();
 
-  const modelValueEl = el('b', { text: modelLabel(null) });
-  const modelChip = el('div', { class: 'mc-model-chip' }, el('span', { text: 'Running on: ' }), modelValueEl);
+  // --- Cloud/Private mode indicator + toggle ---
+  // currentModelProvider / privateProvider track server-reported state so the
+  // toggle always flips relative to reality, not a stale local guess.
+  // lastKnownCloudProvider remembers the cloud provider we were on right
+  // before switching to Private, so switching back can show its label
+  // immediately (mirrors the server's own stash/restore in privacy-mode.ts)
+  // without a second round-trip.
+  let currentModelProvider = null;
+  let privateProvider = PRIVATE_PROVIDER_FALLBACK;
+  let lastKnownCloudProvider = null;
+
+  const modeValueEl = el('b', { text: privacyLabel({ modelProvider: currentModelProvider, privateProvider }) });
+  const modeToggleBtn = el('button', {
+    type: 'button',
+    class: 'mc-privacy-toggle',
+    text: 'Switch',
+    disabled: true, // enabled once /api/me/agent resolves and we know real state
+  });
+  const modeChip = el(
+    'div',
+    { class: 'mc-model-chip' },
+    el('span', { text: 'Mode: ' }),
+    modeValueEl,
+    modeToggleBtn,
+  );
+
+  async function toggleMode() {
+    const currentlyPrivate = currentModelProvider === privateProvider;
+    const goingPrivate = !currentlyPrivate;
+    // Leaving cloud for Private — remember the real cloud provider so
+    // switching back can label it precisely without a second round-trip.
+    // (If we're leaving Private instead, lastKnownCloudProvider already
+    // holds whatever we recorded on the way in — or null if the page
+    // loaded already-Private, in which case privacyLabel falls back to a
+    // generic Cloud label until the next full refresh.)
+    if (goingPrivate) lastKnownCloudProvider = currentModelProvider;
+
+    const prevLabel = modeValueEl.textContent;
+    modeToggleBtn.disabled = true;
+    modeValueEl.textContent = 'Switching…';
+    try {
+      const r = await fetch('/api/me/privacy-mode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ private: goingPrivate }),
+      });
+      if (!r.ok) {
+        modeValueEl.textContent = prevLabel;
+        return;
+      }
+      const data = await r.json().catch(() => ({}));
+      currentModelProvider = data.private ? privateProvider : lastKnownCloudProvider;
+      modeValueEl.textContent = privacyLabel({ modelProvider: currentModelProvider, privateProvider });
+    } catch {
+      modeValueEl.textContent = prevLabel;
+    } finally {
+      modeToggleBtn.disabled = false;
+    }
+  }
+  modeToggleBtn.addEventListener('click', toggleMode);
 
   const log = el('div', { class: 'mc-log' });
   const emptyState = el('div', { class: 'mc-empty', text: "Ask your agent anything — attach a file and it can read it, or hand a file back to you." });
@@ -166,7 +242,7 @@ export function mountMemberChat(host) {
   const hint = el('div', { class: 'mc-hint', text: 'Large slide decks: share via Google or attach a PDF export instead.' });
   const composer = el('div', { class: 'mc-composer' }, chipsRow, inputRow, hint);
 
-  host.append(modelChip, log, composer);
+  host.append(modeChip, log, composer);
 
   // --- attach state ---
   const attached = []; // [{ file }] — base64 read lazily at send time (chat.js pattern)
@@ -268,10 +344,18 @@ export function mountMemberChat(host) {
   fetch('/api/me/agent', { credentials: 'same-origin' })
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
-      modelValueEl.textContent = modelLabel(data && data.agent ? data.agent.modelProvider : null);
+      const agent = data && data.agent;
+      currentModelProvider = agent ? agent.modelProvider : null;
+      // Not exposed by /api/me/agent today — fall back to the known dept
+      // private provider id (see PRIVATE_PROVIDER_FALLBACK).
+      if (agent && typeof agent.privateProvider === 'string') privateProvider = agent.privateProvider;
+      if (currentModelProvider !== privateProvider) lastKnownCloudProvider = currentModelProvider;
+      modeValueEl.textContent = privacyLabel({ modelProvider: currentModelProvider, privateProvider });
+      modeToggleBtn.disabled = false;
     })
     .catch(() => {
-      // Silently keep the default label — chat still functions.
+      // Silently keep the default label — chat still functions; leave the
+      // toggle disabled since we don't know the real state to flip from.
     });
 
   // --- history + live stream ---

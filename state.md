@@ -192,20 +192,20 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (144 commits ahead)
+- **Last tag:** `classroom-2026-07` (145 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 17]
-M  src/channels/playground/api-routes.ts
-A  src/channels/playground/api/privacy-mode.test.ts
-A  src/channels/playground/api/privacy-mode.ts
+## main...origin/main [ahead 18]
+M  src/channels/playground/public/tabs/member-chat.js
+M  src/channels/playground/public/tabs/member-chat.test.ts
 ```
 
 ### Recent commits (last 15)
 
 ```
+3b2f473b feat(member): /api/me/privacy-mode Cloud↔Private toggle
 46355d9c feat(admin): owner-only Admin tab UI
 d720331a refactor(admin): reuse canonical userIdForAgentGroup for folder resolution
 ff6d0f35 feat(admin): owner-gated user + model-defaults + backstop endpoints
@@ -220,9 +220,8 @@ e7a04ffd docs(bench): A1 MCP-reliability report + default recommendation
 26caaf74 feat(bench): valid + fair MCP-reliability suite (isolation fix, scoring, report)
 dbfa62b3 feat(bench): pi/model_provider systems + MCP reliability suite
 d5cf6d8b feat(bench): MCP tool-use scoring from real outbound trace
-2815794e docs(plan): revise A1 to extend bench.ts (not build fresh)
 ```
 
 ### Last refresh
 
-2026-07-13T03:01:15Z
+2026-07-13T03:06:34Z
