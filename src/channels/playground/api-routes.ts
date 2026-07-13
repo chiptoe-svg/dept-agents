@@ -247,6 +247,7 @@ import {
   handleLogout,
   handleLogoutAll,
 } from './api/me.js';
+import { handlePrivacyMode } from './api/privacy-mode.js';
 import {
   handleGetSimpleConfig,
   handlePutAgentName,
@@ -576,6 +577,16 @@ export async function route(
   // POST /api/me/logout-all — revoke all sessions for this user
   if (method === 'POST' && url.pathname === '/api/me/logout-all') {
     const r = handleLogoutAll(session);
+    return send(res, r.status, r.body);
+  }
+
+  // POST /api/me/privacy-mode — member-self Cloud↔Private toggle for the
+  // CALLER's OWN agent group. No owner gate: every member controls their
+  // own agent. The target group always comes from the session, never the
+  // body — see handlePrivacyMode.
+  if (method === 'POST' && url.pathname === '/api/me/privacy-mode') {
+    const body = await readJsonBody(req);
+    const r = handlePrivacyMode(session, body as { private?: unknown });
     return send(res, r.status, r.body);
   }
 
