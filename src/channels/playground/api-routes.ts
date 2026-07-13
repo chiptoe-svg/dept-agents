@@ -35,6 +35,7 @@ import { materializeContainerJson } from '../../container-config.js';
 import { updateContainerConfigJson } from '../../db/container-configs.js';
 import { isContainerRunning, killContainer } from '../../container-runner.js';
 import { getAgentGroupByFolder } from '../../db/agent-groups.js';
+import { getMembers } from '../../modules/permissions/db/agent-group-members.js';
 import { getActiveSessions } from '../../db/sessions.js';
 import { log } from '../../log.js';
 import type { InboundEvent } from '../adapter.js';
@@ -131,6 +132,17 @@ function saveMemberAttachment(
   }
 
   return { ok: true, safeName };
+}
+
+// Resolve a `:folder` path segment to the provisioned user_id that owns it,
+// for the /api/admin/users/:folder/* routes. provisionUser adds exactly one
+// agent_group_members row per user (see provision-user.ts), so the first
+// member is the owning identity.
+function userIdForFolder(folder: string): string | null {
+  const group = getAgentGroupByFolder(folder);
+  if (!group) return null;
+  const members = getMembers(group.id);
+  return members[0]?.user_id ?? null;
 }
 
 // Minimal content-type lookup for agent-produced files. The chat tab renders
@@ -241,6 +253,15 @@ import {
   handleSimpleReset,
 } from './api/simple-config.js';
 import { handleGetProviderStatus } from './api/provider-auth.js';
+import {
+  handleAddUser,
+  handleListUsers,
+  handleRotateLink,
+  handleDeactivateUser,
+  handleGetModelDefaults,
+  handlePutModelDefaults,
+  handleBackstopHealth,
+} from './api/admin.js';
 import { registerSseClient } from './sse.js';
 
 export async function route(
@@ -965,6 +986,53 @@ export async function route(
     if (!folder) return send(res, 400, { error: 'folder required' });
     const result = await handleGetStudentDetail(folder);
     return send(res, result.status, result.body);
+  }
+
+  // POST /api/admin/users — owner-only: provision a new dept-server user.
+  if (method === 'POST' && url.pathname === '/api/admin/users') {
+    const body = await readJsonBody(req);
+    const r = handleAddUser(session, body as { displayName?: unknown; email?: unknown });
+    return send(res, r.status, r.body);
+  }
+  // GET /api/admin/users — owner-only: roster with cost + model info.
+  if (method === 'GET' && url.pathname === '/api/admin/users') {
+    const r = handleListUsers(session);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/admin/users/:folder/rotate-link — owner-only.
+  const rotateLinkMatch = url.pathname.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/rotate-link$/);
+  if (method === 'POST' && rotateLinkMatch) {
+    const folder = rotateLinkMatch[1]!;
+    const userId = userIdForFolder(folder);
+    if (!userId) return send(res, 404, { error: `no provisioned user for folder ${folder}` });
+    const r = handleRotateLink(session, userId);
+    return send(res, r.status, r.body);
+  }
+  // POST /api/admin/users/:folder/deactivate — owner-only.
+  const deactivateMatch = url.pathname.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/deactivate$/);
+  if (method === 'POST' && deactivateMatch) {
+    const folder = deactivateMatch[1]!;
+    const userId = userIdForFolder(folder);
+    if (!userId) return send(res, 404, { error: `no provisioned user for folder ${folder}` });
+    const r = handleDeactivateUser(session, userId);
+    return send(res, r.status, r.body);
+  }
+  // GET/PUT /api/admin/model-defaults — owner-only.
+  if (url.pathname === '/api/admin/model-defaults') {
+    if (method === 'GET') {
+      const r = handleGetModelDefaults(session);
+      return send(res, r.status, r.body);
+    }
+    if (method === 'PUT') {
+      const body = await readJsonBody(req);
+      const r = handlePutModelDefaults(session, body as { defaultCloud?: unknown; private?: unknown });
+      return send(res, r.status, r.body);
+    }
+  }
+  // GET /api/admin/backstop-health — owner-only.
+  if (method === 'GET' && url.pathname === '/api/admin/backstop-health') {
+    const r = handleBackstopHealth(session);
+    return send(res, r.status, r.body);
   }
 
   // GET /api/default-participant — owner/admin: template status
