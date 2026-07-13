@@ -192,18 +192,19 @@ Append-only, newest first. One line per decision: *what + 1-line why*. Prune (mo
 ### Branch
 
 - **Current:** `main`
-- **Last tag:** `classroom-2026-07` (137 commits ahead)
+- **Last tag:** `classroom-2026-07` (138 commits ahead)
 
 ### Working tree
 
 ```
-## main...origin/main [ahead 10]
-A  docs/superpowers/specs/2026-07-12-admin-tab-and-privacy-toggle-design.md
+## main...origin/main [ahead 11]
+A  docs/superpowers/plans/2026-07-12-admin-tab-and-privacy-toggle.md
 ```
 
 ### Recent commits (last 15)
 
 ```
+349884be docs(spec): owner Admin tab + member Cloud↔Private toggle
 3871cb6a fix(bench): final-review polish (gateway call, robustness, guards)
 e7a04ffd docs(bench): A1 MCP-reliability report + default recommendation
 2539610f fix(bench): neutral bench persona (remove Socratic-tutor confound)
@@ -218,9 +219,8 @@ cb78871a docs(spec): A1 agent-task model benchmark (MCP tool-use reliability)
 d093f6c9 chore(playground): drop unused tab-gating imports in app.js (final-review minor)
 afbd038f docs(review): live verification — member Setup restructure
 5c52a5e5 docs(plan): note Go-to-MyAgent button removed (redundant with nav tab)
-a0e4627a feat(playground): Setup dashboard Advanced section (persona/skills)
 ```
 
 ### Last refresh
 
-2026-07-13T01:52:01Z
+2026-07-13T02:21:28Z
